@@ -39,7 +39,7 @@ func (s *GitCapability) GitDiffIn(repo string, extra ...string) (string, error) 
 		sp.Finish(audit.Deny, summarize(args...), nil, err)
 		return "", err
 	}
-	out, err := s.run(context.Background(), dir, "git", args)
+	out, err := s.gitReadRun(context.Background(), dir, "git", args)
 	if err != nil {
 		sp.Finish(audit.Error, summarize(args...), []string{dir}, err)
 		return s.redact(out), fmt.Errorf("git diff: %w", err)
@@ -48,9 +48,9 @@ func (s *GitCapability) GitDiffIn(repo string, extra ...string) (string, error) 
 	return s.redact(out), nil
 }
 
-// GitCommit stages all changes and commits them. It is a write action: gated by the
-// write/command posture (read-only denies, ask requires approve=true, allow commits).
-// The message is passed via argv (never a shell), so normal punctuation is safe.
+// GitCommit stages all changes and commits them inside the attested private L3
+// executor. Repository hooks and filters can run only inside that network-denied
+// boundary; host execution has no fallback.
 func (s *GitCapability) GitCommit(message string, approve bool) (string, error) {
 	return s.GitCommitIn("", message, approve)
 }
@@ -69,28 +69,39 @@ func (s *GitCapability) GitCommitIn(repo, message string, approve bool) (string,
 		sp.Finish(audit.Error, "git_commit", nil, err)
 		return "", err
 	}
-	// Mode + allowlist gate (commit is not in the destructive git set).
-	needsApproval, err := s.pol.CheckCommand("git", []string{"commit"})
-	if err != nil {
+	_ = approve // retained for schema compatibility; contained execution is admin-selected.
+	if !s.gitMutation.Status(context.Background()).Available {
+		err := fmt.Errorf("git_commit requires an attested private L3 executor; host Git mutation is disabled")
 		sp.Finish(audit.Deny, "git_commit", nil, err)
 		return "", err
 	}
-	if needsApproval && !approve {
-		sp.Finish(audit.Ask, "git_commit", nil, nil)
-		return "APPROVAL REQUIRED: git_commit would stage all changes and commit. Re-invoke with approve=true.", nil
+	if err := s.pol.CheckContainedExecution(); err != nil {
+		sp.Finish(audit.Deny, "git_commit", nil, err)
+		return "", err
 	}
-	ctx := context.Background()
-	if out, err := s.run(ctx, dir, "git", []string{"add", "-A"}); err != nil {
+	if out, err := s.runGitMutation(context.Background(), dir, []string{"add", "-A"}); err != nil {
 		sp.Finish(audit.Error, "git add -A", []string{dir}, err)
 		return s.redact(out), fmt.Errorf("git add: %w", err)
 	}
-	out, err := s.run(ctx, dir, "git", []string{"commit", "-m", message})
+	out, err := s.runGitMutation(context.Background(), dir, []string{"commit", "-m", message})
 	if err != nil {
 		sp.Finish(audit.Error, "git commit", []string{dir}, err)
 		return s.redact(out), fmt.Errorf("git commit: %w", err)
 	}
 	sp.Finish(audit.Allow, "git commit", []string{dir}, nil)
 	return s.redact(out), nil
+}
+
+func (s *GitCapability) runGitMutation(ctx context.Context, dir string, args []string) (string, error) {
+	result, err := s.gitMutation.Run(ctx, SandboxRunRequest{Dir: dir, Argv: append([]string{"git"}, args...), NetworkProfile: "none"})
+	output := strings.TrimRight(result.Stdout+"\n"+result.Stderr, "\n")
+	if err != nil {
+		return output, err
+	}
+	if result.ExitCode != 0 {
+		return output, fmt.Errorf("git exited with status %d", result.ExitCode)
+	}
+	return output, nil
 }
 
 // ApplyPatch applies a unified diff, patch-first and validated. It (1) extracts the

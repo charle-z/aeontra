@@ -22,8 +22,29 @@ A clean Edge requires at most these two local commands:
 
 ```text
 sudo apt install ./mcp-devbox-edge_<version>_amd64.deb
-mcp-edge onboard --server https://mcp-devbox-charlez.duckdns.org
+mcp-edge onboard --server https://mcp.example.com
 ```
+
+Replace `https://mcp.example.com` with the HTTPS origin of the operator's own control
+plane. The maintainer-operated demo domain is not an installation default.
+
+Run the package command from the intended Edge user's login session so `sudo` supplies
+that account through `SUDO_USER`. An unattended root shell has no safe user identity to
+infer and therefore installs the signed bundle without enabling a per-user Edge. For
+that case, select an existing non-root account explicitly before package installation:
+
+```text
+sudo install -d -m 0755 /etc/mcp-devbox
+printf '%s\n' '<edge-user>' | sudo tee /etc/mcp-devbox/edge-user >/dev/null
+sudo chmod 0600 /etc/mcp-devbox/edge-user
+sudo apt install ./mcp-devbox-edge_<version>_amd64.deb
+```
+
+The package resolves the account's home directory from the system identity database;
+it never assumes `/home/<user>` or falls back to the original maintainer's username.
+It writes root-owned, per-instance systemd drop-ins for that exact home while retaining
+the signed template service, so archive updates can still replace the executable
+contract without freezing an old `ExecStart` line.
 
 The first pairing still needs one short-lived code authorized by the control plane. The
 code is read from standard input and never accepted as a command-line argument. This is
@@ -60,13 +81,35 @@ and atomically points:
 /opt/mcp-devbox/current
 ```
 
-to that release. Compatibility links, the fixed systemd units, root-owned updater,
-polkit rule, reviewed Node/OpenCode/provider/driver components, and the rootless Podman
-prerequisites remain governed by the signed P15 bundle contract.
+to that release. Compatibility links, fixed systemd units, root-owned updater, polkit
+rule, pinned Codex component, and rootless Podman prerequisites remain governed by the
+signed bundle contract. OpenCode, its provider, Node and the external driver exist only
+in retained v4 rollback releases.
 
-The package now declares `util-linux` because its lifecycle transaction invokes
-`runuser`; migration must execute as the Edge user who owns the private state, not as
-root.
+The package declares `util-linux` because its lifecycle transaction invokes `runuser`;
+migration must execute as the Edge user who owns the private state, not as root. It also
+declares the official GitHub CLI package `gh`: this supports both the operator's normal
+interactive `gh auth login` and the separate direct-Edge broker import documented in
+[`development-edge-git.md`](development-edge-git.md).
+
+Archive-only updates do not invoke APT. The signed manifest-v3 layout owns a
+pinned official `gh` at `libexec/gh` and a managed `/usr/local/bin/gh` compatibility
+link. A manifest-v2 bridge release must be installed first on older devices so their
+updater can verify v3. Rollback to a v1/v2 release removes only that exact managed link
+and preserves any unrelated system installation. The fixed root update and rollback
+units include `/usr/local/bin` in `ReadWritePaths` solely for this link; their
+`ProtectSystem=strict`, closed operation and empty capability set remain unchanged.
+Older package installations whose unit predates that permission need one signed Debian
+package upgrade because an archive cannot enlarge the sandbox of the updater process
+that is already running.
+
+During package configuration, the privileged lifecycle inspects exactly
+`mcp-devbox-edge.service` and `mcp-devbox-opencode-edge.service`. A loaded legacy unit
+is stopped and disabled before the current templated unit is restarted. Archive
+activation can disable persistence for those same fixed names, but it does not stop an
+active legacy Edge that is also the caller waiting for the update. No caller-controlled
+service name is accepted. If such an unpackaged historical unit exists, archive update
+fails closed until the one-host handoff below is completed.
 
 ## Existing P12/P15 state
 
@@ -124,6 +167,17 @@ container:
 - the following successful run migrates once and a repeat `postinst` is idempotent.
 
 Until that remote gate is green, this package candidate remains validation pending.
+
+## Package removal
+
+Removal fails closed if systemd cannot stop and disable either the identity watcher or
+the Edge service. Only after both operations succeed does `prerm` remove the generated
+home-directory drop-ins and updater polkit rule, then reload systemd. An ordinary
+package upgrade keeps the rule and running-unit configuration available for rollback.
+
+Private identity, keys, workspaces, checkpoints, project checkouts, and state are not
+deleted by package removal. Reinstalling the package and selecting the same Edge user
+can reuse that state after the normal integrity checks.
 
 ## Diagnosis
 
@@ -199,6 +253,49 @@ release pointing at a state path whose prior contents disappeared.
 A normal update does not require another pairing or manual workspace registration.
 Verify this separately in package CI and on the intended real device. Do not transfer
 proof from one environment to another.
+
+## Exceptional unpackaged legacy-unit handoff
+
+This procedure is only for a host where a historical unit was installed manually and
+is not owned by the Debian package. Package upgrade cannot remove such a file. Do not
+add root privilege to the signed Edge service to compensate for this one-host state.
+
+First stop the identity watcher, because its always-present `identity.json` condition
+otherwise starts the templated service again during the handoff. Then stop both fixed
+Edge services and prove the state lock has no live owner:
+
+```bash
+EDGE_USER="$(id -un)"
+sudo systemctl disable --now "mcp-devbox-edge-onboard@${EDGE_USER}.path"
+sudo systemctl disable --now "mcp-devbox-edge@${EDGE_USER}.service"
+sudo systemctl disable --now mcp-devbox-edge.service
+pgrep -a mcp-edge
+```
+
+`pgrep` must return no process. Start the templated service explicitly, verify it, and
+only then restore the watcher:
+
+```bash
+sudo systemctl start "mcp-devbox-edge@${EDGE_USER}.service"
+systemctl is-active "mcp-devbox-edge@${EDGE_USER}.service"
+mcp-edge doctor
+sudo systemctl enable --now "mcp-devbox-edge-onboard@${EDGE_USER}.path"
+```
+
+The healthy result must report one process, the lock held, managed coherence and a
+valid bundle. If the templated service does not become healthy, keep the watcher
+disabled while restoring the legacy rollback service:
+
+```bash
+sudo systemctl disable --now "mcp-devbox-edge-onboard@${EDGE_USER}.path"
+sudo systemctl disable --now "mcp-devbox-edge@${EDGE_USER}.service"
+sudo systemctl enable --now mcp-devbox-edge.service
+```
+
+Stopping these units does not remove the Edge identity, workspace registry, GitHub
+credential store, repositories, checkpoints, installed releases or the `current`
+bundle link. Deleting an unpackaged legacy unit file is a separate operator decision
+after a stability window; this handoff only disables it.
 
 ## Uninstallation posture
 

@@ -11,6 +11,45 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/edgeclient"
 )
 
+func TestProjectPrepareCLIUsesBoundedCanonicalPreparation(t *testing.T) {
+	oldPrepare := prepareLocalProject
+	t.Cleanup(func() { prepareLocalProject = oldPrepare })
+	called := false
+	prepareLocalProject = func(ctx context.Context, alias, repository, target string) (edgeclient.ProjectStatus, error) {
+		called = true
+		if _, ok := ctx.Deadline(); !ok || alias != "project" || repository != "repo" || target != "parrot" {
+			t.Fatalf("unbounded or changed preparation: %q %q %q", alias, repository, target)
+		}
+		return edgeclient.ProjectStatus{Alias: alias, Repository: "charle-z/" + repository, Target: target, State: "ready"}, nil
+	}
+	var stdout bytes.Buffer
+	if err := projectCommand([]string{"prepare", "--alias", "project", "--repository", "repo", "--target", "parrot"}, &stdout, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	if !called || !strings.Contains(stdout.String(), `"state":"ready"`) {
+		t.Fatalf("prepare was not completed: %s", stdout.String())
+	}
+}
+
+func TestProjectPrepareCLIRejectsIncompleteAndFreePathArguments(t *testing.T) {
+	oldPrepare := prepareLocalProject
+	t.Cleanup(func() { prepareLocalProject = oldPrepare })
+	prepareLocalProject = func(context.Context, string, string, string) (edgeclient.ProjectStatus, error) {
+		t.Fatal("invalid preparation opened local authority")
+		return edgeclient.ProjectStatus{}, nil
+	}
+	for _, args := range [][]string{
+		{"prepare", "--alias", "project"},
+		{"prepare", "--alias", "project", "--repository", "repo"},
+		{"prepare", "--alias", "project", "--repository", "repo", "--target", "parrot", "/tmp/repo"},
+		{"prepare", "--alias", "project", "--repository", "repo", "--target", "parrot", "--state", "/tmp/state"},
+	} {
+		if err := projectCommand(args, &bytes.Buffer{}, &bytes.Buffer{}); err == nil {
+			t.Fatalf("invalid preparation accepted: %v", args)
+		}
+	}
+}
+
 type mutableProjectInspector struct {
 	state edgeclient.ProjectCheckoutState
 }
@@ -46,23 +85,28 @@ func TestProjectStatusAndResolveOutputContainsNoOpaqueIdentifiersOrPaths(t *test
 	}
 }
 
-func TestProjectStatusReportsStableBlockedReasonAndResolveFails(t *testing.T) {
-	stores, workspace, inspector := newProjectCommandFixture(t)
-	oldOpen := openLocalProjectStores
-	openLocalProjectStores = func() (*localProjectStores, error) { return stores, nil }
-	t.Cleanup(func() { openLocalProjectStores = oldOpen })
-	inspector.state = edgeclient.ProjectCheckoutDirty
-	var stdout bytes.Buffer
-	if err := projectCommand([]string{"status", "--alias", "ekoparty"}, &stdout, &bytes.Buffer{}); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(stdout.String(), `"state":"blocked"`) || !strings.Contains(stdout.String(), `"reason":"checkout_dirty"`) {
-		t.Fatalf("blocked status=%q", stdout.String())
-	}
-	for _, forbidden := range []string{workspace.ID, workspace.Path} {
-		if strings.Contains(stdout.String(), forbidden) {
-			t.Fatalf("blocked status exposed %q: %s", forbidden, stdout.String())
-		}
+func TestProjectStatusAndResolveReportDirtyCheckoutWithoutExposingPaths(t *testing.T) {
+	for _, operation := range []string{"status", "resolve"} {
+		t.Run(operation, func(t *testing.T) {
+			stores, workspace, inspector := newProjectCommandFixture(t)
+			oldOpen := openLocalProjectStores
+			openLocalProjectStores = func() (*localProjectStores, error) { return stores, nil }
+			t.Cleanup(func() { openLocalProjectStores = oldOpen })
+			inspector.state = edgeclient.ProjectCheckoutDirty
+
+			var stdout bytes.Buffer
+			if err := projectCommand([]string{operation, "--alias", "ekoparty"}, &stdout, &bytes.Buffer{}); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(stdout.String(), `"state":"dirty"`) || !strings.Contains(stdout.String(), `"reason":"normal_workspace_changes"`) {
+				t.Fatalf("dirty %s=%q", operation, stdout.String())
+			}
+			for _, forbidden := range []string{workspace.ID, workspace.Path} {
+				if strings.Contains(stdout.String(), forbidden) {
+					t.Fatalf("dirty %s exposed %q: %s", operation, forbidden, stdout.String())
+				}
+			}
+		})
 	}
 }
 
@@ -101,6 +145,9 @@ func newProjectCommandFixture(t *testing.T) (*localProjectStores, edgeclient.Wor
 		if err := os.MkdirAll(path, 0o700); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if err := os.Mkdir(filepath.Join(workspacePath, ".git"), 0o700); err != nil {
+		t.Fatal(err)
 	}
 	workspaces, err := edgeclient.OpenWorkspaceRegistryWithRoots(state, edgeclient.WorkspaceRoots{Dev: devRoot, HTBLinux: htbRoot})
 	if err != nil {

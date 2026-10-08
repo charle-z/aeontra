@@ -1,8 +1,49 @@
-# MCP Devbox product roadmap
+# Aeontra product roadmap
 
-Last updated: 2026-07-18
+Last updated: 2026-09-27
+
+## Current delivery state
+
+GPT Web and other MCP clients provide reasoning. Aeontra owns durable execution,
+repository and deployment authority. The installed signed Edge uses the stock Codex
+harness by default; historical OpenCode integration remains compatibility evidence, not
+the active runtime contract.
+
+| Surface | Status | Evidence / next boundary |
+|---|---|---|
+| Public control plane and Front Door | Deployed | The backend, stable Front Door, OAuth discovery and catalog-aware rollout are live. Resolve moving identity through `/version` or `system_runtime_info`. |
+| Direct Linux/Parrot Edge execution | Deployed and real-device accepted | Foreground and durable processes, Git synchronization/publication, persistent toolbox, rootless engine access, managed browser harness and restart reconciliation have real-device evidence. |
+| GitHub and managed delivery | Deployed | Exact preview/execute publication, PR checks, merge, workflow dispatch and catalog-aware Coolify rollout completed a real project delivery without exposing broker credentials to the workcell. |
+| P16 worktrees and parallel tasks | Deployed and real-device accepted | Independent exact-base workers produced isolated commits; semantic acceptance, cancellation, fences and cleanup were verified on a signed Edge. |
+| Codex harness | Deployed and real-device accepted | The signed Edge runs a pinned stock Codex harness while Aeontra retains task, lease, worktree and fencing authority. |
+| Native Windows Edge | Deployed and real-device accepted | The signed SCM service, custom fixed-drive roots, updater, Windows workcell result handling and a registered project were accepted on a real device. |
+| Current dual-Edge release | Deployed and accepted | Linux/Parrot and native Windows were reconciled on `v1.2.24`; see [`baselines/2026-08-27-v1_2_24-dual-edge.md`](baselines/2026-08-27-v1_2_24-dual-edge.md). |
+| Public product site | Deployed and verified | The bilingual, dependency-free site is live at `https://aeontra.com/`; exact-head gates, managed deployment, HTTPS, responsive browser acceptance and exact site-build identity are recorded in [`baselines/2026-08-29-public-site.md`](baselines/2026-08-29-public-site.md). |
+| P17 durable objective supervisor | Partially implemented | The managed model-turn completion gate enforces explicit `active`, `blocked` and `complete` states. `project_task_status` separates lifecycle, runtime and semantic acceptance; `project_task_list` helps a new chat recover a task ID. An optional Git evidence contract records exact clean committed-change counts. A separate test-profile contract records a known zero exit against a selected source-content digest in the worker worktree. Neither receipt accepts the natural-language goal, and the test digest is not hermetic. Status offers deterministic pending-turn attention, bounded wait timing and a revisioned compact handoff. `model_turn_next_any` waits for up to four runtimes without serial long-polls. Neither tool transfers ownership or wakes a closed chat. Trusted objective evaluation, reviewed integration and broader efficiency metrics remain planned. |
+| Managed image and asset broker | Not started | A browser can acquire files, but no server-owned workflow yet searches, validates licensing, records attribution and delivers assets as an auditable product operation. |
+| CubePath migration or removal | Deferred | No core execution contract depends on CubePath. Historical evidence remains unchanged until an explicit hosting/branding migration is approved. |
+| Multi-user and fleet operation | Deferred | Tenant identity, RBAC, quotas, abuse controls, audit ownership, billing and recovery must be designed before shared service operation. |
+
+## Next execution sequence
+
+1. Complete public release hygiene: protected `main`, current documentation, bounded
+   branch/release retention, artifact notices and clean install/update/rollback evidence.
+2. Implement P17 as a supervisor over the accepted P16 execution primitives.
+3. Design the managed asset broker as a separate authority and provenance workflow.
+4. Decide the CubePath hosting/branding migration without rewriting dated evidence.
+5. Validate the owner-operated single-user product before designing multi-user service
+   boundaries.
+
+Automatic ChatGPT browser driving is not a durability primitive. The core continuation
+contract is a content-bounded checkpoint plus a resumable task identity. Any later UI
+automation must remain optional, use a manually authenticated browser profile and fail
+without replaying consequential effects.
 
 ## Status snapshot — 2026-07-18
+
+> **Historical.** This snapshot and the milestone decomposition below explain how the
+> current system evolved. They are not current installation or deployment status; use
+> the delivery table above and live identity sources for that.
 
 This table distinguishes implemented state from roadmap intent. Detailed acceptance
 criteria below remain future requirements until their status changes with evidence.
@@ -17,7 +58,7 @@ criteria below remain future requirements until their status changes with eviden
 | Console/showcase | Deployed | P8 closure `2e3429c9d6342e8e091cadf65293c5c85b1b3259` is tagged `p8`; the original authenticated console remains historical evidence. |
 | Brain memory | Deployed | P9 merge `4fbe1dda02351c632e67c0f10a5c5b314df745e2` is deployed and tagged `p9`; persistent `/brain`, 67 tools, catalog and Brain smokes are verified. |
 | Console 2.0 / P8.1 | Deployed | `main` at `d343264bffdc0ae1bc045a9d723e913be977090c` is deployed healthy and tagged `p8.1`; React Neo-BIOS UI, console OAuth, strict query-key rejection, durable `/state/tasks`, SSE and exact safe-data contracts passed production smoke. |
-| Public showcase | Implemented in source | The existing Go binary embeds the exact public `GET /` presentation-only landing; deployment is accepted only after all exact-head gates pass and the live commit matches the merge. |
+| Public product site | Implemented in source | The existing Go binary embeds the exact public `GET /`; deployment is accepted only after all exact-head gates pass and the live commit matches the merge. |
 | P11 bounded state and development Edge | Deployed / superseded by P11.2 and P12 | Historical 71-tool foundation remains in `docs/baselines/2026-07-15-p11.md`; the current production catalog has 85 tools. |
 | P11.2 remote OpenCode relay | Deployed | The four-process relay, pinned OpenCode 1.18.1, restart/resume, Bubblewrap isolation, and zero-duplicate turn contract are deployed and form the P12 runtime foundation. |
 | P12 Trusted Linux Workcell | Deployed and validated on Parrot | PR #25 merged at `3946fd7033f28906deb932298387034e2fa27fe8`; one real outbound Parrot runtime completed six sequences and an exact verified repository edit. Onboarding hardening packages `AF_NETLINK`, safe diagnostics, journal migration, and a reproducible preflight. |
@@ -37,16 +78,13 @@ It is not tied to ChatGPT, Astro, TypeScript, Node, Coolify, MiniMax, OpenCode, 
 any single framework. Those are clients, adapters, execution recipes, or deployment
 targets around a stable policy core.
 
-Core promise:
-
-> Any agent. Any stack. Explicit guardrails. Auditable delivery.
-
-The model reasons; MCP Devbox plans, constrains, executes, observes, validates, and
-audits; the human grants authority for consequential actions.
+Aeontra provides one policy core for multiple MCP clients and execution profiles. The
+control plane plans, executes, records and validates tool effects. An administrator
+defines authority for consequential actions.
 
 ## Product boundaries
 
-The product has five deliberately separate surfaces:
+The product has five separate surfaces:
 
 1. **Core control plane (private):** MCP tools, jail, secret denial, plans,
    approvals, redaction, audit, repository memory, and deployment integrations.
@@ -90,7 +128,7 @@ ChatGPT / OpenCode Go / MiniMax / other MCP client
           |              |                |
       repositories   execution profiles   deployment adapters
           |              |                |
-       Git/GitHub   Node/Python/Go/...   Coolify/CubePath/...
+      Git/GitHub   Node/Python/Go/...   Coolify/other platforms
                          |
                    private edge channel
                          |
@@ -115,7 +153,7 @@ Target: prove the complete product path through a public, read-only demonstratio
 - Complete one external flow: create/publish -> create Coolify app -> deploy ->
   inspect status/logs -> return a working public URL.
 - Confirm `MCP_DEVBOX_OAUTH_CLIENT_STORE` and
-  `MCP_DEVBOX_OAUTH_REFRESH_STORE` use the persistent `/state` volume.
+  `MCP_DEVBOX_OAUTH_ACCESS_STORE` and `MCP_DEVBOX_OAUTH_REFRESH_STORE` use the persistent `/state` volume.
 - Perform two redeploys and verify the second does not require deleting the ChatGPT
   connector or re-entering the owner passphrase.
 
@@ -133,8 +171,8 @@ the existing Go application. A separate unauthenticated public showcase may be b
 later only when a public product presentation requires it; it must remain
 presentation-only and must never proxy the private MCP control plane.
 
-The current source implementation satisfies that later public-showcase boundary; see
-`docs/landing/public-showcase.md` for the exact route, assets and acceptance contract.
+The current source implementation satisfies that later public-site boundary; see
+`docs/landing/public-site.md` for the exact route, assets and acceptance contract.
 
 Authenticated console scope:
 
@@ -144,12 +182,13 @@ Authenticated console scope:
 - Sanitized replay of a real run, including one failure and recovery.
 - Interactive policy explorer using local simulation/data only: secret read denied,
   force push denied, expired plan denied, approved deployment allowed.
-- Architecture map showing control plane, runner, GitHub, Coolify, and CubePath.
+- Architecture map showing control plane, runner, GitHub, Coolify, and the selected
+  hosting platform.
 - Capability/profile view distinguishing implemented, experimental, and planned
   features.
 - Safe live health indicator containing only public version/commit/availability.
-- Visible `Hosted on CubePath` badge/footer and links to source, demo, security
-  limitations, and creator profile.
+- Operator-selected hosting attribution and links to source, demo, security limitations,
+  and creator profile.
 
 The console must not proxy MCP calls or contain production credentials. A replay
 must be clearly labeled as recorded/sanitized rather than live execution.
@@ -416,18 +455,9 @@ Acceptance:
 - Multi-user/team mode only after identity, tenant isolation, audit ownership, and
   authorization are designed explicitly.
 
-## Prioritized implementation order
+## Historical implementation order
 
-1. Finish and prove the end-to-end product path.
-2. Ship the public-safe console and demonstration package.
-3. Generalize the validation runner into universal execution profiles.
-4. Add the private edge transport and one personal development edge.
-5. Add provider-neutral orchestration, then OpenCode Go and MiniMax adapters.
-6. Add administrator-owned engagements and a Parrot security edge.
-7. Add narrow authorized-research profiles, expanding only with evidence and tests.
-8. Productize installation, upgrades, profile distribution, diagnostics, and team
-   use.
-
-This order keeps the public demonstration focused while preserving the universal
-architecture required for development, infrastructure, personal edge work,
-multi-model orchestration, and authorized security research.
+The original sequence was end-to-end demonstration, public-safe console, universal
+profiles, private Edge transport, provider-neutral orchestration, authorized security
+profiles and productization. Delivered work has overtaken several of those checkpoints.
+The current order is the bounded sequence at the top of this document.

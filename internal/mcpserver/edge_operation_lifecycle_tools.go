@@ -31,6 +31,11 @@ type edgeOperationLifecyclePublicView struct {
 	Target          string                  `json:"target,omitempty"`
 	Reason          string                  `json:"reason,omitempty"`
 	CreatedAt       time.Time               `json:"created_at"`
+	QueueUS         *int64                  `json:"queue_us,omitempty"`
+	PickupUS        *int64                  `json:"pickup_us,omitempty"`
+	EdgeWorkUS      *int64                  `json:"edge_work_us,omitempty"`
+	CompletionUS    *int64                  `json:"completion_us,omitempty"`
+	TotalUS         *int64                  `json:"total_us,omitempty"`
 	UpdatedAt       time.Time               `json:"updated_at"`
 }
 
@@ -135,6 +140,19 @@ func publicEdgeOperationLifecycle(operation edge.Operation) edgeOperationLifecyc
 		Target:          operation.Request.TargetAlias,
 		Reason:          operation.SafeCode,
 		CreatedAt:       operation.CreatedAt,
+		QueueUS:         operationDurationMicros(operation.CreatedAt, operation.LeasedAt),
+		PickupUS:        operationDurationMicros(operation.LeasedAt, operation.RunningAt),
+		EdgeWorkUS:      operationDurationMicros(operation.RunningAt, operation.FinalizingAt),
+		CompletionUS:    operationDurationMicros(operation.FinalizingAt, operation.UpdatedAt),
+		TotalUS:         operationDurationMicros(operation.CreatedAt, operation.UpdatedAt),
 		UpdatedAt:       operation.UpdatedAt,
 	}
+}
+
+func operationDurationMicros(start, end time.Time) *int64 {
+	if start.IsZero() || end.IsZero() || end.Before(start) {
+		return nil
+	}
+	value := end.Sub(start).Microseconds()
+	return &value
 }

@@ -19,6 +19,7 @@ const (
 func configuredFrontDoorPlatformService(t *testing.T, mode config.Mode, baseURL string) *Service {
 	t.Helper()
 	svc := configuredPlatformService(t, mode, baseURL)
+	svc.WithMaintainerProfile(MaintainerProfileCharleZProduction)
 	svc.WithGitHub(NewGitHubClient(baseURL, "github-token", "acme", "org", "private"))
 	svc.WithCoolify(svc.coolify.WithBuilderRuntime("destination1", nil))
 	return svc
@@ -33,7 +34,7 @@ func TestPlatformFrontDoorCreateIsFixedPlannedAndDeploysAfterEnvironment(t *test
 	var domainPayload map[string]any
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/git/ref/heads/front-door-stable":
 			_, _ = w.Write([]byte(`{"object":{"sha":"` + frontDoorTestSHA + `"}}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications":
 			_, _ = w.Write([]byte(`[]`))
@@ -57,7 +58,7 @@ func TestPlatformFrontDoorCreateIsFixedPlannedAndDeploysAfterEnvironment(t *test
 			envs++
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"uuid":"env1"}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deploy":
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/deploy":
 			deploys++
 			if r.URL.Query().Get("uuid") != "front1" || r.URL.Query().Get("force") != "false" {
 				t.Fatalf("unsafe deploy query: %s", r.URL.RawQuery)
@@ -107,6 +108,7 @@ func TestPlatformFrontDoorCreateIsFixedPlannedAndDeploysAfterEnvironment(t *test
 	for key, want := range map[string]any{
 		"name":                   "mcp-devbox-front-door-managed",
 		"github_app_uuid":        "githubapp1",
+		"git_repository":         "https://github.com/acme/aeontra.git",
 		"git_branch":             "front-door-stable",
 		"destination_uuid":       "destination1",
 		"build_pack":             "dockerfile",
@@ -133,7 +135,7 @@ func TestPlatformFrontDoorCreateReconcilesOneExistingAppAndSkipsDuplicateDeploy(
 	deploys := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/git/ref/heads/front-door-stable":
 			_, _ = w.Write([]byte(`{"object":{"sha":"` + frontDoorTestSHA + `"}}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications":
 			_, _ = w.Write([]byte(`[{"uuid":"front1","name":"mcp-devbox-front-door-managed"}]`))
@@ -155,7 +157,7 @@ func TestPlatformFrontDoorCreateReconcilesOneExistingAppAndSkipsDuplicateDeploy(
 			_, _ = w.Write([]byte(`{"uuid":"env1"}`))
 		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/applications/public":
 			created++
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deploy":
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/deploy":
 			deploys++
 		default:
 			t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
@@ -188,7 +190,7 @@ func TestPlatformFrontDoorCreateDeploysOneAuthenticatedCatalogTransition(t *test
 	writes := map[string]string{}
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/git/ref/heads/front-door-stable":
 			_, _ = w.Write([]byte(`{"object":{"sha":"` + nextFrontSHA + `"}}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications":
 			_, _ = w.Write([]byte(`[{"uuid":"front1","name":"mcp-devbox-front-door-managed"}]`))
@@ -218,7 +220,7 @@ func TestPlatformFrontDoorCreateDeploysOneAuthenticatedCatalogTransition(t *test
 			writes[key] = value
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"uuid":"env"}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deploy":
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/deploy":
 			deploys++
 			if r.URL.Query().Get("force") != "false" {
 				t.Fatalf("force deployment requested: %s", r.URL.RawQuery)
@@ -238,6 +240,17 @@ func TestPlatformFrontDoorCreateDeploysOneAuthenticatedCatalogTransition(t *test
 	preview, err := svc.PlatformFrontDoorCreatePreview(request)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"catalog_primary: " + frontDoorNextCatalog,
+		"catalog_transition: " + frontDoorTestCatalog,
+		"catalog_transition_remove: false",
+		"catalog_changed: true",
+		"catalog_contract: accept the authenticated primary plus at most one authenticated temporary transition catalog",
+	} {
+		if !strings.Contains(preview, want) {
+			t.Fatalf("preview missing %q: %s", want, preview)
+		}
 	}
 	out, err := svc.PlatformFrontDoorCreate(field(preview, "plan_id"), true)
 	if err != nil {
@@ -306,7 +319,7 @@ func TestPlatformFrontDoorCreateRejectsStableBranchChangeAfterPreview(t *testing
 	created := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/git/ref/heads/front-door-stable":
 			branchReads++
 			sha := frontDoorTestSHA
 			if branchReads > 1 {
@@ -344,7 +357,7 @@ func TestPlatformFrontDoorCreateRecoversPartialApplicationWithoutDomain(t *testi
 	deploys := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/git/ref/heads/front-door-stable":
 			_, _ = w.Write([]byte("{\"object\":{\"sha\":\"" + frontDoorTestSHA + "\"}}"))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications":
 			_, _ = w.Write([]byte("[{\"uuid\":\"front1\",\"name\":\"mcp-devbox-front-door-managed\"}]"))
@@ -362,7 +375,7 @@ func TestPlatformFrontDoorCreateRecoversPartialApplicationWithoutDomain(t *testi
 			_, _ = w.Write([]byte("{\"uuid\":\"env1\"}"))
 		case r.Method == http.MethodPost && (r.URL.Path == "/api/v1/applications/public" || r.URL.Path == "/api/v1/applications/private-github-app"):
 			created++
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deploy":
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/deploy":
 			deploys++
 			_, _ = w.Write([]byte("{\"deployment_uuid\":\"dep-recovered\",\"status\":\"queued\"}"))
 		default:

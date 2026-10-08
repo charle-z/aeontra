@@ -20,6 +20,22 @@ import (
 const testEdgeRelease = "p15.0.9"
 const testEdgeCommit = "0123456789abcdef0123456789abcdef01234567"
 
+func TestEdgeInstanceLockAcceptsSemanticReleaseIdentity(t *testing.T) {
+	stateRoot := t.TempDir()
+	lock, err := AcquireEdgeInstanceLock(stateRoot, "v1.0.0", testEdgeCommit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Close()
+	report, err := InspectEdgeInstanceLock(stateRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.MetadataValid || report.Metadata.Release != "v1.0.0" {
+		t.Fatalf("semantic release metadata = %+v", report)
+	}
+}
+
 func TestEdgeInstanceLockRejectsSecondInstanceForSameStateRoot(t *testing.T) {
 	stateRoot := t.TempDir()
 	first, err := AcquireEdgeInstanceLock(stateRoot, testEdgeRelease, testEdgeCommit)

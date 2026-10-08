@@ -1,32 +1,61 @@
 # Development Edge Git authority
 
-Status: implemented on `codex/p15-dev-edge-git`; release and Parrot installation
-remain pending until the exact-head gates, merge, signed release, and update finish.
+Status: clone, safe publication, registered-checkout synchronization and the first
+read-only Hito 5 GitHub API slice are deployed. A real normal login and private import
+were verified on `p15.0.13`. PR #134 and signed `p15.0.14` delivered the manifest-v2
+bridge. PR #135 and signed `p15.0.15` delivered manifest v3. Releases `p15.0.15` and
+`p15.0.16` both failed closed during activation and restored `p15.0.14`; the operator
+has since completed the exceptional one-host handoff from an unpackaged legacy unit.
+The post-handoff signed release remains device acceptance pending.
 
 This flow lets an active ChatGPT web task develop in a private repository through
 the authenticated local Edge. It separates two uses of GitHub authority:
 
 | Authority | Location | Purpose |
 |---|---|---|
-| Public MCP GitHub API | VPS/Coolify `GITHUB_TOKEN` | Repository/PR metadata, exact-head checks and workflows, PR creation/merge, and default-branch operations. |
-| Local Git transport | Edge private `github.json` | Clone an owner-bound private repository and publish one reviewed branch from a registered `dev` workcell. |
+| Public MCP GitHub API | VPS/Coolify `GITHUB_TOKEN` | Owner-bound repositories, HTTPS publication, exact-head checks and workflows. |
+| Public OSS GitHub broker | VPS/Coolify `GH_TOKEN`, with `GITHUB_TOKEN` fallback | Public external upstreams only; create forks, comment, and open/read cross-repository PRs without external merge authority. |
+| Local Git and GitHub broker | Edge private `github.json` | Clone/publish one owner-bound repository and execute only server-constructed `gh api` reads for its registered `dev` project. |
 
-The same fine-grained PAT may be entered in both places, but it is stored separately
-because the VPS and PC are separate trust domains. Neither copy is returned to the
-model, written into a workspace, placed in Git argv, or mounted into Bubblewrap.
+The VPS keeps owner-bound and public-OSS authority separate. `GITHUB_TOKEN` can remain
+a narrow fine-grained credential for repositories owned by `GITHUB_OWNER`, while
+`GH_TOKEN` can carry the user authority required for third-party public OSS
+API writes. The Edge credential remains a separate trust domain for local Git transport.
+None of these credentials is returned to the model, written into a workspace, placed
+in Git argv, or mounted into Bubblewrap.
 
 ## Required GitHub permission
 
-Restrict a fine-grained PAT to the intended owner and repositories. For the complete
-development flow it needs repository Contents read/write and Metadata read. Give it
-Actions read and Pull requests read/write when ChatGPT must inspect workflows/checks
-and manage the existing PR. Do not add administration or organization-wide access
-unless a later explicit operation requires it.
+Owner-bound development needs repository Contents read/write and Metadata read on the
+configured owner. Public OSS automation needs user authority to create a public fork,
+comment on the selected public issue/PR, and open a PR against that external upstream.
+Checks and workflow diagnostics need Actions/Checks read. MCP Devbox probes each action
+through its closed API call and fails without exposing the token when GitHub denies it.
+Do not broaden the owner-bound credential merely to bypass a failed policy check.
+
+## Public OSS broker contract
+
+The public control plane exposes a closed contribution path using one GitHub client
+that selects the route-scoped credential before sending the Authorization header:
+
+- only public external upstream repositories are accepted;
+- a fork must live under `GITHUB_OWNER` and retain the exact upstream parent;
+- issue comments and cross-repository PRs require preview, short expiry, one-time use
+  and state revalidation;
+- fork head and upstream base SHAs are bound before PR creation;
+- duplicate PRs and changed issue conversations fail closed;
+- external PR state includes exact-head checks, reviews, inline review comments and conversation comments;
+- inline review replies bind the PR head, comment ID and comment timestamp before posting;
+- no tool merges an external upstream PR.
+
+Both VPS tokens remain in the public broker process. They are not copied into the Edge
+toolbox or made available to an arbitrary `gh` command.
 
 Configure the public copy as private Coolify variables and redeploy the existing MCP:
 
 ```text
-GITHUB_TOKEN=<same fine-grained PAT>
+GITHUB_TOKEN=<fine-grained owner-bound PAT>
+GH_TOKEN=<user credential for public OSS writes>
 GITHUB_OWNER=charle-z
 GITHUB_OWNER_TYPE=user
 ```
@@ -35,6 +64,34 @@ Never paste the token into ChatGPT, a prompt, a repository file, or a command-li
 argument.
 
 ## Configure the local Edge copy
+
+The Debian package installs the official `gh` CLI. The manifest-v3 archive path
+cryptographically binds pinned official `gh` 2.97.0; the preceding `p15.0.14` bridge
+teaches installed updaters to verify v3. Signed `p15.0.15` and `p15.0.16` contain that
+component, but the real device remains on `p15.0.14` after both activation attempts
+failed closed and rolled back.
+You may keep a complete,
+normal GitHub CLI login for your own interactive work and import it into the separate
+Edge store:
+
+```bash
+gh auth login --hostname github.com --git-protocol https --web
+gh auth status --hostname github.com
+mcp-edge github import-gh --owner charle-z \
+  --state "$HOME/.local/state/mcp-edge"
+mcp-edge github status --state "$HOME/.local/state/mcp-edge"
+```
+
+`import-gh` invokes only a fixed safe official CLI path, preferring the signed
+`/opt/mcp-devbox/current/libexec/gh` once available and retaining `/usr/bin/gh` as the
+package-transition fallback. It runs `auth token --hostname github.com`,
+ignores ambient GitHub token variables so the stored login is authoritative, copies
+the token into the existing owner-only `0600` Edge credential file, clears its capture
+buffer, and returns only `{configured, owner}`. It does not delete, replace or otherwise
+modify the normal `gh` profile, so both uses remain available.
+
+Alternatively, configure the Edge copy directly from stdin. Run this as the same
+non-root user that owns the Edge service:
 
 Run this as the same non-root user that owns the Edge service. The command reads only
 stdin and returns `{configured, owner}` without returning the token:
@@ -52,8 +109,8 @@ private state root. Do not copy it into a workspace. Restart the Edge service af
 configuration so the next runtime observes the authority:
 
 ```bash
-sudo systemctl restart "mcp-devbox-opencode-edge@$(id -un).service"
-systemctl is-active "mcp-devbox-opencode-edge@$(id -un).service"
+sudo systemctl restart "mcp-devbox-edge@$(id -un).service"
+systemctl is-active "mcp-devbox-edge@$(id -un).service"
 ```
 
 ## Runtime behavior
@@ -71,14 +128,26 @@ part of the public MCP catalog:
 
 Git runs outside the model sandbox in the Edge broker. A fixed askpass helper receives
 the PAT only in the child environment. System/global credential helpers, repository
-hooks, fsmonitor commands, and the file protocol are disabled for those operations;
-output is bounded and token-redacted. Code editing, tests, dependency installation,
+configuration, hooks, fsmonitor commands, URL rewrites, HTTP overrides, includes, and
+the file protocol are disabled for executable Git operations. The broker reads only
+the exact local `remote.origin.url`/`pushurl` keys without includes, validates them,
+then uses a constructed owner-bound HTTPS URL; output is bounded and token-redacted.
+Code editing, tests, dependency installation,
 rootless containers, commits, and checkpoint updates still happen inside the normal
 Linux workcell.
 
-Workflow logs and PR/check state remain public-MCP GitHub API work. The local broker
-does not grow a general GitHub API, arbitrary URL, arbitrary command, or free-push
-surface.
+The Hito 5 direct broker also invokes the installed official `gh` binary outside the
+workcell. `GH_TOKEN` exists only in that child environment, with a private HOME and
+XDG config root. The model can request `project_github_status` only by registered
+project alias and Edge target; the Edge constructs fixed `gh api` calls for repository
+metadata, one bounded PR probe and one bounded Actions probe. The public response has
+closed capability booleans and safe issue codes, not CLI output.
+
+The local direct-Edge broker slice still does not create PRs, dispatch workflows,
+publish releases or provide arbitrary `gh`, URLs, endpoints, headers, GraphQL,
+pagination or free shell. The public VPS catalog separately exposes planned PR writes
+and one owner-bound `source_workflow_dispatch_preview` / `source_workflow_dispatch`
+pair with exact workflow/ref revalidation and no arbitrary endpoint or token access.
 
 ## Prompt for ChatGPT web
 
@@ -103,9 +172,35 @@ an old runtime for a later chat.
 ## Recovery
 
 - `github status` reports only whether authority exists and the fixed owner.
+- `github import-gh` fails with a generic safe error when no complete GitHub CLI login
+  exists; it never prints the login token or raw CLI error.
 - `not configured` means the development runtime starts normally but receives no
   private clone/publish tools.
 - An unsafe mode, symlink, malformed credential file, broker failure, changed remote,
   dirty tree, behind/diverged branch, expired plan, or replay fails closed.
 - Rotate the PAT in both Coolify and Edge independently. Re-running `github configure`
   atomically replaces only the Edge credential file.
+
+## Direct registered-checkout synchronization
+
+The public direct-Edge path reuses the same private credential authority without
+starting OpenCode. `project_git_status`, `project_git_fetch`,
+`project_git_fast_forward_preview`, `project_git_fast_forward`,
+`project_git_publish_preview`, and `project_git_publish` operate only on the checkout
+already bound to a human project alias and Edge target. Status accepts an attached
+local branch whose same-name remote branch does not exist yet. Publication then binds
+the clean branch, exact local HEAD and current remote absence or exact remotely observed
+HEAD into a private plan before a fixed no-force same-name push. An existing remote
+commit must be locally resolvable and a proven ancestor even when the optional tracking
+ref is stale or absent. The caller cannot
+supply a repository, URL, remote, refspec, tags, force option or credential.
+
+The credential stays in the askpass child environment, while the public result contains
+only bounded Git identity and relationship metadata. Write plans are durable across an
+Edge restart but expire after five minutes solely as transaction guards; they are
+single-use and do not impose a workspace TTL.
+
+Linux applies the direct fast-forward inside a networkless Bubblewrap namespace with
+only the registered checkout writable. Windows rejects direct fast-forward execution
+until an equivalent isolated Git mutation boundary is available; status, fetch and
+publication retain their documented Windows support.

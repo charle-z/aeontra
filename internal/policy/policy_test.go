@@ -93,3 +93,27 @@ func TestPolicy_AllowExecutesWithoutApproval(t *testing.T) {
 		t.Errorf("allow mode: approval=%v err=%v, want false nil", needsApproval, err)
 	}
 }
+
+func TestNewPolicyRejectsUnknownMode(t *testing.T) {
+	root := t.TempDir()
+	_, err := NewPolicy(config.Config{Roots: []string{root}, Mode: config.Mode("alow"), AllowedCommands: []string{"git"}})
+	if !errors.Is(err, config.ErrUnknownMode) {
+		t.Fatalf("NewPolicy(mode=alow) = %v, want ErrUnknownMode", err)
+	}
+}
+
+func TestPolicyUnknownModeFailsClosedAtEverySideEffectGate(t *testing.T) {
+	root := t.TempDir()
+	p := mustPolicy(t, config.ModeAllow, root)
+	p.mode = config.Mode("alow")
+
+	if _, _, err := p.CheckWrite(filepath.Join(root, "file.txt")); !errors.Is(err, config.ErrUnknownMode) {
+		t.Errorf("CheckWrite malformed mode = %v, want ErrUnknownMode", err)
+	}
+	if _, err := p.CheckCommand("git", []string{"status"}); !errors.Is(err, config.ErrUnknownMode) {
+		t.Errorf("CheckCommand malformed mode = %v, want ErrUnknownMode", err)
+	}
+	if _, err := p.CheckAction(); !errors.Is(err, config.ErrUnknownMode) {
+		t.Errorf("CheckAction malformed mode = %v, want ErrUnknownMode", err)
+	}
+}

@@ -127,7 +127,7 @@ func (s *RepositoryCapability) currentTaskSummary(dir string) string {
 	if err != nil {
 		return ""
 	}
-	content, err := readContained(resolved)
+	content, err := readContained(s.root, resolved)
 	if err != nil {
 		return ""
 	}

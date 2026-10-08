@@ -118,13 +118,13 @@ Infrastructure `apply`, active security testing, package installation, service c
 
 This design keeps MCP Devbox useful for complex real work without turning it into an unaudited remote terminal.
 
-## P12 Trusted Linux Workcell implementation candidate
+## P12 Trusted Linux Workcell implementation
 
 P12 implements one explicit `linux-workcell` profile with default `dev` behavior and optional local `htb-linux` metadata. It does not create separate development and HTB execution profiles.
 
 The profile reuses the outbound P11.2 relay and opaque workspace IDs, but policy selection is local to Edge. The existing `sandbox` remains networkless and rejects shared networking. `linux-workcell` is displayed as `TRUSTED LINUX WORKCELL` and declares `trusted_host_shared_network` because this version intentionally shares the Parrot host network.
 
-The candidate adds:
+The implementation provides:
 
 - strict Linux workspace roots and explicit registration opt-in;
 - rendered local instructions, resumable current state, and sanitized tool inventory;

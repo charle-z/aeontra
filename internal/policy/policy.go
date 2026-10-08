@@ -11,6 +11,11 @@ import (
 // in read-only mode (the secure default).
 var ErrReadOnly = errors.New("policy: blocked: server is read-only (writes/commands disabled)")
 
+// ErrExecutionRequiresAllow is returned when repository code execution is
+// requested in ask mode. Execution approval cannot safely bind mutable workspace
+// bytes, so execution is enabled only by the operator-selected allow posture.
+var ErrExecutionRequiresAllow = errors.New("policy: execution requires server mode allow")
+
 // Policy is the single security decision surface. Every MCP tool consults it; no
 // tool re-implements path/secret/command checks. Its fields are unexported and set
 // only by NewPolicy — there is no setter and no MCP-reachable mutator, so the agent
@@ -30,9 +35,9 @@ func NewPolicy(cfg config.Config) (*Policy, error) {
 	}
 	allowed := make([]string, len(cfg.AllowedCommands))
 	copy(allowed, cfg.AllowedCommands)
-	mode := cfg.Mode
-	if mode == "" {
-		mode = config.ModeReadOnly
+	mode, err := config.NormalizeMode(cfg.Mode)
+	if err != nil {
+		return nil, err
 	}
 	return &Policy{jail: jail, allowed: allowed, mode: mode, grants: NewAccessGrants()}, nil
 }
@@ -46,6 +51,22 @@ func (p *Policy) Roots() []string { return p.jail.Roots() }
 // AccessGrants returns the in-memory grant manager used by the local admin
 // channel. It does not expose a policy/config mutator to MCP tools.
 func (p *Policy) AccessGrants() *AccessGrants { return p.grants }
+
+// CheckContainedExecution requires the administrator-selected allow posture.
+// Ask mode is intentionally insufficient: an argv approval cannot bind the
+// mutable repository bytes that a compiler, test runner, or script may execute.
+func (p *Policy) CheckContainedExecution() error {
+	switch p.mode {
+	case config.ModeReadOnly:
+		return ErrReadOnly
+	case config.ModeAllow:
+		return nil
+	case config.ModeAsk:
+		return ErrExecutionRequiresAllow
+	default:
+		return config.ErrUnknownMode
+	}
+}
 
 // CheckRead authorizes reading a path. It denies secret paths (by name) regardless
 // of the jail, then enforces jail containment. Returns the resolved absolute path.
@@ -133,8 +154,10 @@ func (p *Policy) CheckWrite(path string) (resolved string, needsApproval bool, e
 		return "", false, ErrReadOnly
 	case config.ModeAsk:
 		return resolved, true, nil
-	default: // ModeAllow
+	case config.ModeAllow:
 		return resolved, false, nil
+	default:
+		return "", false, config.ErrUnknownMode
 	}
 }
 
@@ -150,8 +173,10 @@ func (p *Policy) CheckCommand(prog string, args []string) (needsApproval bool, e
 		return false, ErrReadOnly
 	case config.ModeAsk:
 		return true, nil
-	default:
+	case config.ModeAllow:
 		return false, nil
+	default:
+		return false, config.ErrUnknownMode
 	}
 }
 
@@ -173,8 +198,10 @@ func (p *Policy) CheckAction() (needsApproval bool, err error) {
 		return false, ErrReadOnly
 	case config.ModeAsk:
 		return true, nil
-	default:
+	case config.ModeAllow:
 		return false, nil
+	default:
+		return false, config.ErrUnknownMode
 	}
 }
 

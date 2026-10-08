@@ -108,6 +108,27 @@ func TestBoundsAndIdempotencyConflict(t *testing.T) {
 	}
 }
 
+func TestTerminalJobsDoNotConsumeQueueBounds(t *testing.T) {
+	store := openTestStore(t, Config{MaxJobs: 1, MaxJobsPerWorkspace: 1})
+	first, _, err := store.Enqueue(testSpec("terminal-bound-0001", "alpha"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := store.LeaseNext("vps.build", "worker-vps-0001", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Complete(first.ID, lease.ID, lease.Fence, Result{Outcome: StateSucceeded, Summary: "done"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.Enqueue(testSpec("terminal-bound-0002", "alpha")); err != nil {
+		t.Fatalf("terminal job consumed queue bound: %v", err)
+	}
+	if err := store.Integrity(); err != nil {
+		t.Fatalf("terminal evidence exceeded integrity bound: %v", err)
+	}
+}
+
 func TestLeaseFencingExpiryAndStaleCompletion(t *testing.T) {
 	store := openTestStore(t, Config{})
 	now := time.Date(2026, 7, 24, 13, 0, 0, 0, time.UTC)
@@ -144,6 +165,91 @@ func TestLeaseFencingExpiryAndStaleCompletion(t *testing.T) {
 	}
 	if again, err := store.Complete(job.ID, second.ID, second.Fence, result); err != nil || again.ID != completed.ID {
 		t.Fatalf("idempotent completion=%+v err=%v", again, err)
+	}
+}
+
+func TestExpiredLeaseReturnsBehindQueuedWork(t *testing.T) {
+	store := openTestStore(t, Config{})
+	now := time.Date(2026, 7, 24, 13, 0, 0, 0, time.UTC)
+	store.now = func() time.Time { return now }
+	front, _, err := store.Enqueue(testSpec("expired-front-0001", "alpha"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.LeaseNext("vps.build", "worker-vps-0001", time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Second)
+	behind, _, err := store.Enqueue(testSpec("queued-behind-0001", "alpha"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(2 * time.Minute)
+	next, err := store.LeaseNext("vps.build", "worker-vps-0002", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.Job.ID != behind.ID {
+		t.Fatalf("expired job %s was selected before queued job %s", front.ID, behind.ID)
+	}
+}
+
+func TestExpiredLeaseRecoveryBudgetFailsClosed(t *testing.T) {
+	store := openTestStore(t, Config{})
+	now := time.Date(2026, 7, 24, 13, 2, 0, 0, time.UTC)
+	store.now = func() time.Time { return now }
+	job, _, err := store.Enqueue(testSpec("recovery-budget-0001", "alpha"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for attempt := 1; attempt <= MaxLeaseAttempts; attempt++ {
+		lease, leaseErr := store.LeaseNext("vps.build", "worker-vps-0001", MinLeaseTTL)
+		if leaseErr != nil || lease.Job.ID != job.ID || lease.Attempt != attempt {
+			t.Fatalf("attempt=%d lease=%+v err=%v", attempt, lease, leaseErr)
+		}
+		now = now.Add(MinLeaseTTL + time.Second)
+	}
+	if _, err := store.LeaseNext("vps.build", "worker-vps-0002", MinLeaseTTL); !errors.Is(err, ErrNoJobAvailable) {
+		t.Fatalf("post-budget lease err=%v", err)
+	}
+	failed, found, err := store.Get(job.ID)
+	if err != nil || !found {
+		t.Fatalf("failed job unavailable: found=%t err=%v", found, err)
+	}
+	if failed.State != StateFailed || failed.Reason != ReasonRecoveryExhausted || failed.Outcome != StateFailed || failed.Summary != string(ReasonRecoveryExhausted) {
+		t.Fatalf("failed job=%+v", failed)
+	}
+}
+
+func TestLeaseNextUsesFairSchedulingAcrossWorkspaces(t *testing.T) {
+	store := openTestStore(t, Config{})
+	now := time.Date(2026, 7, 24, 13, 5, 0, 0, time.UTC)
+	store.now = func() time.Time { return now }
+	alphaFirst, _, err := store.Enqueue(testSpec("fair-alpha-0001", "alpha"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Nanosecond)
+	alphaSecond, _, err := store.Enqueue(testSpec("fair-alpha-0002", "alpha"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Nanosecond)
+	betaFirst, _, err := store.Enqueue(testSpec("fair-beta-0001", "beta"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := store.LeaseNext("vps.build", "worker-vps-0001", time.Minute)
+	if err != nil || first.Job.ID != alphaFirst.ID {
+		t.Fatalf("first lease=%+v err=%v", first, err)
+	}
+	second, err := store.LeaseNext("vps.build", "worker-vps-0002", time.Minute)
+	if err != nil || second.Job.ID != betaFirst.ID {
+		t.Fatalf("second lease=%+v err=%v", second, err)
+	}
+	third, err := store.LeaseNext("vps.build", "worker-vps-0003", time.Minute)
+	if err != nil || third.Job.ID != alphaSecond.ID {
+		t.Fatalf("third lease=%+v err=%v", third, err)
 	}
 }
 

@@ -98,6 +98,18 @@ func (s *ActionPlanStore) Consume(id, operation string) (ActionPlan, error) {
 	return result, nil
 }
 
+// Operation returns the operation bound to one live plan without consuming it.
+// It is used only to route an already opaque plan ID between fixed tool domains.
+func (s *ActionPlanStore) Operation(id string) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.plans[id]
+	if !ok || p.used || !s.now().Before(p.ExpiresAt) {
+		return "", false
+	}
+	return p.Operation, true
+}
+
 func cloneActionPlan(p *ActionPlan) ActionPlan {
 	return ActionPlan{ID: p.ID, Operation: p.Operation, Args: clonePlanArgs(p.Args), CreatedAt: p.CreatedAt, ExpiresAt: p.ExpiresAt, used: p.used}
 }

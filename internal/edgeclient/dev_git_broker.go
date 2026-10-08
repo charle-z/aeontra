@@ -41,6 +41,11 @@ type DevGitCommandRunner interface {
 	Run(context.Context, string, []string, GitHubCredential) (string, error)
 }
 
+type devGitTransportRunner interface {
+	VerifyRemoteAncestor(context.Context, string, string, string, string, string, GitHubCredential) error
+	PublishCommit(context.Context, string, string, string, string, GitHubCredential) (string, error)
+}
+
 type DevGitRequest struct {
 	WorkspaceID string `json:"workspace_id"`
 	Repository  string `json:"repository,omitempty"`

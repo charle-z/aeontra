@@ -86,7 +86,8 @@ export default function GraphView({ brain }: Props) {
         try {
           const canvas = document.createElement("canvas");
           context = canvas.getContext("2d");
-          if (context) context.font = "12px Cascadia Mono, IBM Plex Mono, Consolas, Courier New, monospace";
+          // Keep this stack identical to .graph-label text in dataStyles.css.
+          if (context) context.font = '600 12px Aptos, "Segoe UI", system-ui, sans-serif';
         } catch {
           context = null;
         }
@@ -214,6 +215,10 @@ export default function GraphView({ brain }: Props) {
           }}
           onPointerCancel={() => { dragRef.current = null; }}
         >
+          <defs>
+            <linearGradient id="graph-working-fill" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#ffffff" /><stop offset="0.55" stopColor="#f4faf4" /><stop offset="1" stopColor="#b7cbbd" /></linearGradient>
+            <linearGradient id="graph-curated-fill" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#ffffec" /><stop offset="0.45" stopColor="#e6ff6f" /><stop offset="1" stopColor="#9fb72e" /></linearGradient>
+          </defs>
           <rect className="graph-pan-surface" x="0" y="0" width={viewport.width} height={viewport.height} />
           <g className="graph-world" transform={`translate(${view.x} ${view.y}) scale(${view.scale})`}>
             {edges.map((edge, index) => {
@@ -272,7 +277,9 @@ export default function GraphView({ brain }: Props) {
                   <circle className="graph-node-hit" r={20 / view.scale} />
                   {selected && <circle className="graph-node-halo" r={radius + 5 / view.scale} />}
                   <circle className="graph-node-focus" r={radius + 8 / view.scale} />
+                  <circle className="graph-node-depth" cx={2 / view.scale} cy={3 / view.scale} r={radius} />
                   <circle className="graph-node-visual" r={radius} />
+                  <circle className="graph-node-sheen" cx={-radius / 3} cy={-radius / 3} r={Math.max(2, radius / 4)} />
                 </g>
               );
             })}
@@ -309,7 +316,7 @@ export default function GraphView({ brain }: Props) {
           <div><dt>Selection</dt><dd>{selectedNode?.id === detailNode.id ? "selected" : "preview"}</dd></div>
         </dl> : <p>Select a node to inspect its complete safe metadata.</p>}
       </section>
-      <p className="graph-note">Stable opaque IDs · short collision-aware labels · yellow curated · white working · wheel zoom · drag pan{brain.graph_truncated ? " · graph bounded" : ""}</p>
+      <p className="graph-note">Curated nodes in lime · working nodes in white · wheel zoom · drag pan · select a node for details{brain.graph_truncated ? " · graph bounded" : ""}</p>
     </div>
   );
 }

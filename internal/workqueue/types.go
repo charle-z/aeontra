@@ -22,13 +22,17 @@ const (
 )
 
 const (
-	ReasonNone              Reason = ""
-	ReasonDependencyPending Reason = "dependency_pending"
-	ReasonDependencyFailed  Reason = "dependency_failed"
-	ReasonLeaseExpired      Reason = "lease_expired"
-	ReasonCancelled         Reason = "cancelled"
-	ReasonCancelRequested   Reason = "cancel_requested"
+	ReasonNone                Reason = ""
+	ReasonDependencyPending   Reason = "dependency_pending"
+	ReasonDependencyFailed    Reason = "dependency_failed"
+	ReasonLeaseExpired        Reason = "lease_expired"
+	ReasonRecoveryExhausted   Reason = "recovery_exhausted"
+	ReasonTaskGoalUnavailable Reason = "task_goal_unavailable"
+	ReasonCancelled           Reason = "cancelled"
+	ReasonCancelRequested     Reason = "cancel_requested"
 )
+
+const TaskGoalUnavailableSummary = "task goal reference unavailable after restart; worker was not started"
 
 var ErrNoJobAvailable = errors.New("workqueue: no job available")
 
@@ -37,6 +41,7 @@ const (
 	DefaultMaxJobsPerWorkspace       = 64
 	MaxDependencies                  = 16
 	MaxListResults                   = 100
+	MaxLeaseAttempts                 = 4
 	MinLeaseTTL                      = 15 * time.Second
 	MaxLeaseTTL                      = 10 * time.Minute
 	TargetMaxBytes             int64 = 64 << 20

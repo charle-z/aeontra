@@ -9,9 +9,20 @@ state.
 | Source | Canonical role | Must not become |
 |---|---|---|
 | `README.md` | Short product introduction, architecture overview, safe quick start, and navigation | a phase diary, full configuration table, tool catalog, or threat model |
+| `docs/public-alpha.md` | One bounded local evaluation path, first acceptance, and feedback boundary | a second configuration reference, hosted-service promise, or live deployment report |
+| `docs/install-edge-linux.md` | Short signed Linux/Parrot/WSL Edge installation and verification path | a release baseline, package internals reference, or private maintainer setup |
 | `docs/configuration.md` | The only canonical inventory of supported profiles, flags, environment variables, build inputs, ports, routes, paths, volumes, permissions, defaults, and secret handling | a deployment-status report or historical baseline |
 | `docs/security.md` | Technical security architecture: trust boundaries, threat model, authority model, profile isolation, persistence, audit, limitations, and evidence | the public vulnerability inbox or a duplicate configuration reference |
 | `SECURITY.md` | Public reporting, scope, supported-version posture, disclosure, and license status | a copy of the full technical threat model |
+| `CONTRIBUTING.md` | Contributor setup, change discipline, verification tiers, provenance, and review expectations | an internal milestone plan or operator handoff |
+| `SUPPORT.md` | Best-effort support boundary, supported-state language, and useful diagnostic inputs | an SLA or private troubleshooting channel |
+| `GOVERNANCE.md` | Public decision model, roles, and maintainer path | enterprise governance or private security-response procedure |
+| `LICENSE`, `NOTICE`, and `COPYRIGHT` | Source license, project attribution, and copyright notice | a dependency inventory or artifact-specific notice bundle |
+| `docs/provenance.md` | Historical human/automation identity mapping and future DCO boundary | a replacement for Git history or legal advice |
+| `docs/brand-compatibility.md` | Public product name, compatibility identifiers, and rename boundary | a mass-replacement checklist or deployment identity source |
+| `docs/dependency-licenses.md` | Reviewed dependency-license classes and distribution-notice requirements | legal clearance for project source or a release SBOM |
+| `CHANGELOG.md` | User-visible release changes | a full Git history or mutable live deployment identity |
+| `docs/versioning.md` | Public version format, release identities, process and retention | permission to delete an artifact or rewrite a Git tag without review |
 | `docs/tools.md` | Canonical public MCP tool catalog, schemas, annotations, aliases, approval posture, and workflows | a hardcoded live deployment claim |
 | `/version` and `system_runtime_info` | Live server version, commit, protocol, tool count, and catalog hash | documentation to be copied into operational prose |
 | `docs/baselines/` | Dated historical evidence, including exact commits, releases, hashes, counts, checks, deployments, and real-host observations | current operational instructions rewritten to match later state |
@@ -23,8 +34,10 @@ canonical table in a runbook.
 
 - `.specify/memory/constitution.md`: durable engineering and security principles.
 - `AGENTS.md`: concise operating rules for agents working in this repository.
-- `.agent-memory/current-task.md`: current repository-local task state.
-- `.agent-memory/handoffs/latest.md`: bounded continuation state for another agent.
+- `.agent-memory/`: optional operator-local task and handoff state; it must remain untracked
+  and cannot override repository or live-runtime evidence.
+- Brain: optional durable server-side continuation notes. Brain is operational state,
+  not a substitute for versioned product contracts or Git history.
 - `specs/001-layer-1/` and later `specs/`: accepted requirements, plans, and task
   history for their specific scope.
 - `docs/context-capsule.md`: bounded project context and evidence pointers for resuming
@@ -127,9 +140,13 @@ current product behavior.
 These references remain useful, but they do not replace the canonical product sources
 above:
 
-- Public presentation landing contract: `docs/landing/public-showcase.md`.
+- Public product site contract: `docs/landing/public-site.md`.
+- Public product site production acceptance:
+  `docs/baselines/2026-08-29-public-site.md`.
+- Public alpha local evaluation and feedback path: `docs/public-alpha.md`.
+- Signed Linux/Parrot/WSL installation entry point: `docs/install-edge-linux.md`.
 - Stable independently deployed MCP facade: `docs/stable-mcp-front-door.md`.
-- Canonical Pixelgrama presentation evidence: `docs/showcase/pixelgrama-evidence.json`.
+- Frozen historical Pixelgrama presentation snapshot: `docs/showcase/pixelgrama-evidence.json`.
 - GitHub Actions diagnosis and bounded log retrieval: `docs/github-actions-diagnostics.md`.
 - P8 closure evidence: `docs/baselines/2026-07-13-p8.md`.
 - P8.1 production closure: `docs/baselines/2026-07-14-p8_1-production.md`.
@@ -142,9 +159,28 @@ above:
 - P16 scheduler specification: `specs/007-global-work-scheduler/`.
 - P16 pool architecture decision:
   `docs/adr/0004-p16-global-scheduler-separated-execution-pools.md`.
+- L3 and native Windows execution boundary decision:
+  `docs/adr/0005-separated-l3-and-native-windows-execution.md`.
+- Development workspace state, runtime-root separation, durable process identity,
+  toolbox recovery and bounded Edge concurrency:
+  `docs/adr/0007-development-environment-state-and-concurrency.md`.
+- Development-complete capability resolution, immutable attempts and governed runner migration:
+  `docs/adr/0008-development-complete-capability-resolution.md`.
+- Private rootless L3 deployment and acceptance:
+  `docs/runbooks/private-sandbox-runner.md`.
 - P16 measured capacity evidence: `docs/baselines/2026-07-22-p16-capacity.md`.
+- Pre-Codex source/production/Edge reconciliation:
+  `docs/baselines/2026-08-12-operational-reconciliation.md`.
+- Stock Codex CLI/App Server compatibility decision:
+  `docs/analysis/codex-harness-compatibility.md`.
 - Edge lifecycle state migration: `docs/edge-lifecycle-migration.md`.
 - P16 package/install candidate: `docs/install-edge-parrot-p16.md`.
+- Public signed Linux/Parrot/WSL install path: `docs/install-edge-linux.md`.
+- Native Windows Edge package and operator boundary: `docs/install-edge-windows.md`.
+- Dual Linux/Parrot and native Windows `v1.2.24` operational acceptance:
+  `docs/baselines/2026-08-27-v1_2_24-dual-edge.md`.
+- Signed `v1.2.25` release, notice assets and device updates:
+  `docs/baselines/2026-08-27-v1_2_25-release.md`.
 - Human project aliases and workspace resolution:
   `docs/project-workspace-resolution.md`.
 - Durable local Edge execution journal: `docs/edge-job-journal.md`.

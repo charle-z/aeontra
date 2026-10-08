@@ -61,7 +61,8 @@ func TestEdgeOperationLifecycleToolsAreBoundedAndHideInternalState(t *testing.T)
 		Request:   edge.OperationRequest{Alias: "project", TargetAlias: "parrot", Profile: "linux-workcell", IdempotencyKey: "private-key"},
 		Result:    edge.OperationResult{WorkspaceID: "ws_33333333333333333333333333333333"},
 		Progress:  edge.OperationProgress{Revision: 3, Phase: "running", CompletedUnits: 1, TotalUnits: 4},
-		CreatedAt: created, UpdatedAt: created.Add(time.Second),
+		CreatedAt: created, LeasedAt: created.Add(100 * time.Millisecond), RunningAt: created.Add(150 * time.Millisecond),
+		FinalizingAt: created.Add(700 * time.Millisecond), UpdatedAt: created.Add(800 * time.Millisecond),
 	}}
 	server := New(nil).WithEdgeStore(store)
 
@@ -107,6 +108,11 @@ func TestEdgeOperationLifecycleToolsAreBoundedAndHideInternalState(t *testing.T)
 		if !strings.Contains(output, "cancellable") {
 			t.Fatalf("%s output omitted cancellation authority: %s", name, output)
 		}
+		for _, timing := range []string{`"queue_us":100000`, `"pickup_us":50000`, `"edge_work_us":550000`, `"completion_us":100000`, `"total_us":800000`} {
+			if !strings.Contains(output, timing) {
+				t.Fatalf("%s output missing timing %q: %s", name, timing, output)
+			}
+		}
 		for _, forbidden := range []string{"device_id", "workspace_id", "ed_111", "ws_333", "private-key", "linux-workcell"} {
 			if strings.Contains(output, forbidden) {
 				t.Fatalf("%s output exposed %q: %s", name, forbidden, output)
@@ -135,6 +141,23 @@ func TestEdgeOperationListDefaultsAndRejectsUnsafeInput(t *testing.T) {
 		}
 		if _, err := server.table[name].handler(json.RawMessage(input)); err == nil {
 			t.Fatalf("%s accepted %s", name, input)
+		}
+	}
+}
+
+func TestPublicEdgeOperationExposesCurrentPhaseAndBundleIdentity(t *testing.T) {
+	operation := edge.Operation{
+		ID: "eo_33333333333333333333333333333333", Kind: edge.OperationEdgeRepair, State: edge.OperationLeased,
+		Progress: edge.OperationProgress{Revision: 4, Phase: "repairing", CompletedUnits: 2, TotalUnits: 5},
+		Result:   edge.OperationResult{EdgeProtocolVersion: "mcp-devbox.edge-bundle.v1", EdgeCatalogHash: "sha256:" + strings.Repeat("b", 64)},
+	}
+	body, err := json.Marshal(publicEdgeOperation(operation))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{`"progress_phase":"repairing"`, `"progress_completed_units":2`, `"progress_total_units":5`, `"edge_protocol_version":"mcp-devbox.edge-bundle.v1"`, `"edge_catalog_hash":"sha256:`} {
+		if !strings.Contains(string(body), expected) {
+			t.Fatalf("public view omitted %q: %s", expected, body)
 		}
 	}
 }

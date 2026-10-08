@@ -1,0 +1,445 @@
+package tools
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+)
+
+func runnerOutputCaptureScript(t *testing.T) string {
+	t.Helper()
+	body, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "development-runner.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, script, found := strings.Cut(string(body), "          def capture_output(")
+	if !found {
+		t.Fatal("bounded final-output capture missing")
+	}
+	script, _, found = strings.Cut(script, "          workload_uid =")
+	if !found {
+		t.Fatal("capture function boundary missing")
+	}
+	return "def capture_output(" + strings.ReplaceAll(script, "\n          ", "\n")
+}
+
+func TestDevelopmentRunnerCaptureCriticalContextAcrossEviction(t *testing.T) {
+	program := "import io\n" + runnerOutputCaptureScript(t) + `
+output, critical = io.BytesIO(), io.BytesIO()
+capture_output(io.BytesIO(b'error: earlier expected negative\n' + b'panic: test timed out after 10m0s\n\trunning tests:\n\tTestRealWork (10m0s)\n' + (b'goroutine stack ' + b'z' * 256 + b'\n') * 65536 + b'DONE 12062 tests\nmake: exit 2\n'), output, critical)
+assert len(critical.getvalue()) <= (16 << 10) + 256
+assert b'panic: test timed out after 10m0s' in critical.getvalue()
+assert b'TestRealWork (10m0s)' in critical.getvalue()
+# The first observed failure may be an expected negative fixture, not a cause.
+# Preserve it alongside the later panic instead of silently replacing it.
+assert b'earlier expected negative' in critical.getvalue()
+assert b'panic: test timed out' not in output.getvalue()
+assert output.getvalue().endswith(b'make: exit 2\n')
+for prefix, expected in ((b'error: first failure without panic\n', b'first failure without panic'), (b'', b'reason=none')):
+    safe = io.BytesIO()
+    capture_output(io.BytesIO(prefix + (b'ordinary complete output ' + b'z' * 256 + b'\n') * 65536), io.BytesIO(), safe)
+    assert expected in safe.getvalue()
+    assert len(safe.getvalue()) <= (16 << 10) + 256
+class SplitStream:
+    def __init__(self, chunks): self.chunks = iter(chunks)
+    def read(self, limit): return next(self.chunks, b'')
+safe = io.BytesIO()
+capture_output(SplitStream([b'pa', b'nic: private-token\nrun', b'ning tests:\n']), io.BytesIO(), safe)
+assert b'panic: private-token\nrunning tests:\n' in safe.getvalue()
+# Do not preserve an overlong line's tail, incomplete EOF or fragments.
+safe = io.BytesIO()
+capture_output(SplitStream([b'panic: private-prefix' + b'p' * 65536, b'private-suffix\nerror: safe complete\n', b'panic: incomplete-secret']), io.BytesIO(), safe)
+assert b'error: safe complete' in safe.getvalue()
+assert b'private-' not in safe.getvalue() and b'incomplete-secret' not in safe.getvalue()
+class BrokenStream:
+    def __init__(self): self.calls = 0
+    def read(self, limit):
+        self.calls += 1
+        if self.calls == 1: return b'panic: before read failure\n'
+        raise OSError('fixture failure')
+safe = io.BytesIO()
+try: capture_output(BrokenStream(), io.BytesIO(), safe)
+except OSError: pass
+else: raise AssertionError('read failure suppressed')
+assert b'panic: before read failure' in safe.getvalue()
+print('fixture passed')
+`
+	runRunnerACLFixture(t, "", program)
+}
+
+func TestDevelopmentRunnerCaptureFailedSubtest(t *testing.T) {
+	program := "import io\n" + runnerOutputCaptureScript(t) + `
+for before, after in ((b'    case_test.go:42: initialization assertion private-token\n', b''), (b'', b'    case_test.go:42: initialization assertion private-token\n')):
+    marker = b'    --- FAIL: TestMatrix/case/worker=example (0.01s)\n'
+    body = b'error: unrelated first failure\n' + (b'ordinary output ' + b'z' * 256 + b'\n') * 65536
+    body += b'=== NAME  TestOther/case\n' + before + marker + after
+    body += b'--- FAIL: TestMatrix (1.00s)\n' + (b'ordinary output ' + b'z' * 256 + b'\n') * 65536
+    body += b'panic: test timed out after 10m0s\n\trunning tests:\n\tTestActive (10m0s)\n'
+    body += (b'goroutine stack ' + b'z' * 256 + b'\n') * 8192 + b'DONE final summary\nmake: exit 2\n'
+    output, critical = io.BytesIO(), io.BytesIO()
+    capture_output(io.BytesIO(body), output, critical)
+    data = critical.getvalue()
+    assert len(data) <= (16 << 10) + 256
+    assert b'reason=subtest' in data and marker in data
+    assert b'initialization assertion private-token' in data
+    assert b'=== NAME  TestOther/case' in data
+    assert b'unrelated first failure' in data and b'TestActive (10m0s)' in data
+    assert b'initialization assertion' not in output.getvalue()
+    assert output.getvalue().endswith(b'make: exit 2\n')
+# Freeze the first complete bounded subtest marker, not its later parent/sibling.
+safe = io.BytesIO()
+capture_output(io.BytesIO(b'--- FAIL: TestPlain (0.01s)\n    plain_test.go:1: post-marker detail\n    --- FAIL: TestAny/first (0.01s)\n    --- FAIL: TestAny/second (0.01s)\n'), io.BytesIO(), safe)
+assert b'subtest_marker_bytes=' in safe.getvalue()
+header, body = safe.getvalue().split(b'\n', 1)
+fields = dict(item.split(b'=', 1) for item in header.split()[1:])
+start = int(fields[b'first_bytes'])
+marker = body[start:start + int(fields[b'subtest_marker_bytes'])]
+assert marker == b'    --- FAIL: TestAny/first (0.01s)\n'
+# A partial marker at EOF and an overlong preceding line must not be preserved.
+safe = io.BytesIO()
+capture_output(io.BytesIO(b'private-prefix' + b'p' * 65536 + b'private-suffix\n    --- FAIL: TestAny/safe (0.01s)\n--- FAIL: TestAny/incomplete'), io.BytesIO(), safe)
+assert b'private-' not in safe.getvalue() and b'incomplete' not in safe.getvalue()
+class SplitStream:
+    def __init__(self, chunks): self.chunks = iter(chunks)
+    def read(self, limit): return next(self.chunks, b'')
+safe = io.BytesIO()
+capture_output(SplitStream([b'    case_test.go:42: before split\n    --- FA', b'IL: TestAny/split (0.01s)\n']), io.BytesIO(), safe)
+assert b'case_test.go:42: before split' in safe.getvalue() and b'TestAny/split' in safe.getvalue()
+class BrokenStream:
+    def __init__(self): self.calls = 0
+    def read(self, limit):
+        self.calls += 1
+        if self.calls == 1: return b'    --- FAIL: TestAny/readfailure (0.01s)\n'
+        raise OSError('fixture failure')
+safe = io.BytesIO()
+try: capture_output(BrokenStream(), io.BytesIO(), safe)
+except OSError: pass
+else: raise AssertionError('read failure suppressed')
+assert b'TestAny/readfailure' in safe.getvalue()
+safe = io.BytesIO()
+capture_output(io.BytesIO(b'preceding ' + b'p' * 4000 + b'\n    --- FAIL: TestAny/bounded (0.01s)\n' + b'following ' + b'p' * 4000 + b'\n'), io.BytesIO(), safe)
+assert b'TestAny/bounded' in safe.getvalue() and len(safe.getvalue()) <= (16 << 10) + 256
+print('fixture passed')
+`
+	runRunnerACLFixture(t, "", program)
+}
+
+func TestDevelopmentRunnerFailedSubtestEvidenceEndToEnd(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("hosted Linux capture and renderer are verified in WSL")
+	}
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "ci.json"), []byte(`{"ACTIONS_RUNTIME_TOKEN":"private-token"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	program := "import io\n" + runnerOutputCaptureScript(t) + fmt.Sprintf(`
+body = b'error: unrelated first failure private-token\n' + b'first noisy context\n' * 150
+body += b'=== NAME  TestOther/case\n    case_test.go:42: initialization assertion private-token\n    --- FAIL: TestMatrix/case (0.01s)\n'
+body += b'following noisy context\n' * 150
+body += b'panic: actual timeout private-token\n\trunning tests:\n\tTestActive (10m0s)\n'
+body += (b'goroutine stack ' + b'z' * 256 + b'\n') * 65536
+body += (b'EOF-noise "\\\t\x01\n') * 1200 + b'DONE final summary\nmake: exit 2\n'
+with open(%q, 'wb') as output, open(%q, 'wb') as critical:
+    capture_output(io.BytesIO(body), output, critical)
+print('fixture passed')
+`, filepath.ToSlash(filepath.Join(directory, "command.log")), filepath.ToSlash(filepath.Join(directory, "command-context.log")))
+	runRunnerACLFixture(t, "", program)
+	output, err := runRunnerDiagnostics(t, directory)
+	for _, expected := range []string{"unrelated first failure [REDACTED]", "TestMatrix/case", "surrounding-stdout-unassociated", "initialization assertion [REDACTED]", "actual timeout [REDACTED]", "TestActive", "DONE final summary", "make: exit 2"} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("subtest evidence missing %q: err=%v bytes=%d: %s", expected, err, len(output), output)
+		}
+	}
+	if err != nil || strings.Contains(output, "private-token") || strings.Contains(output, "\x01") || len(output) > 16<<10 {
+		t.Fatalf("subtest evidence unsafe: err=%v bytes=%d: %s", err, len(output), output)
+	}
+	contextBytes, tailBytes, inTail := 0, 0, false
+	for _, line := range strings.Split(strings.TrimSuffix(output, "\n"), "\n") {
+		if !strings.HasPrefix(line, "aeontra-untrusted-log command ") || strings.Contains(line, "aeontra-capture bytes_seen=") {
+			continue
+		}
+		if strings.Contains(line, "EOF-noise") {
+			inTail = true
+		}
+		if inTail {
+			tailBytes += len(line) + 1
+		} else {
+			contextBytes += len(line) + 1
+		}
+	}
+	if contextBytes > 4<<10 || tailBytes > 4<<10 || !inTail {
+		t.Fatalf("triple encoded allowances exceeded: context=%d tail=%d", contextBytes, tailBytes)
+	}
+}
+
+func TestDevelopmentRunnerContextReplacedBeforeLaunch(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "development-runner.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix := "          with open('/opt/aeontra-control/' + sys.argv[1] + '.log', 'wb')"
+	_, launcher, found := strings.Cut(string(body), prefix)
+	if !found {
+		t.Fatal("launcher start missing")
+	}
+	launcher, _, found = strings.Cut(launcher, "          sys.exit(status)")
+	if !found {
+		t.Fatal("launcher end missing")
+	}
+	launcher = strings.TrimPrefix(prefix, "          ") + strings.ReplaceAll(launcher, "\n          ", "\n")
+	directory := t.TempDir()
+	launcher = strings.ReplaceAll(launcher, "/opt/aeontra-control/", filepath.ToSlash(directory)+"/")
+	program := "import os, sys, subprocess\nfrom contextlib import ExitStack\n" + runnerOutputCaptureScript(t) + fmt.Sprintf(`
+path = %q
+with open(path, 'wb') as old: old.write(b'panic: stale prior attempt\n')
+sys.argv = ['executor', 'command', 'make']
+diagnostic, executable = False, '/usr/bin/make'
+def failed_launch(*args, **kwargs): raise OSError('fixture launch rejected')
+subprocess.Popen = failed_launch
+try: exec(%q)
+except OSError: pass
+else: raise AssertionError('launch failure suppressed')
+with open(path, 'rb') as current: assert current.read() == b''
+print('fixture passed')
+`, filepath.ToSlash(filepath.Join(directory, "command-context.log")), launcher)
+	runRunnerACLFixture(t, "", program)
+}
+
+func TestDevelopmentRunnerCriticalEvidenceEndToEnd(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("hosted Linux capture and renderer are verified in WSL")
+	}
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "ci.json"), []byte(`{"ACTIONS_RUNTIME_TOKEN":"private-token"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	program := "import io\n" + runnerOutputCaptureScript(t) + fmt.Sprintf(`
+body = b'panic: true timeout private-token\n\trunning tests:\n\tTestRealWork (10m0s)\n' + (b'goroutine stack ' + b'z' * 256 + b'\n') * 65536 + b'DONE exact-final-summary\nmake: exact-final-exit-2\n'
+with open(%q, 'wb') as output, open(%q, 'wb') as critical:
+    capture_output(io.BytesIO(body), output, critical)
+print('fixture passed')
+`, filepath.ToSlash(filepath.Join(directory, "command.log")), filepath.ToSlash(filepath.Join(directory, "command-context.log")))
+	runRunnerACLFixture(t, "", program)
+	output, err := runRunnerDiagnostics(t, directory)
+	if err != nil || !strings.Contains(output, "panic: true timeout [REDACTED]") || !strings.Contains(output, "TestRealWork") || !strings.Contains(output, "DONE exact-final-summary") || !strings.Contains(output, "make: exact-final-exit-2") || strings.Contains(output, "private-token") || len(output) > 16<<10 {
+		t.Fatalf("end-to-end failure evidence lost or unsafe: err=%v bytes=%d: %s", err, len(output), output)
+	}
+}
+
+func TestDevelopmentRunnerDualFailureEvidenceEndToEnd(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("hosted Linux capture and renderer are verified in WSL")
+	}
+	directory := t.TempDir()
+	for name, body := range map[string]string{
+		"ci.json":                 `{"ACTIONS_RUNTIME_TOKEN":"private-token","ACTIONS_RESULTS_URL":"private-url"}`,
+		"acl-diagnostics.log":     strings.Repeat("preceding probe output\n", 256),
+		"overlay-diagnostics.log": strings.Repeat("preceding overlay output\n", 256),
+	} {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	program := "import io, os\n" + runnerOutputCaptureScript(t) + fmt.Sprintf(`
+early = b'error: first observed overlay fixture failure private-token private-url\n'
+panic = b'panic: test timed out after 10m0s private-token\n\trunning tests:\n\tTestRealWork (10m0s)\n'
+body = early + (b'ordinary output ' + b'z' * 256 + b'\n') * 65536 + panic + (b'goroutine stack ' + b'z' * 256 + b'\n') * 8192 + (b'EOF-noise "\\\t\x01\n') * 1200 + b'DONE exact-final-summary\nmake: exact-final-exit-2\n'
+with open(%q, 'wb') as output, open(%q, 'wb') as critical:
+    capture_output(io.BytesIO(body), output, critical)
+with open(%q, 'rb') as critical:
+    data = critical.read()
+assert len(data) <= (16 << 10) + 256
+assert early in data and panic in data
+with open(%q, 'rb') as output:
+    data = output.read()
+assert early not in data and panic not in data[-(2 << 20):]
+assert len(data) <= (16 << 20) + 256
+print('fixture passed')
+`, filepath.ToSlash(filepath.Join(directory, "command.log")), filepath.ToSlash(filepath.Join(directory, "command-context.log")), filepath.ToSlash(filepath.Join(directory, "command-context.log")), filepath.ToSlash(filepath.Join(directory, "command.log")))
+	runRunnerACLFixture(t, "", program)
+	output, err := runRunnerDiagnostics(t, directory)
+	for _, expected := range []string{"first observed overlay fixture failure [REDACTED] [REDACTED]", "panic: test timed out after 10m0s [REDACTED]", "TestRealWork", "DONE exact-final-summary", "make: exact-final-exit-2"} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("dual failure evidence missing %q: err=%v bytes=%d: %s", expected, err, len(output), output)
+		}
+	}
+	if err != nil || strings.Contains(output, "private-token") || strings.Contains(output, "private-url") || strings.Contains(output, "\x01") || len(output) > 16<<10 {
+		t.Fatalf("dual evidence unsafe: err=%v bytes=%d: %s", err, len(output), output)
+	}
+	contextBytes, tailBytes, inTail := 0, 0, false
+	for _, line := range strings.Split(strings.TrimSuffix(output, "\n"), "\n") {
+		if !strings.HasPrefix(line, "aeontra-untrusted-log command ") || strings.Contains(line, "aeontra-capture bytes_seen=") {
+			continue
+		}
+		if strings.Contains(line, "EOF-noise") {
+			inTail = true
+		}
+		if inTail {
+			tailBytes += len(line) + 1
+		} else {
+			contextBytes += len(line) + 1
+		}
+	}
+	if contextBytes > 4<<10 || tailBytes > 4<<10 || !inTail {
+		t.Fatalf("encoded allowances exceeded: context=%d tail=%d", contextBytes, tailBytes)
+	}
+}
+
+func TestDevelopmentRunnerCaptureRetainsActualFinalFailure(t *testing.T) {
+	program := "import io\n" + runnerOutputCaptureScript(t) + `
+output = io.BytesIO()
+capture_output(io.BytesIO(b'old output\n' * (2 << 20) + b'error: final fork failure\nmake: exit 2\n'), output)
+data = output.getvalue()
+assert len(data) <= (16 << 20) + 256
+assert data.endswith(b'error: final fork failure\nmake: exit 2\n')
+assert b'bytes_dropped=0 ' not in data.split(b'\n', 1)[0]
+class BrokenStream:
+    def __init__(self): self.calls = 0
+    def read(self, limit):
+        self.calls += 1
+        if self.calls == 1: return b'error: before read failure\n'
+        raise OSError('fixture failure')
+partial = io.BytesIO()
+try: capture_output(BrokenStream(), partial)
+except OSError: pass
+else: raise AssertionError('read failure was suppressed')
+assert partial.getvalue().endswith(b'error: before read failure\n')
+print('fixture passed')
+`
+	runRunnerACLFixture(t, "", program)
+}
+
+func TestDevelopmentRunnerDiagnosticsShowsTailCaptureMetadata(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("hosted Linux diagnostic fixtures are verified in WSL")
+	}
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "ci.json"), []byte(`{}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	body := "aeontra-capture bytes_seen=17000000 bytes_dropped=300000 bytes_retained=16700000\n" +
+		strings.Repeat("old context\n", 200000) + "panic: final failure\n"
+	if err := os.WriteFile(filepath.Join(directory, "command.log"), []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	output, err := runRunnerDiagnostics(t, directory)
+	if err != nil || !strings.Contains(output, "bytes_dropped=300000") || !strings.Contains(output, "panic: final failure") || len(output) > 16<<10 {
+		t.Fatalf("capture metadata or final failure lost: %v: %s", err, output)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "ci.json"), []byte(`{"UNKNOWN_PRIVATE_FIELD":"17000000"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	output, err = runRunnerDiagnostics(t, directory)
+	if err != nil || strings.Contains(output, "17000000") || !strings.Contains(output, "bytes_seen=[REDACTED]") {
+		t.Fatalf("numeric capture credential not redacted: %v: %s", err, output)
+	}
+}
+
+func TestDevelopmentRunnerCapturePreservesCompleteLineBoundaries(t *testing.T) {
+	program := "import io\n" + runnerOutputCaptureScript(t) + `
+for body, expected in (
+    (b'first complete line\n' + b'z' * ((16 << 20) - 20), b'first complete line\n'),
+    (b'private-token' + b'p' * (16 << 20) + b'\nsafe failure\n', b'safe failure\n'),
+    (b'p' * ((16 << 20) + 1), b''),
+):
+    output = io.BytesIO()
+    capture_output(io.BytesIO(body), output)
+    metadata, data = output.getvalue().split(b'\n', 1)
+    assert data.startswith(expected), data[:100]
+    if expected != b'first complete line\n': assert b'p' not in data
+    assert b'bytes_seen=' in metadata and b'bytes_dropped=' in metadata
+print('fixture passed')
+`
+	runRunnerACLFixture(t, "", program)
+}
+
+func TestDevelopmentRunnerResourceCountersBoundedAndScoped(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "development-runner.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, script, found := strings.Cut(string(body), "<<'RESOURCE_COUNTERS'\n")
+	if !found {
+		t.Fatal("pre-teardown resource capture missing")
+	}
+	script, _, found = strings.Cut(script, "\n          RESOURCE_COUNTERS")
+	if !found {
+		t.Fatal("resource capture terminator missing")
+	}
+	script = strings.TrimPrefix(strings.ReplaceAll(script, "\n          ", "\n"), "          ")
+	directory := t.TempDir()
+	group := filepath.Join(directory, "rootless")
+	if err := os.Mkdir(group, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for name, value := range map[string]string{
+		"pids.current": "12\n", "pids.max": "4096\n", "pids.events": "max 17\n",
+		"memory.current": "4096\n", "memory.max": "10737418240\n", "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n",
+	} {
+		if err := os.WriteFile(filepath.Join(group, name), []byte(value), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	script = strings.ReplaceAll(script, "'/sys/fs/cgroup'", fmt.Sprintf("%q", filepath.ToSlash(directory)))
+	script = strings.ReplaceAll(script, "'/opt/aeontra-control/resources.log'", fmt.Sprintf("%q", filepath.ToSlash(filepath.Join(directory, "resources.log"))))
+	fixture := `import pwd, subprocess, types
+pwd.getpwnam = lambda name: types.SimpleNamespace(pw_uid=1002)
+def show(argv, **kwargs):
+    assert argv[:2] == ['/usr/bin/systemctl', 'show']
+    assert kwargs['timeout'] == 3
+    unit = argv[2]
+    assert unit in ('user@1002.service', 'aeontra-command.service')
+    return types.SimpleNamespace(returncode=0, stdout=b'/rootless\n' if unit == 'user@1002.service' else b'', stderr=b'')
+subprocess.run = show
+`
+	runRunnerACLFixture(t, "", fixture+"\n"+script+"\nprint('fixture passed')\n")
+	result, err := os.ReadFile(filepath.Join(directory, "resources.log"))
+	if err != nil || !strings.Contains(string(result), `"max": 17`) || !strings.Contains(string(result), `"state": "unavailable"`) || len(result) > 4096 {
+		t.Fatalf("resource counters missing or unbounded: %v: %s", err, result)
+	}
+	// Delegation must not let a workload redirect the controller's reader.
+	if err := os.Remove(filepath.Join(group, "pids.current")); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "private")
+	if err := os.WriteFile(outside, []byte("NEVER-READ-TARGET"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(group, "pids.current")); err != nil {
+		t.Fatal(err)
+	}
+	runRunnerACLFixture(t, "", fixture+"\n"+script+"\nprint('fixture passed')\n")
+	result, err = os.ReadFile(filepath.Join(directory, "resources.log"))
+	if err != nil || !strings.Contains(string(result), `"state": "unavailable"`) || strings.Contains(string(result), "NEVER-READ") {
+		t.Fatalf("unsafe resource counter accepted: %v: %s", err, result)
+	}
+	if err := os.Remove(filepath.Join(group, "pids.current")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(group, "pids.current"), []byte(strings.Repeat("1", 1025)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	runRunnerACLFixture(t, "", fixture+"\n"+script+"\nprint('fixture passed')\n")
+	result, err = os.ReadFile(filepath.Join(directory, "resources.log"))
+	if err != nil || strings.Contains(string(result), `"state": "observed"`) {
+		t.Fatalf("oversized resource counter accepted: %v: %s", err, result)
+	}
+	// A traversal or replaced cgroup directory must be unavailable as well.
+	for _, path := range []string{"/../rootless", "/linked"} {
+		if path == "/linked" {
+			if err := os.Symlink(group, filepath.Join(directory, "linked")); err != nil {
+				t.Fatal(err)
+			}
+		}
+		changed := strings.ReplaceAll(fixture, "b'/rootless\\n'", fmt.Sprintf("%q", path+"\n"))
+		changed = strings.ReplaceAll(changed, fmt.Sprintf("%q", path+"\n"), "b"+fmt.Sprintf("%q", path+"\n"))
+		runRunnerACLFixture(t, "", changed+"\n"+script+"\nprint('fixture passed')\n")
+		result, err = os.ReadFile(filepath.Join(directory, "resources.log"))
+		if err != nil || strings.Contains(string(result), `"state": "observed"`) {
+			t.Fatalf("unsafe cgroup path accepted: %v: %s", err, result)
+		}
+	}
+}

@@ -9,9 +9,52 @@ import (
 	"testing"
 )
 
+func TestReleaseNameAcceptsLegacyBridgeAndStableSemanticVersions(t *testing.T) {
+	for _, release := range []string{"p15.0.45", "v0.1.0", "v1.0.0", "v12.34.56"} {
+		if !ValidRelease(release) {
+			t.Errorf("release %q was rejected", release)
+		}
+	}
+	for _, release := range []string{
+		"", "stable", "1.0.0", "edge-v1.0.0", "v1.0", "v1.0.0-rc.1",
+		"v1.0.0+build", "v01.0.0", "v1.00.0", "v1.0.00", "../v1.0.0",
+	} {
+		if ValidRelease(release) {
+			t.Errorf("invalid release %q was accepted", release)
+		}
+	}
+}
+
+func TestCompareReleaseOrdersBridgeAndSemanticVersions(t *testing.T) {
+	tests := []struct {
+		left  string
+		right string
+		want  int
+	}{
+		{"p15.0.44", "p15.0.43", 1},
+		{"p15.0.44", "p15.0.44", 0},
+		{"p15.0.43", "p15.0.44", -1},
+		{"v1.0.0", "p15.999.999", 1},
+		{"p15.999.999", "v0.0.0", -1},
+		{"v1.2.10", "v1.2.9", 1},
+	}
+	for _, test := range tests {
+		got, err := CompareRelease(test.left, test.right)
+		if err != nil || got != test.want {
+			t.Errorf("CompareRelease(%q, %q) = %d, %v; want %d", test.left, test.right, got, err, test.want)
+		}
+	}
+	if _, err := CompareRelease("stable", "v1.0.0"); err == nil {
+		t.Fatal("invalid release accepted for ordering")
+	}
+}
+
 func TestSignedManifestVerifiesCompleteIndivisibleBundle(t *testing.T) {
 	root := t.TempDir()
-	paths := DefaultLayout()
+	paths, ok := layoutForVersion(3)
+	if !ok {
+		t.Fatal("version three layout unavailable")
+	}
 	for component, relative := range paths {
 		path := filepath.Join(root, filepath.FromSlash(relative))
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -22,7 +65,7 @@ func TestSignedManifestVerifiesCompleteIndivisibleBundle(t *testing.T) {
 		}
 	}
 	manifest := Manifest{
-		Version: 2, Release: "p15.0.0", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
+		Version: 3, Release: "p15.0.0", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
 		ProtocolVersion: "2025-06-18", CatalogHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		Architecture: "amd64", Components: map[string]string{},
 	}
@@ -50,7 +93,7 @@ func TestSignedManifestVerifiesCompleteIndivisibleBundle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Release != manifest.Release || got.Commit != manifest.Commit {
+	if got.Release != manifest.Release || got.Commit != manifest.Commit || got.ProtocolVersion != manifest.ProtocolVersion || got.CatalogHash != manifest.CatalogHash {
 		t.Fatalf("unexpected verified bundle: %+v", got)
 	}
 }
@@ -92,19 +135,216 @@ func TestLegacyVersionOneBundleRemainsVerifiableForRollback(t *testing.T) {
 	}
 }
 
+func TestVersionTwoBundleWithoutBundledGitHubCLIRemainsVerifiableForRollback(t *testing.T) {
+	paths, ok := layoutForVersion(2)
+	if !ok {
+		t.Fatal("version two layout unavailable")
+	}
+	if _, exists := paths[ComponentGitHubCLI]; exists {
+		t.Fatal("version two unexpectedly requires bundled GitHub CLI")
+	}
+}
+
+func TestVersionThreeWithBundledGitHubCLIRemainsVerifiableForRollback(t *testing.T) {
+	root := t.TempDir()
+	layout, ok := layoutForVersion(3)
+	if !ok {
+		t.Fatal("version three layout unavailable")
+	}
+	if _, exists := layout[ComponentGitHubCLI]; !exists {
+		t.Fatal("version three manifest is missing GitHub CLI")
+	}
+	if _, exists := layout[ComponentCodex]; exists {
+		t.Fatal("version three unexpectedly requires Codex")
+	}
+	for component, relative := range layout {
+		path := filepath.Join(root, filepath.FromSlash(relative))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(component), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manifest, err := BuildVersion(root, Metadata{
+		Release: "p15.0.35", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
+		ProtocolVersion: "2025-06-18", CatalogHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Architecture: "amd64",
+	}, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Version != 3 || len(manifest.Components) != len(versionThreeRequiredComponents()) {
+		t.Fatalf("bridge manifest=%+v", manifest)
+	}
+}
+
+func TestBuildEmitsVersionFiveWithOnlyPinnedCodexHarness(t *testing.T) {
+	root := t.TempDir()
+	layout, ok := layoutForVersion(5)
+	if !ok {
+		t.Fatal("version five layout unavailable")
+	}
+	for component, relative := range layout {
+		path := filepath.Join(root, filepath.FromSlash(relative))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(component), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manifest, err := Build(root, Metadata{
+		Release: "p15.0.35", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
+		ProtocolVersion: "2025-06-18", CatalogHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Architecture: "amd64",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Version != 5 {
+		t.Fatalf("version=%d, want version 5", manifest.Version)
+	}
+	for _, component := range []string{ComponentCodex, ComponentCodexPin} {
+		if _, exists := manifest.Components[component]; !exists {
+			t.Fatalf("version five manifest is missing %s", component)
+		}
+	}
+	for _, component := range []string{
+		ComponentDriver, ComponentNode, ComponentProvider, ComponentHTBActions,
+		ComponentDevActions, ComponentProviderPackage, ComponentOpenCode, ComponentOpenCodeLock,
+	} {
+		if _, exists := manifest.Components[component]; exists {
+			t.Fatalf("Codex-only manifest unexpectedly contains %s", component)
+		}
+	}
+	if got := layout[ComponentSystemd]; got != "systemd/mcp-devbox-edge@.service" {
+		t.Fatalf("systemd layout=%q, want neutral Edge unit", got)
+	}
+}
+
+func TestVersionSixWindowsBundleBindsPlatformAndClosedLayout(t *testing.T) {
+	root := t.TempDir()
+	layout := WindowsLayout()
+	for component, relative := range layout {
+		path := filepath.Join(root, filepath.FromSlash(relative))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(component), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manifest, err := BuildVersion(root, Metadata{
+		Release: "v1.2.0", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
+		ProtocolVersion: "mcp-devbox.edge-bundle.v1", CatalogHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Architecture: "amd64", Platform: "windows",
+	}, 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signature, err := Sign(manifest, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Verify(root, manifest, signature, publicKey, layout, Compatibility{
+		Release: manifest.Release, Commit: manifest.Commit, ProtocolVersion: manifest.ProtocolVersion,
+		CatalogHash: manifest.CatalogHash, Architecture: manifest.Architecture, Platform: "windows",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Verify(root, manifest, signature, publicKey, layout, Compatibility{
+		Release: manifest.Release, Commit: manifest.Commit, ProtocolVersion: manifest.ProtocolVersion,
+		CatalogHash: manifest.CatalogHash, Architecture: manifest.Architecture,
+	}); err == nil {
+		t.Fatal("Windows bundle verified without an exact platform binding")
+	}
+	if _, err := BuildVersion(root, Metadata{
+		Release: manifest.Release, Commit: manifest.Commit, ProtocolVersion: manifest.ProtocolVersion,
+		CatalogHash: manifest.CatalogHash, Architecture: manifest.Architecture,
+	}, 6); err == nil {
+		t.Fatal("version six accepted a platform-free bundle")
+	}
+}
+
+func TestVersionSevenLinuxBundleSignsContainerClients(t *testing.T) {
+	root := t.TempDir()
+	layout, ok := LayoutForVersion(7)
+	if !ok {
+		t.Fatal("version seven layout unavailable")
+	}
+	for component, relative := range layout {
+		path := filepath.Join(root, filepath.FromSlash(relative))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(component), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	metadata := Metadata{Release: "v1.2.46", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
+		ProtocolVersion: "mcp-devbox.edge-bundle.v1", CatalogHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Architecture: "amd64"}
+	manifest, err := BuildVersion(root, metadata, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signature, err := Sign(manifest, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Verify(root, manifest, signature, publicKey, layout, Compatibility{
+		Release: metadata.Release, Commit: metadata.Commit, ProtocolVersion: metadata.ProtocolVersion,
+		CatalogHash: metadata.CatalogHash, Architecture: metadata.Architecture,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(layout[ComponentDockerBuildx])), []byte("tampered"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Verify(root, manifest, signature, publicKey, layout, Compatibility{
+		Release: metadata.Release, Commit: metadata.Commit, ProtocolVersion: metadata.ProtocolVersion,
+		CatalogHash: metadata.CatalogHash, Architecture: metadata.Architecture,
+	}); err == nil {
+		t.Fatal("tampered Buildx component was accepted")
+	}
+}
+
+func TestVersionFourHybridBundleRemainsVerifiableForRollback(t *testing.T) {
+	layout, ok := layoutForVersion(4)
+	if !ok {
+		t.Fatal("version four layout unavailable")
+	}
+	for _, component := range []string{ComponentOpenCode, ComponentOpenCodeLock, ComponentCodex, ComponentCodexPin} {
+		if _, exists := layout[component]; !exists {
+			t.Fatalf("version four rollback layout is missing %s", component)
+		}
+	}
+	if got := layout[ComponentSystemd]; got != "systemd/mcp-devbox-opencode-edge@.service" {
+		t.Fatalf("version four systemd layout=%q", got)
+	}
+}
+
 func TestBundleVerificationFailsBeforeRuntimeWithPreciseSafeCodes(t *testing.T) {
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
 	base := Manifest{
-		Version: 2, Release: "p15.0.0", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
+		Version: 4, Release: "p15.0.0", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
 		ProtocolVersion: "2025-06-18", CatalogHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		Architecture: "amd64", Components: map[string]string{},
 	}
 	root := t.TempDir()
 	paths := map[string]string{}
-	for _, component := range RequiredComponents() {
+	for _, component := range versionFourRequiredComponents() {
 		paths[component] = component
 		path := filepath.Join(root, component)
 		if err := os.WriteFile(path, []byte(component), 0o600); err != nil {
@@ -154,7 +394,7 @@ func TestBundleVerificationRejectsTamperingAndIncompatibleCatalog(t *testing.T) 
 		t.Fatal(err)
 	}
 	manifest := Manifest{
-		Version: 2, Release: "p15.0.0", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
+		Version: CurrentManifestVersion, Release: "p15.0.0", Commit: "54891fe7bced14e5eacace754f0072ad4d7996c2",
 		ProtocolVersion: "2025-06-18", CatalogHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		Architecture: "amd64", Components: map[string]string{},
 	}

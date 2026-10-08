@@ -54,10 +54,10 @@ func onboard(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		return err
 	}
 	if err := runOnboardingPreflight(); err != nil {
-		return errors.New("onboarding preflight failed")
+		return errors.New("onboarding preflight failed; run mcp-edge doctor for diagnosis")
 	}
 
-	identity, pairingState, err := resolveOnboardingIdentity(*server, *name, *state, stdin)
+	identity, pairingState, err := resolveOnboardingIdentity(*server, *name, *state, stdin, stderr)
 	if err != nil {
 		return err
 	}
@@ -65,15 +65,16 @@ func onboard(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if err != nil || !onboardingUserPattern.MatchString(strings.TrimSpace(currentUser.Username)) {
 		return errors.New("onboarding service identity unavailable")
 	}
-	service := "mcp-devbox-opencode-edge@" + currentUser.Username + ".service"
+	service := edgeServiceName(currentUser.Username)
 	if err := waitOnboardingService(service, 30*time.Second); err != nil {
-		return err
+		return errors.New("onboarding service did not become active; identity preserved; run mcp-edge doctor, then rerun mcp-edge onboard")
 	}
 	fmt.Fprintf(stdout, "onboarding complete alias=%s service=active bundle=valid pairing=%s\n", identity.Name, pairingState)
+	fmt.Fprintln(stderr, "Next: run mcp-edge doctor, then verify edge_onboarding_status and edge_bundle_status for this alias.")
 	return nil
 }
 
-func resolveOnboardingIdentity(server, name, state string, stdin io.Reader) (edgeclient.Identity, string, error) {
+func resolveOnboardingIdentity(server, name, state string, stdin io.Reader, stderr io.Writer) (edgeclient.Identity, string, error) {
 	identity, _, loadErr := loadOnboardingIdentity(state)
 	if loadErr == nil {
 		if strings.TrimSpace(server) != "" {
@@ -97,12 +98,18 @@ func resolveOnboardingIdentity(server, name, state string, stdin io.Reader) (edg
 			return edgeclient.Identity{}, "", errors.New("edge state is unavailable")
 		}
 	}
+	normalized, err := edgeclient.NormalizeServerURL(server)
+	if err != nil {
+		return edgeclient.Identity{}, "", err
+	}
+	fmt.Fprint(stderr, "Pairing code (stdin): ")
 	code, err := readPairingCode(stdin)
+	fmt.Fprintln(stderr)
 	if err != nil {
 		return edgeclient.Identity{}, "", err
 	}
 	identity, err = pairOnboardingIdentity(context.Background(), edgeclient.PairOptions{
-		ServerURL: server,
+		ServerURL: normalized,
 		Code:      code,
 		Name:      name,
 		StateRoot: state,

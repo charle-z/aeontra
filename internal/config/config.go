@@ -38,25 +38,43 @@ type Config struct {
 	TestCommand []string
 	// AuditPath is where the append-only audit log is written.
 	AuditPath string
-	// SandboxBackend names the (future) L3 execution backend: "none" (default,
-	// disabled) or a known name (docker/nsjail/gvisor). Known names are plumbed and
-	// visible in sandbox_status but NOT yet implemented — configuring one does not
-	// enable broad command execution (L3 pending).
+	// SandboxBackend names the L3 execution backend. "private-rootless" uses the
+	// separately deployed, attested rootless executor. Other known names remain
+	// compatibility placeholders and never grant execution by themselves.
 	SandboxBackend string
 }
 
-// KnownSandboxBackends are the L3 backends the config accepts. They are not yet
-// implemented; naming one only wires status/plumbing.
-var KnownSandboxBackends = []string{"docker", "nsjail", "gvisor"}
+// KnownSandboxBackends are accepted configuration names. Only private-rootless can
+// become available, and only after its separate executor attests. Legacy names stay
+// fail-closed for configuration compatibility.
+var KnownSandboxBackends = []string{"private-rootless", "docker", "nsjail", "gvisor"}
 
 var (
 	// ErrNoRoots is returned when no project root is configured.
 	ErrNoRoots = errors.New("config: at least one project root is required")
 	// ErrRootNotAbsolute is returned when a root is not an absolute path.
 	ErrRootNotAbsolute = errors.New("config: project root must be an absolute path")
+	// ErrUnknownMode is returned when the access posture is not one of the
+	// exhaustive supported values.
+	ErrUnknownMode = errors.New("config: unknown mode (use read-only/ask/allow)")
 	// ErrUnknownSandboxBackend is returned for an unrecognized sandbox backend.
-	ErrUnknownSandboxBackend = errors.New("config: unknown sandbox backend (use none/docker/nsjail/gvisor)")
+	ErrUnknownSandboxBackend = errors.New("config: unknown sandbox backend (use none/private-rootless/docker/nsjail/gvisor)")
 )
+
+// NormalizeMode returns the exhaustive effective server access posture. Empty input
+// keeps the secure default. Workspace modes use a separate Edge type and must not be
+// passed through this validator.
+func NormalizeMode(mode Mode) (Mode, error) {
+	if mode == "" {
+		return ModeReadOnly, nil
+	}
+	switch mode {
+	case ModeReadOnly, ModeAsk, ModeAllow:
+		return mode, nil
+	default:
+		return "", ErrUnknownMode
+	}
+}
 
 // SecureDefaults returns a Config pre-populated with the secure-by-default posture:
 // read-only, a conservative command allowlist, and no test command. Callers set
@@ -84,9 +102,11 @@ func New(c Config) (Config, error) {
 		cleaned = append(cleaned, filepath.Clean(r))
 	}
 	c.Roots = cleaned
-	if c.Mode == "" {
-		c.Mode = ModeReadOnly
+	mode, err := NormalizeMode(c.Mode)
+	if err != nil {
+		return Config{}, err
 	}
+	c.Mode = mode
 
 	// Sandbox backend: empty -> "none" (disabled); otherwise must be a known name.
 	switch b := strings.ToLower(strings.TrimSpace(c.SandboxBackend)); b {

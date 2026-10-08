@@ -5,9 +5,9 @@ The repository is the source of truth; chat history is not.
 
 ## Project Context
 
-MCP Devbox is a secure-by-default MCP server that gives AI clients narrow,
-auditable software-development tools without exposing a free host shell or unrestricted
-machine access.
+MCP Devbox is Aeontra's compatibility server. It exposes scoped, auditable
+software-development tools to AI clients through MCP. Repository roots, command policy,
+credentials and execution profiles remain administrator-controlled.
 
 Do not copy moving identity into this file. Use:
 
@@ -73,6 +73,9 @@ separately.
 - Never remove a contradictory test silently. Correct the obsolete contract and preserve
   historical evidence in baselines, ADRs, specs, or Git.
 - Propagate or classify errors; do not hide them with broad catches or vague success.
+- Write public documentation in direct technical prose. Avoid slogans, anthropomorphic
+  metaphors and stock contrast formulas; retain contrast only when it defines a tested
+  boundary or compatibility rule.
 
 ## Tool Discovery Index
 
@@ -81,6 +84,7 @@ Use this short map before scanning the complete catalog in `docs/tools.md`.
 | Intent | Canonical tool |
 |---|---|
 | Get initial repository context | `workspace_checkpoint`, then `build_context_pack` only when file context is needed |
+| Recover a durable task after chat interruption | `project_task_list`, then `project_task_status` for the selected task ID |
 | Read one or several files | `read_file` / `read_many_files` |
 | Search code or text | `search_code` |
 | Change existing files | `apply_patch` |
@@ -88,7 +92,16 @@ Use this short map before scanning the complete catalog in `docs/tools.md`.
 | Run an allowlisted command or project tests | `run_command` / `run_tests` |
 | Inspect Git state or changes | `repo_status` / `repo_diff` |
 | Publish the current branch | `repo_publish_preview`, then `repo_publish` |
+| Publish a registered Edge checkout | `project_git_publish_preview`, then `project_git_publish` |
 | Create a pull request | `source_pull_request_create_preview`, then `source_pull_request_create` |
+| Inspect a public upstream issue | `source_public_issue_status` |
+| Create a public upstream issue | `source_public_issue_create_preview`, then `source_public_issue_create` |
+| Create the configured-owner fork | `source_public_fork_create_preview`, then `source_public_fork_create` |
+| Comment on a public issue or PR | `source_public_issue_comment_preview`, then `source_public_issue_comment` |
+| Reply to an inline public review | `source_public_review_reply_preview`, then `source_public_review_reply` |
+| Open a PR from the fork | `source_cross_repo_pull_request_create_preview`, then `source_cross_repo_pull_request_create` |
+| Read public PR checks/reviews | `source_public_pull_request_status` |
+| Dispatch a GitHub Actions workflow | `source_workflow_dispatch_preview`, then `source_workflow_dispatch` |
 | Read a pull request and its exact-head checks | `source_pull_request_status` |
 | Diagnose GitHub Actions failures | `source_pull_request_failure_diagnostics`; use `source_pull_request_job_log` for an exact bounded job log |
 | Merge a completely green pull request | `source_pull_request_merge_preview`, then `source_pull_request_merge` |
@@ -139,15 +152,55 @@ branding.
 - Do not force-push, mirror, publish arbitrary refspecs, or rewrite shared history.
 - `git_commit` commits locally and does not push.
 - Use preview/execute pairs for publication, pull requests, merges, and deployment.
+- Treat redacted tool output as diagnostic text, never as source bytes for a new file,
+  commit, branch, or PR. Publish the checkout's Git objects through `project_git_publish`
+  or `repo_publish`, and verify that the remote branch resolves to the intended commit.
+  If no supported Git publication route exists, report that limitation; do not rebuild
+  the source or history from command output.
 - Do not add AI signatures or `Co-Authored-By` trailers.
+- Use Conventional Commits. Planning or milestone identifiers belong in issues,
+  specifications, Brain, and dated evidence—not in public commit subjects.
+- Keep the subject imperative, concise, and about the software change. Use a scope when
+  it improves discovery, and mark breaking changes explicitly.
 - Commit format:
 
 ```text
-Step NN: short title
+type(scope): short imperative description
 
 What changed and why.
 Verification: command -> result.
 ```
+
+Common types are `feat`, `fix`, `refactor`, `test`, `docs`, `build`, `ci`, `chore`, and
+`perf`. Keep one reviewable concern per commit.
+
+## External Open Source Contributions
+
+When working on an external open-source repository, optimize for getting a valid,
+reviewable contribution in front of upstream maintainers rather than for avoiding a
+possible rejection.
+
+- If the repository accepts pull requests from forks, the issue is open or the change is
+  otherwise in scope, and the fix is complete and tested, open the focused upstream pull
+  request unless the repository explicitly forbids unsolicited pull requests for that
+  class of change.
+- Do not treat wording such as "one-way mirror", "changes are carried internally", or
+  similar integration limitations as a prohibition on opening a pull request unless the
+  contribution policy explicitly says not to open one.
+- Prefer the upstream pull request over publishing only a detached patch or comment. A
+  patch, gist, issue comment, or reference repository is supporting evidence, not a
+  substitute when a normal pull request is available.
+- Before stopping at an issue comment or external patch, verify whether GitHub actually
+  permits a fork-based pull request and whether maintainers have explicitly prohibited it.
+- If another contributor already opened a substantially equivalent pull request, do not
+  create a noisy duplicate. Contribute useful review, testing, or evidence instead.
+- Keep the pull request small, human, and proportional: concise description, relevant
+  tests, no AI signatures, no unnecessary narrative, and no claims beyond verified
+  evidence.
+
+The default is therefore: **if a legitimate contribution opportunity exists and the
+upstream workflow permits it, take it.** Ambiguity alone is not a reason to abandon the
+pull request path.
 
 ## Commands
 

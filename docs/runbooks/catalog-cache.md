@@ -46,6 +46,21 @@ The command:
 
 Success means the deployed process is running the expected source and catalog.
 
+That check does not authenticate or execute MCP discovery. After deployment, run the
+routing smoke with the recovery credential supplied only through the environment:
+
+```bash
+MCP_DEVBOX_TOKEN="..." go run ./cmd/mcp-routing-smoke \
+  --url https://mcp.example.com \
+  --expected-commit "$(git rev-parse HEAD)"
+```
+
+The routing smoke creates a session, materializes the complete `tools/list`, calls
+`system_runtime_info`, calls `sandbox_status`, and verifies that all transport identities
+agree. It renews a session at most once and only after HTTP `404`. It never retries MCP
+application errors. `--sandbox-cwd` additionally performs read-only `pwd`, Git identity,
+and before/after worktree checks in one authorized repository.
+
 ## Tool-list change behavior
 
 The production catalog is immutable for the lifetime of one server process. The server
@@ -53,10 +68,12 @@ therefore advertises `capabilities.tools.listChanged=false` and does not fabrica
 `notifications/tools/list_changed` event merely because a container restarted.
 
 A real contractual change is deployed as a replacement instance with a different
-catalog hash. Sessions are instance-bound, so the previous session fails and a client
-must run `initialize` again on the same URL and OAuth configuration, then request
-`tools/list`. The server cannot force ChatGPT or another client to reload a connector
-inside an existing conversation.
+catalog hash. Configured durable session storage can preserve the logical session across
+that replacement; the current catalog hash is recorded when the session is used again.
+This does not make a client refresh a previously materialized tool snapshot. A client
+must still run `initialize` and request `tools/list` to observe a new contract. The
+server cannot force a connected client to remount or refresh an app inside an existing
+conversation.
 
 ## Diagnosis
 
@@ -73,10 +90,10 @@ Do not classify this as a client cache problem.
 
 ### Commit, hash, and count all match but the client lacks tools
 
-The server is current. Confirm the old session was rejected, the client received a new
-`initialize` response, and the new session requested `tools/list`. Reconnect the
-connector once if the client does not start a new session. Record the client/version
-behavior as a compatibility limitation rather than redeploying repeatedly.
+The server is current. Run the authenticated routing smoke. If it lists and invokes the
+full catalog, reselect or reconnect the app once so the client initializes and requests
+`tools/list` again. Record the client/version behavior as a compatibility limitation
+rather than redeploying repeatedly.
 
 ### OAuth asks for login after every deployment
 

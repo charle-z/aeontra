@@ -56,6 +56,7 @@ var (
 )
 
 type Runtime struct {
+	Control                 *RuntimeControl     `json:"control,omitempty"`
 	RuntimeID               string              `json:"runtime_id"`
 	DeviceID                string              `json:"device_id,omitempty"`
 	WorkspaceID             string              `json:"workspace_id,omitempty"`
@@ -69,6 +70,7 @@ type Runtime struct {
 	LastSequence            uint64              `json:"last_sequence"`
 	ActiveTurnID            TurnID              `json:"active_turn_id,omitempty"`
 	ActiveTurnStatus        Status              `json:"active_turn_status,omitempty"`
+	ActiveTurnCreatedAt     *time.Time          `json:"active_turn_created_at,omitempty"`
 	ResultRef               string              `json:"result_ref,omitempty"`
 	UpdatedAt               time.Time           `json:"updated_at"`
 	Phases                  []RuntimePhaseEvent `json:"phases,omitempty"`
@@ -96,6 +98,18 @@ type RuntimeBodyReference struct {
 	ContentDigest string    `json:"content_digest"`
 	ContentBytes  int64     `json:"content_bytes"`
 	ExpiresAt     time.Time `json:"expires_at"`
+}
+
+// TaskGoalReference is a private reference to one immutable task worker goal.
+type TaskGoalReference struct {
+	BodyRef       string
+	ContentDigest string
+}
+
+// TaskGoalOwner binds staged goals to a durable task's idempotency identity.
+type TaskGoalOwner struct {
+	OwnerDigest string
+	References  []TaskGoalReference
 }
 
 func GoalSummary(goal []byte) string {
@@ -132,7 +146,8 @@ func (s *Store) StageRuntimeGoal(ctx context.Context, content []byte, ttl time.D
 		return RuntimeBodyReference{}, errors.New("runtime goal transaction failed")
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `DELETE FROM runtime_bodies WHERE expires_at<=?`, now.UnixNano()); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM runtime_bodies WHERE expires_at<=?
+		AND NOT EXISTS (SELECT 1 FROM runtime_goal_pins p WHERE p.body_ref=runtime_bodies.body_ref)`, now.UnixNano()); err != nil {
 		return RuntimeBodyReference{}, errors.New("runtime goal cleanup failed")
 	}
 	var used int64
@@ -173,7 +188,10 @@ func (s *Store) StartBoundRuntime(ctx context.Context, request BoundRuntimeReque
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var goalDigest string
-	if err := s.db.QueryRowContext(ctx, `SELECT content_digest FROM runtime_bodies WHERE body_ref=? AND kind='goal' AND expires_at>?`, request.GoalRef, now.UnixNano()).Scan(&goalDigest); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT b.content_digest FROM runtime_bodies b
+		WHERE b.body_ref=? AND b.kind='goal' AND (
+			b.expires_at>? OR EXISTS (SELECT 1 FROM runtime_goal_pins p WHERE p.body_ref=b.body_ref AND p.content_digest=b.content_digest)
+		)`, request.GoalRef, now.UnixNano()).Scan(&goalDigest); err != nil {
 		return Runtime{}, false, ErrRequestRefConflict
 	}
 	if goalDigest != request.GoalDigest || !strings.HasPrefix(goalDigest, "sha256:") || len(goalDigest) != len("sha256:")+64 || request.GoalSummary != "goal:sha256:"+goalDigest[len("sha256:"):len("sha256:")+24] {
@@ -436,7 +454,10 @@ func (s *Store) RuntimeGoal(ctx context.Context, runtimeID, deviceID string) ([]
 	}
 	var content []byte
 	var digest string
-	if err := s.db.QueryRowContext(ctx, `SELECT content,content_digest FROM runtime_bodies WHERE body_ref=? AND expires_at>?`, ref, s.now().UTC().UnixNano()).Scan(&content, &digest); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT b.content,b.content_digest FROM runtime_bodies b
+		WHERE b.body_ref=? AND (
+			b.expires_at>? OR EXISTS (SELECT 1 FROM runtime_goal_pins p WHERE p.body_ref=b.body_ref AND p.content_digest=b.content_digest)
+		)`, ref, s.now().UTC().UnixNano()).Scan(&content, &digest); err != nil {
 		return nil, "", errors.New("model runtime goal unavailable")
 	}
 	return content, digest, nil
@@ -527,10 +548,14 @@ func (s *Store) runtimeLocked(ctx context.Context, runtimeID string) (Runtime, e
 		return Runtime{}, phaseErr
 	}
 	runtime.Phases = phases
+	runtime.Control, err = readRuntimeControl(ctx, s.db, runtimeID)
+	if err != nil {
+		return Runtime{}, err
+	}
 	var turnID sql.NullString
 	var status sql.NullString
-	var sequence sql.NullInt64
-	err = s.db.QueryRowContext(ctx, `SELECT turn_id,status,sequence FROM model_turns WHERE runtime_id=? ORDER BY sequence DESC LIMIT 1`, runtimeID).Scan(&turnID, &status, &sequence)
+	var sequence, turnCreatedAt sql.NullInt64
+	err = s.db.QueryRowContext(ctx, `SELECT turn_id,status,sequence,created_at FROM model_turns WHERE runtime_id=? ORDER BY sequence DESC LIMIT 1`, runtimeID).Scan(&turnID, &status, &sequence, &turnCreatedAt)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return Runtime{}, errors.New("model runtime turn read failed")
 	}
@@ -538,6 +563,10 @@ func (s *Store) runtimeLocked(ctx context.Context, runtimeID string) (Runtime, e
 		runtime.ActiveTurnID = TurnID(turnID.String)
 		runtime.ActiveTurnStatus = Status(status.String)
 		runtime.LastSequence = uint64(sequence.Int64)
+		if turnCreatedAt.Valid && turnCreatedAt.Int64 > 0 {
+			createdAt := time.Unix(0, turnCreatedAt.Int64).UTC()
+			runtime.ActiveTurnCreatedAt = &createdAt
+		}
 	}
 	return runtime, nil
 }
@@ -595,6 +624,110 @@ func (s *Store) WaitNextAfter(ctx context.Context, runtimeID string, afterSequen
 		select {
 		case <-ctx.Done():
 			return Offer{}, false, runtime, ctx.Err()
+		case <-wake:
+		case <-time.After(time.Second):
+		}
+	}
+}
+
+// RuntimeCursor binds a durable runtime to the last sequence already observed
+// by this caller. A pending turn is still delivered only when newer than that
+// cursor; callers may use zero after a lost response to recover an unconsumed
+// turn.
+type RuntimeCursor struct {
+	RuntimeID     string
+	AfterSequence uint64
+}
+
+type AnyTurnResult struct {
+	CursorIndex int
+	Offer       Offer
+	Pending     bool
+	Runtime     Runtime
+}
+
+func validateRuntimeCursors(cursors []RuntimeCursor) error {
+	if len(cursors) == 0 || len(cursors) > 4 {
+		return ErrInvalidRequest
+	}
+	seen := make(map[string]struct{}, len(cursors))
+	for _, cursor := range cursors {
+		if !safeIdentifier.MatchString(cursor.RuntimeID) {
+			return ErrInvalidRequest
+		}
+		if _, exists := seen[cursor.RuntimeID]; exists {
+			return ErrInvalidRequest
+		}
+		seen[cursor.RuntimeID] = struct{}{}
+	}
+	return nil
+}
+
+// PollAnyAfter checks every runtime before selecting a result, so a terminal
+// runtime or a noisy first worker cannot hide an older pending turn. It holds
+// no cross-runtime lock and does not consume the selected turn.
+func (s *Store) PollAnyAfter(ctx context.Context, cursors []RuntimeCursor) (AnyTurnResult, bool, error) {
+	if err := validateRuntimeCursors(cursors); err != nil {
+		return AnyTurnResult{}, false, err
+	}
+	var pending, terminal AnyTurnResult
+	hasPending, hasTerminal := false, false
+	var lateErr error
+	for index, cursor := range cursors {
+		if err := ctx.Err(); err != nil {
+			return AnyTurnResult{}, false, err
+		}
+		offer, found, runtime, err := s.PollAfter(ctx, cursor.RuntimeID, cursor.AfterSequence)
+		if errors.Is(err, ErrLateResponse) {
+			lateErr = err
+			continue
+		}
+		if err != nil {
+			return AnyTurnResult{}, false, err
+		}
+		candidate := AnyTurnResult{CursorIndex: index, Offer: offer, Pending: found, Runtime: runtime}
+		if found {
+			if !hasPending || offer.CreatedAt.Before(pending.Offer.CreatedAt) {
+				pending = candidate
+				hasPending = true
+			}
+			continue
+		}
+		if !hasTerminal && runtimeStopsWait(runtime, cursor.AfterSequence) {
+			terminal = candidate
+			hasTerminal = true
+		}
+	}
+	if hasPending {
+		return pending, true, nil
+	}
+	if hasTerminal {
+		return terminal, true, nil
+	}
+	if lateErr != nil {
+		return AnyTurnResult{}, false, lateErr
+	}
+	return AnyTurnResult{}, false, nil
+}
+
+// WaitNextAnyAfter shares the same store wakeup as single-runtime waits. The
+// one-second fallback handles cross-process writers without a polling goroutine.
+func (s *Store) WaitNextAnyAfter(ctx context.Context, cursors []RuntimeCursor) (AnyTurnResult, error) {
+	if err := validateRuntimeCursors(cursors); err != nil {
+		return AnyTurnResult{}, err
+	}
+	for {
+		if err := ctx.Err(); err != nil {
+			return AnyTurnResult{}, err
+		}
+		wake := s.waitChannel()
+		result, found, err := s.PollAnyAfter(ctx, cursors)
+		if err != nil || found {
+			return result, err
+		}
+		select {
+		case <-ctx.Done():
+			return AnyTurnResult{}, ctx.Err()
 		case <-wake:
 		case <-time.After(time.Second):
 		}

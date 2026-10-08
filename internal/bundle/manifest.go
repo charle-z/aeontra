@@ -14,10 +14,13 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
 const (
+	CurrentManifestVersion = 5
+
 	ManifestFile  = "manifest.json"
 	SignatureFile = "manifest.sig"
 )
@@ -28,13 +31,23 @@ const (
 	ComponentWorker          = "mcp-autopilot-worker"
 	ComponentUpdater         = "mcp-bundle-updater"
 	ComponentNode            = "runtime-node"
+	ComponentGitHubCLI       = "github-cli"
 	ComponentProvider        = "provider-index"
 	ComponentHTBActions      = "provider-htb-actions"
 	ComponentDevActions      = "provider-dev-actions"
 	ComponentProviderPackage = "provider-package"
 	ComponentOpenCode        = "opencode"
 	ComponentOpenCodeLock    = "opencode-lock"
+	ComponentCodex           = "codex"
+	ComponentCodexPin        = "codex-pin"
+	ComponentDockerCLI       = "docker-cli"
+	ComponentDockerBuildx    = "docker-buildx"
 	ComponentSystemd         = "systemd-unit"
+	ComponentSystemdPath     = "systemd-onboard-path"
+	ComponentWindowsEdge     = "windows-edge"
+	ComponentWindowsUpdater  = "windows-updater"
+	ComponentWindowsInstall  = "windows-installer"
+	ComponentWindowsRemove   = "windows-uninstaller"
 )
 
 type Code string
@@ -47,10 +60,74 @@ const (
 )
 
 var (
-	releasePattern = regexp.MustCompile(`^p15\.[0-9]+\.[0-9]+$`)
-	commitPattern  = regexp.MustCompile(`^[a-f0-9]{40}$`)
-	digestPattern  = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
+	legacyReleasePattern   = regexp.MustCompile(`^p15\.[0-9]+\.[0-9]+$`)
+	semanticReleasePattern = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
+	commitPattern          = regexp.MustCompile(`^[a-f0-9]{40}$`)
+	digestPattern          = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 )
+
+// ValidRelease accepts the historical P15 bridge identifiers and stable Aeontra
+// semantic versions. The closed format is also safe as one release-directory name.
+func ValidRelease(release string) bool {
+	return legacyReleasePattern.MatchString(release) || semanticReleasePattern.MatchString(release)
+}
+
+// CompareRelease orders two valid Edge release identifiers. Historical p15 bridge
+// releases precede every Aeontra semantic release. Callers use this only to prevent an
+// automatic stable-channel update from becoming an implicit rollback; the explicit
+// rollback operation remains independent.
+func CompareRelease(left, right string) (int, error) {
+	leftGeneration, leftParts, err := releaseOrder(left)
+	if err != nil {
+		return 0, err
+	}
+	rightGeneration, rightParts, err := releaseOrder(right)
+	if err != nil {
+		return 0, err
+	}
+	if leftGeneration < rightGeneration {
+		return -1, nil
+	}
+	if leftGeneration > rightGeneration {
+		return 1, nil
+	}
+	for index := range leftParts {
+		if leftParts[index] < rightParts[index] {
+			return -1, nil
+		}
+		if leftParts[index] > rightParts[index] {
+			return 1, nil
+		}
+	}
+	return 0, nil
+}
+
+func releaseOrder(release string) (int, [3]uint64, error) {
+	generation := 0
+	numbers := ""
+	switch {
+	case legacyReleasePattern.MatchString(release):
+		numbers = strings.TrimPrefix(release, "p")
+	case semanticReleasePattern.MatchString(release):
+		generation = 1
+		numbers = strings.TrimPrefix(release, "v")
+	default:
+		return 0, [3]uint64{}, &VerificationError{Code: ManifestInvalid}
+	}
+	fields := strings.Split(numbers, ".")
+	if len(fields) != 3 {
+		return 0, [3]uint64{}, &VerificationError{Code: ManifestInvalid}
+	}
+	var parts [3]uint64
+	for index, field := range fields {
+		value, parseErr := strconv.ParseUint(field, 10, 64)
+		if parseErr != nil {
+			return 0, [3]uint64{}, &VerificationError{Code: ManifestInvalid}
+		}
+		parts[index] = value
+	}
+	return generation, parts, nil
+}
 
 type Manifest struct {
 	Version         int               `json:"version"`
@@ -59,6 +136,7 @@ type Manifest struct {
 	ProtocolVersion string            `json:"protocol_version"`
 	CatalogHash     string            `json:"catalog_hash"`
 	Architecture    string            `json:"architecture"`
+	Platform        string            `json:"platform,omitempty"`
 	Components      map[string]string `json:"components"`
 }
 
@@ -68,6 +146,7 @@ type Compatibility struct {
 	ProtocolVersion string
 	CatalogHash     string
 	Architecture    string
+	Platform        string
 }
 
 type Metadata struct {
@@ -76,11 +155,14 @@ type Metadata struct {
 	ProtocolVersion string
 	CatalogHash     string
 	Architecture    string
+	Platform        string
 }
 
 type Verified struct {
-	Release string `json:"release"`
-	Commit  string `json:"commit"`
+	Release         string `json:"release"`
+	Commit          string `json:"commit"`
+	ProtocolVersion string `json:"protocol_version"`
+	CatalogHash     string `json:"catalog_hash"`
 }
 
 type VerificationError struct {
@@ -90,11 +172,31 @@ type VerificationError struct {
 func (e *VerificationError) Error() string { return string(e.Code) }
 
 func RequiredComponents() []string {
-	return []string{ComponentEdge, ComponentDriver, ComponentWorker, ComponentUpdater, ComponentNode, ComponentProvider, ComponentHTBActions, ComponentDevActions, ComponentProviderPackage, ComponentOpenCode, ComponentOpenCodeLock, ComponentSystemd}
+	return []string{ComponentEdge, ComponentWorker, ComponentUpdater, ComponentGitHubCLI, ComponentCodex, ComponentCodexPin, ComponentSystemd, ComponentSystemdPath}
+}
+
+func versionSevenRequiredComponents() []string {
+	return append(RequiredComponents(), ComponentDockerCLI, ComponentDockerBuildx)
+}
+
+func WindowsRequiredComponents() []string {
+	return []string{ComponentWindowsEdge, ComponentWindowsUpdater, ComponentWindowsInstall, ComponentWindowsRemove}
+}
+
+func versionFourRequiredComponents() []string {
+	return []string{ComponentEdge, ComponentDriver, ComponentWorker, ComponentUpdater, ComponentNode, ComponentGitHubCLI, ComponentProvider, ComponentHTBActions, ComponentDevActions, ComponentProviderPackage, ComponentOpenCode, ComponentOpenCodeLock, ComponentCodex, ComponentCodexPin, ComponentSystemd}
 }
 
 func legacyRequiredComponents() []string {
 	return []string{ComponentEdge, ComponentDriver, ComponentWorker, ComponentUpdater, ComponentNode, ComponentProvider, ComponentHTBActions, ComponentProviderPackage, ComponentOpenCode, ComponentOpenCodeLock, ComponentSystemd}
+}
+
+func versionTwoRequiredComponents() []string {
+	return []string{ComponentEdge, ComponentDriver, ComponentWorker, ComponentUpdater, ComponentNode, ComponentProvider, ComponentHTBActions, ComponentDevActions, ComponentProviderPackage, ComponentOpenCode, ComponentOpenCodeLock, ComponentSystemd}
+}
+
+func versionThreeRequiredComponents() []string {
+	return []string{ComponentEdge, ComponentDriver, ComponentWorker, ComponentUpdater, ComponentNode, ComponentGitHubCLI, ComponentProvider, ComponentHTBActions, ComponentDevActions, ComponentProviderPackage, ComponentOpenCode, ComponentOpenCodeLock, ComponentSystemd}
 }
 
 func requiredComponentsForVersion(version int) ([]string, bool) {
@@ -102,48 +204,153 @@ func requiredComponentsForVersion(version int) ([]string, bool) {
 	case 1:
 		return legacyRequiredComponents(), true
 	case 2:
+		return versionTwoRequiredComponents(), true
+	case 3:
+		return versionThreeRequiredComponents(), true
+	case 4:
+		return versionFourRequiredComponents(), true
+	case 5:
 		return RequiredComponents(), true
+	case 7:
+		return versionSevenRequiredComponents(), true
 	default:
 		return nil, false
 	}
 }
 
+func requiredComponentsForManifest(version int, platform string) ([]string, bool) {
+	if version == 6 {
+		if platform != "windows" {
+			return nil, false
+		}
+		return WindowsRequiredComponents(), true
+	}
+	if platform != "" {
+		return nil, false
+	}
+	return requiredComponentsForVersion(version)
+}
+
 func DefaultLayout() map[string]string {
 	return map[string]string{
+		ComponentEdge:        "bin/mcp-edge",
+		ComponentWorker:      "libexec/mcp-autopilot-worker",
+		ComponentUpdater:     "libexec/mcp-bundle-updater",
+		ComponentGitHubCLI:   "libexec/gh",
+		ComponentCodex:       "codex/codex",
+		ComponentCodexPin:    "codex/pin.json",
+		ComponentSystemd:     "systemd/mcp-devbox-edge@.service",
+		ComponentSystemdPath: "systemd/mcp-devbox-edge-onboard@.path",
+	}
+}
+
+func versionSevenLayout() map[string]string {
+	layout := DefaultLayout()
+	layout[ComponentDockerCLI] = "codex/container-tools/bin/docker"
+	layout[ComponentDockerBuildx] = "codex/container-tools/config/cli-plugins/docker-buildx"
+	return layout
+}
+
+func WindowsLayout() map[string]string {
+	return map[string]string{
+		ComponentWindowsEdge:    "bin/mcp-edge.exe",
+		ComponentWindowsUpdater: "bin/mcp-bundle-updater.exe",
+		ComponentWindowsInstall: "install-edge.ps1",
+		ComponentWindowsRemove:  "uninstall-edge.ps1",
+	}
+}
+
+func layoutForVersion(version int) (map[string]string, bool) {
+	if version == 7 {
+		return versionSevenLayout(), true
+	}
+	if version == 5 {
+		return DefaultLayout(), true
+	}
+	layout := map[string]string{
 		ComponentEdge:            "bin/mcp-edge",
 		ComponentDriver:          "libexec/model-turn-driver",
 		ComponentWorker:          "libexec/mcp-autopilot-worker",
 		ComponentUpdater:         "libexec/mcp-bundle-updater",
 		ComponentNode:            "libexec/node",
+		ComponentGitHubCLI:       "libexec/gh",
 		ComponentProvider:        "opencode-provider/index.js",
 		ComponentHTBActions:      "opencode-provider/htb-actions.js",
 		ComponentDevActions:      "opencode-provider/dev-actions.js",
 		ComponentProviderPackage: "opencode-provider/package.json",
 		ComponentOpenCode:        "opencode/opencode",
 		ComponentOpenCodeLock:    "opencode/package-lock.json",
+		ComponentCodex:           "codex/codex",
+		ComponentCodexPin:        "codex/pin.json",
 		ComponentSystemd:         "systemd/mcp-devbox-opencode-edge@.service",
 	}
-}
-
-func layoutForVersion(version int) (map[string]string, bool) {
-	layout := DefaultLayout()
 	if version == 1 {
 		delete(layout, ComponentDevActions)
+		delete(layout, ComponentGitHubCLI)
+		delete(layout, ComponentCodex)
+		delete(layout, ComponentCodexPin)
 		return layout, true
 	}
 	if version == 2 {
+		delete(layout, ComponentGitHubCLI)
+		delete(layout, ComponentCodex)
+		delete(layout, ComponentCodexPin)
+		return layout, true
+	}
+	if version == 3 {
+		delete(layout, ComponentCodex)
+		delete(layout, ComponentCodexPin)
+		return layout, true
+	}
+	if version == 4 {
 		return layout, true
 	}
 	return nil, false
 }
 
-func Build(root string, metadata Metadata) (Manifest, error) {
-	manifest := Manifest{
-		Version: 2, Release: metadata.Release, Commit: metadata.Commit,
-		ProtocolVersion: metadata.ProtocolVersion, CatalogHash: metadata.CatalogHash,
-		Architecture: metadata.Architecture, Components: map[string]string{},
+// LayoutForVersion returns a defensive copy of the signed component layout for
+// one supported manifest generation. Callers use it only after signature
+// verification to reconcile version-specific installed files.
+func LayoutForVersion(version int) (map[string]string, bool) {
+	layout, ok := layoutForVersion(version)
+	if !ok {
+		return nil, false
 	}
-	for component, relative := range DefaultLayout() {
+	copy := make(map[string]string, len(layout))
+	for component, relative := range layout {
+		copy[component] = relative
+	}
+	return copy, true
+}
+
+// LayoutFor returns the closed component layout for a signed platform bundle.
+// Legacy Linux manifests intentionally carry no platform field so their signed
+// bytes and updater compatibility remain unchanged.
+func LayoutFor(version int, platform string) (map[string]string, bool) {
+	if version == 6 && platform == "windows" {
+		return WindowsLayout(), true
+	}
+	if platform != "" {
+		return nil, false
+	}
+	return LayoutForVersion(version)
+}
+
+func Build(root string, metadata Metadata) (Manifest, error) {
+	return BuildVersion(root, metadata, CurrentManifestVersion)
+}
+
+func BuildVersion(root string, metadata Metadata, version int) (Manifest, error) {
+	manifest := Manifest{
+		Version: version, Release: metadata.Release, Commit: metadata.Commit,
+		ProtocolVersion: metadata.ProtocolVersion, CatalogHash: metadata.CatalogHash,
+		Architecture: metadata.Architecture, Platform: metadata.Platform, Components: map[string]string{},
+	}
+	layout, ok := LayoutFor(manifest.Version, manifest.Platform)
+	if !ok {
+		return Manifest{}, &VerificationError{Code: ManifestInvalid}
+	}
+	for component, relative := range layout {
 		path, err := containedComponentPath(root, relative)
 		if err != nil {
 			return Manifest{}, componentError(component)
@@ -165,7 +372,7 @@ func LoadAndVerify(root string, publicKey ed25519.PublicKey, expected Compatibil
 	if err != nil {
 		return Verified{}, err
 	}
-	layout, ok := layoutForVersion(manifest.Version)
+	layout, ok := LayoutFor(manifest.Version, manifest.Platform)
 	if !ok {
 		return Verified{}, &VerificationError{Code: ManifestInvalid}
 	}
@@ -173,18 +380,31 @@ func LoadAndVerify(root string, publicKey ed25519.PublicKey, expected Compatibil
 }
 
 func LoadTrusted(root string, publicKey ed25519.PublicKey) (Verified, error) {
-	manifest, signature, err := loadManifestFiles(root)
+	manifest, err := LoadTrustedManifest(root, publicKey)
 	if err != nil {
 		return Verified{}, err
 	}
-	layout, ok := layoutForVersion(manifest.Version)
-	if !ok {
-		return Verified{}, &VerificationError{Code: ManifestInvalid}
+	return Verified{Release: manifest.Release, Commit: manifest.Commit, ProtocolVersion: manifest.ProtocolVersion, CatalogHash: manifest.CatalogHash}, nil
+}
+
+// LoadTrustedManifest verifies the complete signed release and returns the
+// authenticated manifest for version-specific installation reconciliation.
+func LoadTrustedManifest(root string, publicKey ed25519.PublicKey) (Manifest, error) {
+	manifest, signature, err := loadManifestFiles(root)
+	if err != nil {
+		return Manifest{}, err
 	}
-	return Verify(root, manifest, signature, publicKey, layout, Compatibility{
+	layout, ok := LayoutFor(manifest.Version, manifest.Platform)
+	if !ok {
+		return Manifest{}, &VerificationError{Code: ManifestInvalid}
+	}
+	if _, err := Verify(root, manifest, signature, publicKey, layout, Compatibility{
 		Release: manifest.Release, Commit: manifest.Commit, ProtocolVersion: manifest.ProtocolVersion,
-		CatalogHash: manifest.CatalogHash, Architecture: manifest.Architecture,
-	})
+		CatalogHash: manifest.CatalogHash, Architecture: manifest.Architecture, Platform: manifest.Platform,
+	}); err != nil {
+		return Manifest{}, err
+	}
+	return manifest, nil
 }
 
 func loadManifestFiles(root string) (Manifest, []byte, error) {
@@ -229,10 +449,10 @@ func Verify(root string, manifest Manifest, signature []byte, publicKey ed25519.
 		expected.Commit == "" || manifest.Commit != expected.Commit ||
 		expected.ProtocolVersion == "" || manifest.ProtocolVersion != expected.ProtocolVersion ||
 		expected.CatalogHash == "" || manifest.CatalogHash != expected.CatalogHash ||
-		expected.Architecture == "" || manifest.Architecture != expected.Architecture {
+		expected.Architecture == "" || manifest.Architecture != expected.Architecture || manifest.Platform != expected.Platform {
 		return Verified{}, &VerificationError{Code: BundleMismatch}
 	}
-	required, ok := requiredComponentsForVersion(manifest.Version)
+	required, ok := requiredComponentsForManifest(manifest.Version, manifest.Platform)
 	if !ok {
 		return Verified{}, &VerificationError{Code: ManifestInvalid}
 	}
@@ -250,12 +470,12 @@ func Verify(root string, manifest Manifest, signature []byte, publicKey ed25519.
 			return Verified{}, componentError(component)
 		}
 	}
-	return Verified{Release: manifest.Release, Commit: manifest.Commit}, nil
+	return Verified{Release: manifest.Release, Commit: manifest.Commit, ProtocolVersion: manifest.ProtocolVersion, CatalogHash: manifest.CatalogHash}, nil
 }
 
 func canonicalManifest(manifest Manifest) ([]byte, error) {
-	required, supported := requiredComponentsForVersion(manifest.Version)
-	if !supported || !releasePattern.MatchString(manifest.Release) || !commitPattern.MatchString(manifest.Commit) ||
+	required, supported := requiredComponentsForManifest(manifest.Version, manifest.Platform)
+	if !supported || !ValidRelease(manifest.Release) || !commitPattern.MatchString(manifest.Commit) ||
 		strings.TrimSpace(manifest.ProtocolVersion) == "" || !digestPattern.MatchString(manifest.CatalogHash) ||
 		(manifest.Architecture != "amd64" && manifest.Architecture != "arm64") || len(manifest.Components) != len(required) {
 		return nil, &VerificationError{Code: ManifestInvalid}

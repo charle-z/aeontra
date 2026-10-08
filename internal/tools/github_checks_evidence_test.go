@@ -54,6 +54,7 @@ type evidenceFixture struct {
 	statusState  string
 	required     []string
 	requiredCode int
+	requiredBody string
 	pull         bool
 }
 
@@ -116,6 +117,8 @@ func newEvidenceServer(t *testing.T, fixture evidenceFixture) *httptest.Server {
 			w.WriteHeader(fixture.requiredCode)
 			if fixture.requiredCode == http.StatusOK {
 				_ = json.NewEncoder(w).Encode(map[string]any{"contexts": fixture.required, "checks": []any{}})
+			} else if fixture.requiredBody != "" {
+				_, _ = w.Write([]byte(fixture.requiredBody))
 			}
 		case fixture.pull && r.Method == http.MethodGet && r.URL.Path == "/repos/acme/demo/pulls/7":
 			_, _ = fmt.Fprintf(w, `{"number":7,"state":"open","merged":false,"mergeable":true,"html_url":"https://github.com/acme/demo/pull/7","head":{"ref":"feature","sha":"%s"},"base":{"ref":"main","sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}`, evidenceTestSHA)

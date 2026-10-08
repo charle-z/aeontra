@@ -14,11 +14,12 @@ import (
 // capability must share. Capabilities never own independent policy, audit, root, or
 // action-plan state.
 type serviceCore struct {
-	pol   *policy.Policy
-	log   *audit.Logger
-	root  string
-	run   Runner
-	plans *ActionPlanStore
+	pol               *policy.Policy
+	log               *audit.Logger
+	root              string
+	run               Runner
+	plans             *ActionPlanStore
+	maintainerProfile string
 }
 
 // RepositoryCapability owns repository, filesystem, memory, and notes behavior.
@@ -38,7 +39,9 @@ type SourceCapability struct {
 type GitCapability struct {
 	*serviceCore
 	*SourceCapability
-	githubRun GitHubHTTPSRunner
+	githubRun   GitHubHTTPSRunner
+	gitReadRun  Runner
+	gitMutation SandboxRunner
 }
 
 // PlatformCapability owns deployment-platform behavior and reuses source-hosting
@@ -50,12 +53,14 @@ type PlatformCapability struct {
 	managedFrontDoorProbe               func(context.Context, string, bool, string, string, string) error
 	managedFrontDoorSleepFn             func(time.Duration)
 	managedFrontDoorExternalCoordinator bool
+	managedMCPToken                     string
 }
 
 // ExecutionCapability owns process, sandbox, validation, and privileged-profile
 // behavior.
 type ExecutionCapability struct {
 	*serviceCore
+	*SourceCapability
 	sandbox    SandboxRunner
 	testCmd    []string
 	validation ValidationRunner
@@ -85,9 +90,17 @@ func (c *serviceCore) configureRunner(r Runner) {
 }
 
 func (c *GitCapability) configureRunner(r Runner) {
+	c.gitReadRun = r
 	c.githubRun = func(ctx context.Context, dir, prog string, args []string, _ string) (string, error) {
 		return r(ctx, dir, prog, args)
 	}
+}
+
+func (c *GitCapability) configureSandbox(runner SandboxRunner) {
+	if runner == nil {
+		runner = disabledSandboxRunner{}
+	}
+	c.gitMutation = runner
 }
 
 func (c *SourceCapability) configureGitHub(client *GitHubClient) {

@@ -5,8 +5,10 @@ package tools
 
 import (
 	"context"
+	"os"
 	"strings"
 
+	"github.com/charle-z/mcp-devbox/internal/assets"
 	"github.com/charle-z/mcp-devbox/internal/audit"
 	brainpkg "github.com/charle-z/mcp-devbox/internal/brain"
 	"github.com/charle-z/mcp-devbox/internal/policy"
@@ -33,10 +35,11 @@ type Service struct {
 	*RepositoryCapability
 	*GitCapability
 	*SourceCapability
-	*PlatformCapability
+	*ManagedDeploymentCapability
 	*ExecutionCapability
 	*ResultCapability
 	*BrainCapability
+	*AssetCapability
 }
 
 // NewService builds the shared core and every capability. root must be one of the
@@ -54,25 +57,37 @@ func NewService(pol *policy.Policy, log *audit.Logger, root string) *Service {
 		serviceCore:      core,
 		SourceCapability: source,
 		githubRun:        execGitHubHTTPSRunner,
+		gitReadRun:       newGitReadRunner(pol.Roots()),
+		gitMutation:      disabledSandboxRunner{},
 	}
 	repository := &RepositoryCapability{serviceCore: core, GitCapability: git}
+	platform := &PlatformCapability{
+		serviceCore:      core,
+		SourceCapability: source,
+		managedMCPToken:  strings.TrimSpace(os.Getenv("MCP_DEVBOX_TOKEN")),
+	}
 	return &Service{
-		serviceCore:          core,
-		RepositoryCapability: repository,
-		GitCapability:        git,
-		SourceCapability:     source,
-		PlatformCapability: &PlatformCapability{
+		serviceCore:                 core,
+		RepositoryCapability:        repository,
+		GitCapability:               git,
+		SourceCapability:            source,
+		ManagedDeploymentCapability: &ManagedDeploymentCapability{PlatformCapability: platform},
+		ExecutionCapability: &ExecutionCapability{
 			serviceCore:      core,
 			SourceCapability: source,
-		},
-		ExecutionCapability: &ExecutionCapability{
-			serviceCore: core,
-			sandbox:     disabledSandboxRunner{},
-			validation:  disabledValidationRunner{},
+			sandbox:          disabledSandboxRunner{},
+			validation:       disabledValidationRunner{},
 		},
 		ResultCapability: &ResultCapability{serviceCore: core},
 		BrainCapability:  &BrainCapability{serviceCore: core},
+		AssetCapability:  &AssetCapability{serviceCore: core},
 	}
+}
+
+// WithAssetLibrary attaches the immutable operator-reviewed image library.
+func (s *Service) WithAssetLibrary(library *assets.Library) *Service {
+	s.AssetCapability.configureLibrary(library)
+	return s
 }
 
 // WithResultStore attaches the isolated bounded result store opened at startup.
@@ -98,6 +113,7 @@ func (s *Service) WithRunner(r Runner) *Service {
 // WithSandboxRunner overrides the L3 sandbox runner (tests/future backends).
 func (s *Service) WithSandboxRunner(r SandboxRunner) *Service {
 	s.ExecutionCapability.configureSandbox(r)
+	s.GitCapability.configureSandbox(r)
 	return s
 }
 
@@ -130,6 +146,13 @@ func (s *Service) WithValidationRunner(r ValidationRunner) *Service {
 // closed privileged profiles. It is not exposed through MCP at runtime.
 func (s *Service) WithPrivilegedConfig(cfg PrivilegedConfig) *Service {
 	s.ExecutionCapability.configurePrivileged(cfg)
+	return s
+}
+
+// WithMaintainerProfile enables one administrator-selected fixed operational profile.
+// The empty default keeps maintainer-specific deployment and release contracts inert.
+func (s *Service) WithMaintainerProfile(profile string) *Service {
+	s.serviceCore.configureMaintainerProfile(profile)
 	return s
 }
 

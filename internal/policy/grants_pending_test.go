@@ -57,7 +57,7 @@ func TestPendingAccessRequestLimitIsBoundedAndExpiredEntriesArePruned(t *testing
 	}
 }
 
-func TestDuplicatePendingAccessRequestReusesRequestID(t *testing.T) {
+func TestDuplicatePendingAccessRequestsHaveDistinctRequestIDs(t *testing.T) {
 	root := t.TempDir()
 	p := mustPolicy(t, config.ModeReadOnly, root)
 	secret := filepath.Join(root, ".env")
@@ -70,13 +70,13 @@ func TestDuplicatePendingAccessRequestReusesRequestID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.ID != second.ID {
-		t.Fatalf("duplicate request id = %q, want %q", second.ID, first.ID)
+	if first.ID == second.ID {
+		t.Fatalf("separate callers must not share request id %q", first.ID)
 	}
 	if _, err := p.RequestReadAccess(secret, false); err != nil {
 		t.Fatal(err)
 	}
-	if got := len(p.grants.requests); got != 2 {
-		t.Fatalf("pending request count = %d, want 2 for distinct raw posture", got)
+	if got := len(p.grants.requests); got != 3 {
+		t.Fatalf("pending request count = %d, want one request per caller attempt", got)
 	}
 }

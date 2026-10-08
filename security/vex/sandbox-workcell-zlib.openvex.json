@@ -1,0 +1,61 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://github.com/charle-z/aeontra/security/vex/sandbox-workcell-zlib-20260915",
+  "author": "Aeontra maintainers",
+  "timestamp": "2026-09-15T00:00:00Z",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": {
+        "name": "CVE-2026-85091"
+      },
+      "products": [
+        {
+          "@id": "mcp-sandbox-workcell:ci",
+          "subcomponents": [
+            {
+              "@id": "pkg:apk/wolfi/zlib@1.3.2-r7?arch=x86_64&distro=wolfi-20230201"
+            }
+          ]
+        },
+        {
+          "@id": "localhost/mcp-sandbox-workcell:ci",
+          "subcomponents": [
+            {
+              "@id": "pkg:apk/wolfi/zlib@1.3.2-r7?arch=x86_64&distro=wolfi-20230201"
+            }
+          ]
+        }
+      ],
+      "status": "fixed",
+      "status_notes": "The image builds and installs zlib patch commit 4d03c63b8648ab83053a6f00d304a5d6f9aa1ed7, then executes the upstream gznonblock regression against the installed library.",
+      "timestamp": "2026-09-15T00:00:00Z"
+    },
+    {
+      "vulnerability": {
+        "name": "GHSA-g5fp-32jq-cfw2"
+      },
+      "products": [
+        {
+          "@id": "mcp-sandbox-workcell:ci",
+          "subcomponents": [
+            {
+              "@id": "pkg:apk/wolfi/zlib@1.3.2-r7?arch=x86_64&distro=wolfi-20230201"
+            }
+          ]
+        },
+        {
+          "@id": "localhost/mcp-sandbox-workcell:ci",
+          "subcomponents": [
+            {
+              "@id": "pkg:apk/wolfi/zlib@1.3.2-r7?arch=x86_64&distro=wolfi-20230201"
+            }
+          ]
+        }
+      ],
+      "status": "fixed",
+      "status_notes": "The image builds and installs zlib patch commit 4d03c63b8648ab83053a6f00d304a5d6f9aa1ed7, then executes the upstream gznonblock regression against the installed library.",
+      "timestamp": "2026-09-15T00:00:00Z"
+    }
+  ]
+}

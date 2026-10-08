@@ -34,3 +34,31 @@ func TestTopologyStartupCodeClassifiesFrontApplicationRequestFailures(t *testing
 		}
 	}
 }
+
+func TestStatusPublishStartupCodePreservesClosedCause(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		detail error
+		want   startupCode
+	}{
+		{detail: frontdoorcoordinator.ErrCoolifyRequestBuild, want: startupStatusPublishBuild},
+		{detail: errors.Join(frontdoorcoordinator.ErrCoolifyRequestTransport, frontdoorcoordinator.ErrCoolifyPrivateTarget), want: startupStatusPublishTransportTarget},
+		{detail: errors.Join(frontdoorcoordinator.ErrCoolifyRequestTransport, frontdoorcoordinator.ErrCoolifyPrivateResolve), want: startupStatusPublishTransportResolve},
+		{detail: errors.Join(frontdoorcoordinator.ErrCoolifyRequestTransport, frontdoorcoordinator.ErrCoolifyPrivateAddress), want: startupStatusPublishTransportAddress},
+		{detail: errors.Join(frontdoorcoordinator.ErrCoolifyRequestTransport, frontdoorcoordinator.ErrCoolifyPrivateRefused), want: startupStatusPublishTransportRefused},
+		{detail: errors.Join(frontdoorcoordinator.ErrCoolifyRequestTransport, frontdoorcoordinator.ErrCoolifyPrivateTimeout), want: startupStatusPublishTransportTimeout},
+		{detail: errors.Join(frontdoorcoordinator.ErrCoolifyRequestTransport, frontdoorcoordinator.ErrCoolifyPrivateRoute), want: startupStatusPublishTransportRoute},
+		{detail: errors.Join(frontdoorcoordinator.ErrCoolifyRequestTransport, frontdoorcoordinator.ErrCoolifyPrivateConnect), want: startupStatusPublishTransportConnect},
+		{detail: frontdoorcoordinator.ErrCoolifyRequestTransport, want: startupStatusPublishTransport},
+		{detail: frontdoorcoordinator.ErrCoolifyResponseRead, want: startupStatusPublishRead},
+		{detail: frontdoorcoordinator.ErrCoolifyResponseHTTP, want: startupStatusPublishHTTP},
+		{detail: frontdoorcoordinator.ErrCoolifyResponseDecode, want: startupStatusPublishDecode},
+		{detail: errors.New("unknown"), want: startupStatusPublishFailed},
+	}
+	for _, testCase := range cases {
+		err := errors.Join(frontdoorcoordinator.ErrStatusPublish, testCase.detail)
+		if got := statusPublishStartupCode(err); got != testCase.want {
+			t.Fatalf("detail=%v code=%s want=%s", testCase.detail, got, testCase.want)
+		}
+	}
+}

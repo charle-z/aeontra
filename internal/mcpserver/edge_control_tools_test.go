@@ -72,9 +72,10 @@ func TestEdgeControlHandlersQueueClosedOperationsAndReturnPublicState(t *testing
 		status: edge.OperationResult{
 			WorkspaceID: testWorkspaceID, AuthorizationRevision: 7, JobID: "job-safe", JobState: "running",
 			ProgressRevision: 9, CycleCount: 3, JobSafeCode: "cycle_complete", Release: "p15.0.0",
+			EdgeProtocolVersion: "mcp-devbox.edge-bundle.v1", EdgeCatalogHash: "sha256:" + strings.Repeat("a", 64),
 			Commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ManifestStatus: "valid", ComponentsCompatible: true,
 			ServiceActive: true, UpdateAvailable: true, Paired: true, BubblewrapValid: true, RootlessValid: true,
-			ServiceState: "active", ProcessState: "single", LockState: "held", Coherence: "managed",
+			ServiceState: "active", ServiceRestarts: 0, ServiceRestartsKnown: true, ProcessState: "single", LockState: "held", Coherence: "managed",
 			ProcessRelease: "p15.0.0", ProcessCommit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 			WorkspaceCount: 1, ProviderValid: true, DriverValid: true, Blockers: []string{"none"},
 		},
@@ -93,8 +94,11 @@ func TestEdgeControlHandlersQueueClosedOperationsAndReturnPublicState(t *testing
 	if store.request.Release != "stable" {
 		t.Fatalf("bundle request=%+v", store.request)
 	}
-	if !strings.Contains(body, `"process_state":"single"`) || !strings.Contains(body, `"lock_state":"held"`) || !strings.Contains(body, `"coherence":"managed"`) {
+	if !strings.Contains(body, `"service_restarts_known":true`) || !strings.Contains(body, `"process_state":"single"`) || !strings.Contains(body, `"lock_state":"held"`) || !strings.Contains(body, `"coherence":"managed"`) {
 		t.Fatalf("authoritative runtime fields missing: %s", body)
+	}
+	if !strings.Contains(body, `"edge_protocol_version":"mcp-devbox.edge-bundle.v1"`) || !strings.Contains(body, `"edge_catalog_hash":"sha256:`) {
+		t.Fatalf("bundle identity fields missing: %s", body)
 	}
 
 	body, err = server.handleLabPrepare(json.RawMessage(`{"device_id":"` + testEdgeDeviceID + `","platform":"htb","machine":"cap","target":"10.10.10.10","difficulty":"easy","operating_system":"linux"}`))

@@ -183,16 +183,19 @@ jobs:
           bundle="$RUNNER_TEMP/p15-opencode-e2e-bundle"
           release_key="$RUNNER_TEMP/p15-opencode-e2e-release.key"
           public_key="$(go run ./cmd/mcp-bundle-keygen --output "$release_key")"
+          bash packaging/github-cli/stage-pinned.sh --output "$bin/gh-2.97.0"
           ./packaging/parrot/stage-edge-bundle.sh \
             --output "$bundle" \
             --release p15.0.0 \
+            --manifest-version 3 \
             --commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
             --catalog sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
-            --private-key "$release_key" \
             --public-key "$public_key" \
             --node-bin "$(command -v node)" \
+            --gh-bin "$bin/gh-2.97.0" \
             --opencode-bin "$bin/opencode-1.18.1" \
             --opencode-lock "$GITHUB_WORKSPACE/test/opencode-e2e/package-lock.json"
+          go run ./cmd/mcp-bundle-manifest --root "$bundle" --release p15.0.0 --commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --protocol mcp-devbox.edge-bundle.v1 --catalog sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb --architecture amd64 --manifest-version 3 --private-key "$release_key"
           rm "$release_key"
           install -m 0755 "$bundle/bin/mcp-edge" "$bin/mcp-edge"
           install -m 0755 "$bundle/libexec/model-turn-driver" "$bin/model-turn-driver"
@@ -238,15 +241,38 @@ jobs:
           set -e
           exit "$status"
 
-      - name: Run combined OpenCode sandbox E2E
+      - name: Run linked-worktree Git isolation
         run: |
           set +e
-          "$MCP_E2E_BIN" \
-            -test.run=TestRemoteOpenCodeDistributedRelay \
-            -test.count=1 -test.v 2>&1 \
+          OPENCODE_BWRAP_HOST_E2E=1 "$BWRAP_E2E_BIN" \
+            -test.run=TestBubblewrapLinkedWorktreeGitMetadata -test.count=1 -test.v 2>&1 \
             | "$REDACTOR_BIN" \
-            | tee artifacts/opencode-combined-sandbox-redacted.log
+            | tee artifacts/codex-linked-worktree-git-redacted.log
           status=${PIPESTATUS[0]}
+          set -e
+          exit "$status"
+
+      - name: Run combined OpenCode sandbox E2E
+        run: |
+          run_combined_e2e() {
+            "$MCP_E2E_BIN" \
+              -test.run=TestRemoteOpenCodeDistributedRelay \
+              -test.count=1 -test.v 2>&1 \
+              | "$REDACTOR_BIN" \
+              | tee artifacts/opencode-combined-sandbox-redacted.log
+            return "${PIPESTATUS[0]}"
+          }
+
+          set +e
+          run_combined_e2e
+          status=$?
+          if [ "$status" -ne 0 ] \
+            && grep -Fxq 'E2E category=not_found' artifacts/opencode-combined-sandbox-redacted.log; then
+            echo 'E2E bounded retry=not_found'
+            rm -f artifacts/opencode-combined-sandbox-report.json
+            run_combined_e2e
+            status=$?
+          fi
           set -e
           exit "$status"
 
@@ -367,6 +393,7 @@ jobs:
 
           candidates = [
               Path("artifacts/opencode-combined-sandbox-redacted.log"),
+              Path("artifacts/codex-linked-worktree-git-redacted.log"),
               Path("artifacts/opencode-bubblewrap-isolation-redacted.log"),
               Path("artifacts/opencode-bubblewrap-preflight-redacted.log"),
           ]
@@ -387,6 +414,7 @@ jobs:
           path: |
             artifacts/opencode-bubblewrap-preflight-redacted.log
             artifacts/opencode-bubblewrap-isolation-redacted.log
+            artifacts/codex-linked-worktree-git-redacted.log
             artifacts/opencode-combined-sandbox-redacted.log
             artifacts/opencode-bubblewrap-preflight-report.json
             artifacts/opencode-bubblewrap-isolation-report.json

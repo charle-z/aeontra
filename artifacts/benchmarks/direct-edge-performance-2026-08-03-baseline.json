@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "benchmark": "direct-edge-latency",
+  "phase": "baseline-before-authoritative-timing",
+  "captured_at": "2026-08-04T00:11:26.045516694Z",
+  "route": "GPT Web -> MCP Front Door -> backend MCP -> durable queue/lease -> direct Edge -> project_exec -> response",
+  "identity": {
+    "edge_alias": "parrot-trusted-linux",
+    "edge_release": "p15.0.24",
+    "edge_commit": "2286ea80c497c6e1dd9fed15f5e80988236a64e1",
+    "backend_commit": "eaf3e6b79bcad171173eaa23d625e620d1bceb6d",
+    "protocol_version": "2024-11-05",
+    "tool_count": 137,
+    "catalog_hash": "sha256:3a1bab74e895c03e734c43748dbf48e16a909d9697fbfe39bc76fe4a23ca1669"
+  },
+  "method": {
+    "sample_count": 20,
+    "command": [
+      "python3",
+      "-c",
+      "import time; print('begin_ns='+str(time.time_ns())); print('ok'); print('end_ns='+str(time.time_ns()))"
+    ],
+    "note": "The pre-change public contract persisted only created_at/updated_at. pickup_preflight_us therefore combines queue, lease delivery, project resolution and workcell preflight. The candidate contract separates these stages without relying on cross-host clock subtraction."
+  },
+  "samples": [
+    {"sequence":1,"operation_id":"eo_b2295240b740b8aaca3c77a55706c165","created_at":"2026-08-03T23:29:55.272622138Z","updated_at":"2026-08-03T23:29:58.015757381Z","edge_command_begin_ns":1785799797852112616,"edge_command_end_ns":1785799797852120516,"pickup_preflight_us":2579490.478,"execution_us":7.9,"completion_us":163636.865,"total_us":2743135.243,"error":false},
+    {"sequence":2,"operation_id":"eo_7733b38719b0cb3a27512f8d840352d5","created_at":"2026-08-03T23:30:04.863707950Z","updated_at":"2026-08-03T23:30:07.405006164Z","edge_command_begin_ns":1785799807206443122,"edge_command_end_ns":1785799807206450022,"pickup_preflight_us":2342735.172,"execution_us":6.9,"completion_us":198556.142,"total_us":2541298.214,"error":false},
+    {"sequence":3,"operation_id":"eo_f838146137b0d304dd4856925560ca1b","created_at":"2026-08-03T23:30:13.646474599Z","updated_at":"2026-08-03T23:30:14.580207008Z","edge_command_begin_ns":1785799814422992066,"edge_command_end_ns":1785799814422998065,"pickup_preflight_us":776517.467,"execution_us":5.999,"completion_us":157208.943,"total_us":933732.409,"error":false},
+    {"sequence":4,"operation_id":"eo_cd43b9bfa61c8a84b850751975c76722","created_at":"2026-08-03T23:30:21.750994827Z","updated_at":"2026-08-03T23:30:23.926457734Z","edge_command_begin_ns":1785799823760742583,"edge_command_end_ns":1785799823760748483,"pickup_preflight_us":2009747.756,"execution_us":5.9,"completion_us":165709.251,"total_us":2175462.907,"error":false},
+    {"sequence":5,"operation_id":"eo_d5df76d26ae95d6a4cbc2e1ebdd739fb","created_at":"2026-08-03T23:30:29.322947222Z","updated_at":"2026-08-03T23:30:31.217436438Z","edge_command_begin_ns":1785799831039675605,"edge_command_end_ns":1785799831039682105,"pickup_preflight_us":1716728.383,"execution_us":6.5,"completion_us":177754.333,"total_us":1894489.216,"error":false},
+    {"sequence":6,"operation_id":"eo_a23efa3f21242b9a79997ec6413aa9b0","created_at":"2026-08-03T23:30:42.805409974Z","updated_at":"2026-08-03T23:30:44.809349754Z","edge_command_begin_ns":1785799844628134804,"edge_command_end_ns":1785799844628139904,"pickup_preflight_us":1822724.83,"execution_us":5.1,"completion_us":181209.85,"total_us":2003939.78,"error":false},
+    {"sequence":7,"operation_id":"eo_11e11213c7fa31eadab743317f18e423","created_at":"2026-08-03T23:30:53.248161914Z","updated_at":"2026-08-03T23:30:54.187335619Z","edge_command_begin_ns":1785799854002891468,"edge_command_end_ns":1785799854002897168,"pickup_preflight_us":754729.554,"execution_us":5.7,"completion_us":184438.451,"total_us":939173.705,"error":false},
+    {"sequence":8,"operation_id":"eo_e3178bf93981ade5255313f4815191e9","created_at":"2026-08-03T23:31:02.615163501Z","updated_at":"2026-08-03T23:31:03.616605565Z","edge_command_begin_ns":1785799863424435445,"edge_command_end_ns":1785799863424441645,"pickup_preflight_us":809271.944,"execution_us":6.2,"completion_us":192163.92,"total_us":1001442.064,"error":false},
+    {"sequence":9,"operation_id":"eo_5a8ee73054af08b902286677fc856a04","created_at":"2026-08-04T00:09:39.151669994Z","updated_at":"2026-08-04T00:09:40.608811939Z","edge_command_begin_ns":1785802180392550662,"edge_command_end_ns":1785802180392556962,"pickup_preflight_us":1240880.668,"execution_us":6.3,"completion_us":216254.977,"total_us":1457141.945,"error":false},
+    {"sequence":10,"operation_id":"eo_ad20e3f06b474fd9be5ad2d86c4d4a6b","created_at":"2026-08-04T00:09:48.035801669Z","updated_at":"2026-08-04T00:09:49.964199074Z","edge_command_begin_ns":1785802189737317581,"edge_command_end_ns":1785802189737324581,"pickup_preflight_us":1701515.912,"execution_us":7.0,"completion_us":226874.493,"total_us":1928397.405,"error":false},
+    {"sequence":11,"operation_id":"eo_e36136eaadc812fd96f59c8933f20e0d","created_at":"2026-08-04T00:09:56.657800948Z","updated_at":"2026-08-04T00:09:59.309687888Z","edge_command_begin_ns":1785802199094028613,"edge_command_end_ns":1785802199094034613,"pickup_preflight_us":2436227.665,"execution_us":6.0,"completion_us":215653.275,"total_us":2651886.94,"error":false},
+    {"sequence":12,"operation_id":"eo_633df44bf4938db16108597a1b6201e7","created_at":"2026-08-04T00:10:06.635185379Z","updated_at":"2026-08-04T00:10:08.650341947Z","edge_command_begin_ns":1785802208436604695,"edge_command_end_ns":1785802208436609595,"pickup_preflight_us":1801419.316,"execution_us":4.9,"completion_us":213732.352,"total_us":2015156.568,"error":false},
+    {"sequence":13,"operation_id":"eo_b353c23a6c47dcc87bfe4798370f9cf7","created_at":"2026-08-04T00:10:15.925039976Z","updated_at":"2026-08-04T00:10:18.121366230Z","edge_command_begin_ns":1785802217867402099,"edge_command_end_ns":1785802217867409299,"pickup_preflight_us":1942362.123,"execution_us":7.2,"completion_us":253956.931,"total_us":2196326.254,"error":false},
+    {"sequence":14,"operation_id":"eo_b1b195eaec70a8d78ffadb6dd8cb8e03","created_at":"2026-08-04T00:10:24.914130913Z","updated_at":"2026-08-04T00:10:27.512100399Z","edge_command_begin_ns":1785802227290483338,"edge_command_end_ns":1785802227290489137,"pickup_preflight_us":2376352.425,"execution_us":5.799,"completion_us":221611.262,"total_us":2597969.486,"error":false},
+    {"sequence":15,"operation_id":"eo_eeed8849148c4cb36b42a4df204c7bb6","created_at":"2026-08-04T00:10:34.554534295Z","updated_at":"2026-08-04T00:10:36.872813462Z","edge_command_begin_ns":1785802236657229556,"edge_command_end_ns":1785802236657234956,"pickup_preflight_us":2102695.261,"execution_us":5.4,"completion_us":215578.506,"total_us":2318279.167,"error":false},
+    {"sequence":16,"operation_id":"eo_195d76b4527f547017e48f7b536453da","created_at":"2026-08-04T00:10:45.947153303Z","updated_at":"2026-08-04T00:10:48.342245639Z","edge_command_begin_ns":1785802248111667271,"edge_command_end_ns":1785802248111674671,"pickup_preflight_us":2164513.968,"execution_us":7.4,"completion_us":230570.968,"total_us":2395092.336,"error":false},
+    {"sequence":17,"operation_id":"eo_ea731ea0ee697aef3fe1d297f823b2aa","created_at":"2026-08-04T00:10:56.180395785Z","updated_at":"2026-08-04T00:10:57.782610902Z","edge_command_begin_ns":1785802257556727820,"edge_command_end_ns":1785802257556734220,"pickup_preflight_us":1376332.035,"execution_us":6.4,"completion_us":225876.682,"total_us":1602215.117,"error":false},
+    {"sequence":18,"operation_id":"eo_0b8579b53141fd266a8cef973d62d78d","created_at":"2026-08-04T00:11:03.728613296Z","updated_at":"2026-08-04T00:11:05.103387741Z","edge_command_begin_ns":1785802264866597505,"edge_command_end_ns":1785802264866604605,"pickup_preflight_us":1137984.209,"execution_us":7.1,"completion_us":236783.136,"total_us":1374774.445,"error":false},
+    {"sequence":19,"operation_id":"eo_a997de0173ef21417715ef47c35ac012","created_at":"2026-08-04T00:11:14.192690978Z","updated_at":"2026-08-04T00:11:16.625247209Z","edge_command_begin_ns":1785802276386603059,"edge_command_end_ns":1785802276386608758,"pickup_preflight_us":2193912.081,"execution_us":5.699,"completion_us":238638.451,"total_us":2432556.231,"error":false},
+    {"sequence":20,"operation_id":"eo_365857ac6eefb5cf66c6b43071ea053b","created_at":"2026-08-04T00:11:23.605046200Z","updated_at":"2026-08-04T00:11:26.045516694Z","edge_command_begin_ns":1785802285807673505,"edge_command_end_ns":1785802285807680904,"pickup_preflight_us":2202627.305,"execution_us":7.399,"completion_us":237835.79,"total_us":2440470.494,"error":false}
+  ],
+  "summary": {
+    "pickup_preflight_us": {"p50":1882543.476,"p90":2382339.949,"p95":2443390.806,"max":2579490.478},
+    "execution_us": {"p50":6.25,"p90":7.399,"p95":7.425,"max":7.9},
+    "completion_us": {"p50":215615.89,"p90":237916.056,"p95":239404.375,"max":253956.931},
+    "total_us": {"p50":2095309.738,"p90":2603361.231,"p95":2656449.355,"max":2743135.243}
+  },
+  "error_count": 0,
+  "error_rate": 0.0,
+  "cold_reference": {
+    "operation_id": "eo_758d1e7a1a057a9ac4f3770e9ff2657d",
+    "operation": "git show HEAD:AGENTS.md",
+    "created_at": "2026-08-03T23:27:12.443099898Z",
+    "updated_at": "2026-08-03T23:27:15.171519714Z",
+    "total_us": 2728419.816,
+    "note": "First project_exec after the p15.0.24 session preflight; not a forced service restart."
+  },
+  "representative_evidence": {
+    "project_snapshot": ["eo_513e8fe29f082d1fcdd39e56448dd9ad","eo_82b96cef43612b830f4fdcdebfb4cb38","eo_3ceade70235ed78ad8f57958cfa0fc69","eo_5dcdb6afde16922b7176acc587f94de6","eo_f097c4873bd91a9a3ed1ae1a0009eb61"],
+    "git_status": ["eo_fbcc9f39bdfc3c112f926460e8684379","eo_dfc287c1d0f5a43511bd048a504e99fb","eo_12c20b8660b7d6a3ec341dd91be547a9","eo_290eddc7b783560df2c20148cdfae9be","eo_dd7ca1e75b45cdf3ce760f9b3ccd44a8"],
+    "small_read": ["eo_3e046c010b1987109dd14f8e74a28661","eo_b469152e18fbc5b1e873db2f7d494b6c","eo_ff354831fe2f620bbc9936b34b4ca37b","eo_ba87b907525b858720a5648bfe93ac0f","eo_649f40a6989610d001321144219ff705"],
+    "bounded_search": ["eo_e8b932b626acabd7462e255aaebaf598","eo_8a15a8de9e93edea37313c5b40e3f9f3","eo_5078de15b11b292a63840d21ca821ea3","eo_8c845c59908eead1c4980e43f9580692","eo_d2d1e0dc0fd488d350c03c3486ef5f89"],
+    "toolbox_status": ["eo_59ae1367080b0205f40d20779fb53307","eo_bf823d4f28e78445b6b840e2c563ff20","eo_e09102e93f6577798243da0d1ff057d1","eo_b34bf404c3ec28c9a087e6600f97b578","eo_fbd2c765aa76deec1e8ae498df518858"],
+    "parallel_processes": ["pr_58ae4b471dc1c6cd34561363218e3196","pr_bf834b4576291d0463945e57593e6705","pr_c455a7269c1be1fcd7af2ccee169fe33"],
+    "paginated_reads": [
+      {"operation_id":"eo_6abae5eb520e8ea12cfde3bd39e12a15","offset":0,"next":24576},
+      {"operation_id":"eo_451f5b6e56dd42158d5e53a6a2006052","offset":24576,"next":25600},
+      {"operation_id":"eo_e6c296ffd9b6293102ca73faa2a9bb03","offset":25600,"next":26624}
+    ],
+    "idle_probe": {"operation_id":"eo_375814bebef9d14201ccbef827bd4dcb","cpu_count":8,"load_1":0.0,"load_5":0.36,"load_15":0.64,"idle_percent_1s":100.0}
+  },
+  "acceptance": {
+    "pickup_p50_target_us": 3000000,
+    "pickup_p95_target_us": 10000000,
+    "simple_end_to_end_p95_target_us": 15000000,
+    "baseline_combined_pickup_preflight_p50_pass": true,
+    "baseline_combined_pickup_preflight_p95_pass": true,
+    "baseline_total_p95_pass": true
+  }
+}

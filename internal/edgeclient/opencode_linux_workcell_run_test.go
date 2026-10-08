@@ -25,9 +25,16 @@ func TestOpenCodeLauncherRunsLinuxWorkcellFromLocalRegistryContract(t *testing.T
 	if !captured.Sandbox.ShareNetwork || captured.Sandbox.Environment["MCP_DEVBOX_PROFILE"] != "linux-workcell" {
 		t.Fatalf("captured sandbox=%+v", captured.Sandbox)
 	}
-	statePath := filepath.Join(workspace.Path, ".mcp-devbox", "current-state.md")
+	runtimeRoots, err := prepareProjectRuntimeRoots(fixture.launcher.config.StateRoot, workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	statePath := filepath.Join(projectRuntimeControlRoot(runtimeRoots), "current-state.md")
 	if _, err := os.Stat(statePath); err != nil {
 		t.Fatalf("durable state missing: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(workspace.Path, ".mcp-devbox")); !os.IsNotExist(err) {
+		t.Fatalf("workcell control leaked into source: %v", err)
 	}
 }
 

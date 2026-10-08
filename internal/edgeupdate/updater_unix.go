@@ -13,11 +13,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
-	"sort"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/bundle"
 )
@@ -31,8 +28,6 @@ const (
 
 var ErrHealthCheck = errors.New("edge health check failed; previous bundle restored")
 
-var releaseDirectoryPattern = regexp.MustCompile(`^p15\.[0-9]+\.[0-9]+$`)
-
 type Service interface {
 	InstallUnit(string) error
 	RestartEdge() error
@@ -43,7 +38,6 @@ type Engine struct {
 	Root      string
 	PublicKey ed25519.PublicKey
 	Service   Service
-	Now       func() time.Time
 }
 
 type Status struct {
@@ -68,6 +62,12 @@ func (e Engine) Install(source string, expected bundle.Compatibility) (Status, e
 	desiredTarget := filepath.Join(ReleasesDirectory, expected.Release)
 	rawCurrentTarget, _ := os.Readlink(filepath.Join(root, CurrentLink))
 	before, _ := statusFromLinks(root, e.Service)
+	if before.Release != "" {
+		order, compareErr := bundle.CompareRelease(expected.Release, before.Release)
+		if compareErr != nil || order < 0 {
+			return Status{}, errors.New("automatic release installation cannot downgrade the active release")
+		}
+	}
 	replaceInvalidActive := rawCurrentTarget == desiredTarget
 	if before.Release == expected.Release {
 		activeRoot := filepath.Join(root, ReleasesDirectory, expected.Release)
@@ -177,12 +177,20 @@ func (e Engine) Install(source string, expected bundle.Compatibility) (Status, e
 		if replacedBackup != "" {
 			_ = os.RemoveAll(replacedBackup)
 		}
-		_ = pruneOldReleases(root, e.PublicKey, e.now())
+		_ = pruneOldReleases(root, e.PublicKey)
 	}
 	return status, err
 }
 
 func stageSignedRelease(source, releases string, expected bundle.Compatibility, publicKey ed25519.PublicKey) (string, error) {
+	manifest, err := bundle.LoadTrustedManifest(source, publicKey)
+	if err != nil {
+		return "", err
+	}
+	layout, ok := bundle.LayoutFor(manifest.Version, manifest.Platform)
+	if !ok {
+		return "", &bundle.VerificationError{Code: bundle.ManifestInvalid}
+	}
 	staging, err := os.MkdirTemp(releases, ".staging-"+expected.Release+"-")
 	if err != nil {
 		return "", errors.New("release staging unavailable")
@@ -191,7 +199,7 @@ func stageSignedRelease(source, releases string, expected bundle.Compatibility, 
 		_ = os.RemoveAll(staging)
 		return "", errors.New("release staging permissions failed")
 	}
-	if err := copySignedRelease(source, staging); err != nil {
+	if err := copySignedRelease(source, staging, layout); err != nil {
 		_ = os.RemoveAll(staging)
 		return "", err
 	}
@@ -273,15 +281,7 @@ func (e Engine) validRoot() (string, error) {
 	return root, nil
 }
 
-func (e Engine) now() time.Time {
-	if e.Now != nil {
-		return e.Now().UTC()
-	}
-	return time.Now().UTC()
-}
-
-func copySignedRelease(source, destination string) error {
-	files := bundle.DefaultLayout()
+func copySignedRelease(source, destination string, files map[string]string) error {
 	files[bundle.ManifestFile] = bundle.ManifestFile
 	files[bundle.SignatureFile] = bundle.SignatureFile
 	for _, relative := range files {
@@ -403,7 +403,7 @@ func lockUpdater(root string) (func(), error) {
 	}, nil
 }
 
-func pruneOldReleases(root string, publicKey ed25519.PublicKey, now time.Time) error {
+func pruneOldReleases(root string, publicKey ed25519.PublicKey) error {
 	status, err := statusFromLinks(root, nil)
 	if err != nil {
 		return err
@@ -414,13 +414,8 @@ func pruneOldReleases(root string, publicKey ed25519.PublicKey, now time.Time) e
 	if err != nil {
 		return err
 	}
-	type candidate struct {
-		name string
-		mod  time.Time
-	}
-	candidates := []candidate{}
 	for _, entry := range entries {
-		if !entry.IsDir() || !releaseDirectoryPattern.MatchString(entry.Name()) {
+		if !entry.IsDir() || !bundle.ValidRelease(entry.Name()) {
 			continue
 		}
 		if _, retained := keep[entry.Name()]; retained {
@@ -430,19 +425,6 @@ func pruneOldReleases(root string, publicKey ed25519.PublicKey, now time.Time) e
 		if _, err := bundle.LoadTrusted(path, publicKey); err != nil {
 			continue
 		}
-		info, err := entry.Info()
-		if err == nil {
-			candidates = append(candidates, candidate{name: entry.Name(), mod: info.ModTime()})
-		}
-	}
-	sort.Slice(candidates, func(i, j int) bool { return candidates[i].mod.After(candidates[j].mod) })
-	retained := len(keep)
-	for _, item := range candidates {
-		if retained < 3 || now.Sub(item.mod) < 30*24*time.Hour {
-			retained++
-			continue
-		}
-		path := filepath.Join(root, ReleasesDirectory, item.name)
 		if err := os.RemoveAll(path); err != nil {
 			return err
 		}

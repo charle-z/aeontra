@@ -14,15 +14,19 @@ const tokenEnv = "MCP_DEVBOX_TOKEN"
 // Env fallbacks for the test/allowlist commands so a containerized deploy (Coolify)
 // can configure them without baking flags into the image. A flag, when set, wins.
 const brainRootEnv = "MCP_DEVBOX_BRAIN_ROOT"
+const assetLibraryEnv = "MCP_DEVBOX_ASSET_LIBRARY"
 const taskRootEnv = "MCP_DEVBOX_TASK_ROOT"
 const stateRootEnv = "MCP_DEVBOX_STATE_ROOT"
 const consoleTimezoneEnv = "CONSOLE_TIMEZONE"
 
 const (
-	testCmdEnv      = "MCP_DEVBOX_TEST_CMD"
-	allowCmdEnv     = "MCP_DEVBOX_ALLOW_CMD"
-	sandboxEnv      = "MCP_DEVBOX_SANDBOX"
-	sandboxImageEnv = "MCP_DEVBOX_SANDBOX_IMAGE"
+	testCmdEnv            = "MCP_DEVBOX_TEST_CMD"
+	allowCmdEnv           = "MCP_DEVBOX_ALLOW_CMD"
+	sandboxEnv            = "MCP_DEVBOX_SANDBOX"
+	sandboxImageEnv       = "MCP_DEVBOX_SANDBOX_IMAGE"
+	sandboxRunnerURLEnv   = "MCP_DEVBOX_SANDBOX_RUNNER_URL"
+	sandboxRunnerTokenEnv = "MCP_DEVBOX_SANDBOX_RUNNER_TOKEN"
+	sandboxWorkspaceIDEnv = "MCP_DEVBOX_SANDBOX_WORKSPACE_ID"
 )
 
 // OAuth env. When both are set, the HTTP transport enables its in-process OAuth
@@ -33,6 +37,7 @@ const (
 	publicURLEnv             = "MCP_DEVBOX_PUBLIC_URL"
 	oauthPassphraseEnv       = "MCP_DEVBOX_OAUTH_PASSPHRASE"
 	oauthClientStorePathEnv  = "MCP_DEVBOX_OAUTH_CLIENT_STORE"
+	oauthAccessStorePathEnv  = "MCP_DEVBOX_OAUTH_ACCESS_STORE"
 	oauthRefreshStorePathEnv = "MCP_DEVBOX_OAUTH_REFRESH_STORE"
 )
 
@@ -44,6 +49,7 @@ const (
 
 const (
 	githubTokenEnv             = "GITHUB_TOKEN"
+	githubOSSTokenEnv          = "GH_TOKEN"
 	githubOwnerEnv             = "GITHUB_OWNER"
 	githubOwnerTypeEnv         = "GITHUB_OWNER_TYPE"
 	githubDefaultVisibilityEnv = "GITHUB_DEFAULT_VISIBILITY"
@@ -74,6 +80,17 @@ const (
 	validationRunnerTokenEnv = "MCP_DEVBOX_VALIDATION_RUNNER_TOKEN"
 )
 
+const maintainerProfileEnv = "MCP_DEVBOX_MAINTAINER_PROFILE"
+
+const (
+	developmentRunnerProfileEnv     = "MCP_DEVBOX_DEVELOPMENT_RUNNER_PROFILE"
+	developmentRunnerRepositoryEnv  = "MCP_DEVBOX_DEVELOPMENT_RUNNER_REPOSITORY"
+	developmentRunnerWorkflowRefEnv = "MCP_DEVBOX_DEVELOPMENT_RUNNER_WORKFLOW_REF"
+	developmentRunnerWorkflowSHAEnv = "MCP_DEVBOX_DEVELOPMENT_RUNNER_WORKFLOW_SHA"
+	developmentRunnerGenerationEnv  = "MCP_DEVBOX_DEVELOPMENT_RUNNER_GENERATION"
+	developmentRunnerCalibrationEnv = "MCP_DEVBOX_DEVELOPMENT_RUNNER_CALIBRATION"
+)
+
 // envFallback returns flagVal when non-empty (after trimming), otherwise the value
 // of the named environment variable.
 func envFallback(flagVal, envName string) string {
@@ -82,8 +99,6 @@ func envFallback(flagVal, envName string) string {
 	}
 	return os.Getenv(envName)
 }
-
-const adminTokenEnv = "MCP_DEVBOX_ADMIN_TOKEN"
 
 // commitEnvVars are consulted (in order) at startup to stamp the running git commit when
 // it was not baked in via -ldflags. SOURCE_COMMIT is injected by Coolify at deploy time.

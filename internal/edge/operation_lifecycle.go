@@ -1,6 +1,7 @@
 package edge
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"time"
@@ -9,7 +10,23 @@ import (
 const (
 	maxOperationProgressBytes = 1024
 	operationHeartbeatTTL     = time.Minute
+	projectExecQueueTTL       = 3 * time.Minute
+	projectExecQueueExpired   = "operation_queue_expired"
 )
+
+// Foreground project_exec calls have a bounded client wait. An offline Edge
+// must not run one after that wait has ended. Background processes and other
+// durable operation kinds intentionally do not share this deadline.
+func expireQueuedProjectExecs(execer interface {
+	Exec(string, ...any) (sql.Result, error)
+}, now time.Time, column, value string) error {
+	if column != "device_id" && column != "operation_id" {
+		return errors.New("operation expiry selector is invalid")
+	}
+	_, err := execer.Exec(`UPDATE edge_operations SET state=?,safe_code=?,updated_at=? WHERE `+column+`=? AND kind=? AND state=? AND created_at<=?`,
+		OperationFailed, projectExecQueueExpired, now.UnixNano(), value, OperationProjectExec, OperationQueued, now.Add(-projectExecQueueTTL).UnixNano())
+	return err
+}
 
 func (s *Store) recoverExpiredOperationLeasesForDeviceLocked(deviceID string) error {
 	return recoverExpiredOperationLeases(s.db, s.now(), "device_id", deviceID)
@@ -40,7 +57,7 @@ func (s *Store) ReportOperationProgress(deviceID, operationID, leaseID string, p
 			return OperationControl{}, errors.New("operation progress revision is invalid")
 		}
 	}
-	updated, err := s.db.Exec(`UPDATE edge_operations SET progress_json=?,lease_until=?,updated_at=? WHERE operation_id=? AND device_id=? AND lease_id=? AND state=? AND lease_until>?`, body, expires.UnixNano(), now.UnixNano(), operationID, deviceID, leaseID, OperationLeased, now.UnixNano())
+	updated, err := s.db.Exec(`UPDATE edge_operations SET progress_json=?,lease_until=?,running_at=CASE WHEN ?='running' AND finalizing_at IS NULL THEN COALESCE(running_at,?) ELSE running_at END,finalizing_at=CASE WHEN ?='finalizing' AND running_at IS NOT NULL THEN COALESCE(finalizing_at,?) ELSE finalizing_at END,updated_at=? WHERE operation_id=? AND device_id=? AND lease_id=? AND state=? AND lease_until>?`, body, expires.UnixNano(), progress.Phase, now.UnixNano(), progress.Phase, now.UnixNano(), now.UnixNano(), operationID, deviceID, leaseID, OperationLeased, now.UnixNano())
 	if err != nil {
 		return OperationControl{}, errors.New("operation progress unavailable")
 	}
@@ -113,7 +130,10 @@ func (s *Store) ActiveOperations(deviceID string, limit int) ([]Operation, error
 	if err := s.recoverExpiredOperationLeasesForDeviceLocked(deviceID); err != nil {
 		return nil, errors.New("active operation list unavailable")
 	}
-	rows, err := s.db.Query(`SELECT operation_id,device_id,kind,request_json,state,result_json,safe_code,cancel_requested,progress_json,created_at,updated_at FROM edge_operations WHERE device_id=? AND state IN (?,?) ORDER BY created_at,operation_id LIMIT ?`, deviceID, OperationQueued, OperationLeased, limit)
+	if err := expireQueuedProjectExecs(s.db, s.now().UTC(), "device_id", deviceID); err != nil {
+		return nil, errors.New("active operation list unavailable")
+	}
+	rows, err := s.db.Query(`SELECT operation_id,device_id,kind,request_json,state,result_json,safe_code,cancel_requested,progress_json,created_at,leased_at,running_at,finalizing_at,updated_at FROM edge_operations WHERE device_id=? AND state IN (?,?) ORDER BY created_at,operation_id LIMIT ?`, deviceID, OperationQueued, OperationLeased, limit)
 	if err != nil {
 		return nil, errors.New("active operation list unavailable")
 	}
@@ -141,6 +161,9 @@ func (s *Store) OperationLifecycleStatus(operationID string) (Operation, error) 
 	if err := s.recoverExpiredOperationLeaseByIDLocked(operationID); err != nil {
 		return Operation{}, errors.New("edge operation unavailable")
 	}
+	if err := expireQueuedProjectExecs(s.db, s.now().UTC(), "operation_id", operationID); err != nil {
+		return Operation{}, errors.New("edge operation unavailable")
+	}
 	op, err := s.operationLifecycleByID(operationID)
 	if err != nil {
 		return Operation{}, errors.New("edge operation not found")
@@ -161,7 +184,7 @@ func OperationCanCancel(operation Operation) bool {
 
 func operationKindInterruptible(kind OperationKind) bool {
 	switch kind {
-	case OperationBundleUpdate, OperationBundleRollback, OperationEdgeRepair:
+	case OperationBundleUpdate, OperationBundleRollback, OperationEdgeRepair, OperationProjectProcessStdin:
 		return false
 	default:
 		return true
@@ -169,11 +192,11 @@ func operationKindInterruptible(kind OperationKind) bool {
 }
 
 func (s *Store) operationLifecycleByDigest(deviceID string, kind OperationKind, digest string) (Operation, error) {
-	return scanOperationLifecycle(s.db.QueryRow(`SELECT operation_id,device_id,kind,request_json,state,result_json,safe_code,cancel_requested,progress_json,created_at,updated_at FROM edge_operations WHERE device_id=? AND kind=? AND request_digest=? ORDER BY created_at DESC LIMIT 1`, deviceID, kind, digest))
+	return scanOperationLifecycle(s.db.QueryRow(`SELECT operation_id,device_id,kind,request_json,state,result_json,safe_code,cancel_requested,progress_json,created_at,leased_at,running_at,finalizing_at,updated_at FROM edge_operations WHERE device_id=? AND kind=? AND request_digest=? ORDER BY created_at DESC,rowid DESC LIMIT 1`, deviceID, kind, digest))
 }
 
 func (s *Store) operationLifecycleByID(operationID string) (Operation, error) {
-	return scanOperationLifecycle(s.db.QueryRow(`SELECT operation_id,device_id,kind,request_json,state,result_json,safe_code,cancel_requested,progress_json,created_at,updated_at FROM edge_operations WHERE operation_id=?`, operationID))
+	return scanOperationLifecycle(s.db.QueryRow(`SELECT operation_id,device_id,kind,request_json,state,result_json,safe_code,cancel_requested,progress_json,created_at,leased_at,running_at,finalizing_at,updated_at FROM edge_operations WHERE operation_id=?`, operationID))
 }
 
 func validOperationProgress(progress OperationProgress) bool {
@@ -190,7 +213,8 @@ func scanOperationLifecycle(row rowScanner) (Operation, error) {
 	var op Operation
 	var request, result, progress []byte
 	var created, updated int64
-	if err := row.Scan(&op.ID, &op.DeviceID, &op.Kind, &request, &op.State, &result, &op.SafeCode, &op.CancelRequested, &progress, &created, &updated); err != nil {
+	var leased, running, finalizing sql.NullInt64
+	if err := row.Scan(&op.ID, &op.DeviceID, &op.Kind, &request, &op.State, &result, &op.SafeCode, &op.CancelRequested, &progress, &created, &leased, &running, &finalizing, &updated); err != nil {
 		return Operation{}, err
 	}
 	if json.Unmarshal(request, &op.Request) != nil || len(result) > MaxOperationResultBytes ||
@@ -198,13 +222,41 @@ func scanOperationLifecycle(row rowScanner) (Operation, error) {
 		(len(progress) > 0 && (json.Unmarshal(progress, &op.Progress) != nil || !validOperationProgress(op.Progress))) {
 		return Operation{}, errors.New("stored operation is invalid")
 	}
-	normalized, err := validateOperationRequest(op.Kind, op.Request)
-	if err != nil || normalized != op.Request || !validStoredOperationLifecycle(op) {
+	normalized, err := validateOperationRequestWithProjectExec(op.Kind, op.Request)
+	if err != nil || !operationRequestsEqual(normalized, op.Request) || !validStoredOperationLifecycle(op) {
 		return Operation{}, errors.New("stored operation is invalid")
 	}
 	op.CreatedAt = time.Unix(0, created).UTC()
+	op.LeasedAt = nullableOperationTime(leased)
+	op.RunningAt = nullableOperationTime(running)
+	op.FinalizingAt = nullableOperationTime(finalizing)
 	op.UpdatedAt = time.Unix(0, updated).UTC()
+	if !validOperationTiming(op) {
+		return Operation{}, errors.New("stored operation timing is invalid")
+	}
 	return op, nil
+}
+
+func validOperationTiming(operation Operation) bool {
+	if operation.CreatedAt.IsZero() || operation.UpdatedAt.IsZero() || operation.UpdatedAt.Before(operation.CreatedAt) {
+		return false
+	}
+	if operation.LeasedAt.IsZero() {
+		return operation.RunningAt.IsZero() && operation.FinalizingAt.IsZero()
+	}
+	if operation.LeasedAt.Before(operation.CreatedAt) || operation.LeasedAt.After(operation.UpdatedAt) {
+		return false
+	}
+	if operation.RunningAt.IsZero() {
+		return operation.FinalizingAt.IsZero()
+	}
+	if operation.RunningAt.Before(operation.LeasedAt) || operation.RunningAt.After(operation.UpdatedAt) {
+		return false
+	}
+	if operation.FinalizingAt.IsZero() {
+		return true
+	}
+	return !operation.FinalizingAt.Before(operation.RunningAt) && !operation.FinalizingAt.After(operation.UpdatedAt)
 }
 
 func validStoredOperationLifecycle(operation Operation) bool {
@@ -214,9 +266,9 @@ func validStoredOperationLifecycle(operation Operation) bool {
 	case OperationLeased:
 		return operation.SafeCode == "" && emptyOperationResult(operation.Result)
 	case OperationSucceeded:
-		return !operation.CancelRequested && operation.SafeCode == "" && validOperationCompletion(operation.Result, "")
+		return !operation.CancelRequested && operation.SafeCode == "" && validOperationCompletionForKind(operation.Kind, operation.Result, "")
 	case OperationFailed:
-		return !operation.CancelRequested && operation.SafeCode != "" && validOperationCompletion(operation.Result, operation.SafeCode)
+		return !operation.CancelRequested && operation.SafeCode != "" && validOperationCompletionForKind(operation.Kind, operation.Result, operation.SafeCode)
 	case OperationCancelled:
 		return operation.CancelRequested && operation.SafeCode == "operation_cancelled" && emptyOperationResult(operation.Result)
 	default:

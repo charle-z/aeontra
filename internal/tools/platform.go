@@ -435,20 +435,27 @@ type platformDeployResult struct {
 }
 
 func decodePlatformDeployResponse(body string) platformDeployResult {
-	var direct struct {
+	type responseItem struct {
 		DeploymentUUID string `json:"deployment_uuid"`
 		UUID           string `json:"uuid"`
 		Status         string `json:"status"`
 		Message        string `json:"message"`
-		Deployments    []struct {
-			DeploymentUUID string `json:"deployment_uuid"`
-			UUID           string `json:"uuid"`
-			Status         string `json:"status"`
-			Message        string `json:"message"`
-		} `json:"deployments"`
 	}
-	if json.Unmarshal([]byte(strings.TrimSpace(body)), &direct) != nil {
-		return platformDeployResult{}
+	var direct struct {
+		responseItem
+		Deployments []responseItem `json:"deployments"`
+	}
+	trimmed := []byte(strings.TrimSpace(body))
+	if json.Unmarshal(trimmed, &direct) != nil {
+		var deployments []responseItem
+		if json.Unmarshal(trimmed, &deployments) != nil || len(deployments) == 0 {
+			return platformDeployResult{}
+		}
+		item := deployments[0]
+		if item.DeploymentUUID == "" {
+			item.DeploymentUUID = item.UUID
+		}
+		return platformDeployResult{item.DeploymentUUID, item.Status, item.Message}
 	}
 	if direct.DeploymentUUID == "" {
 		direct.DeploymentUUID = direct.UUID
@@ -480,6 +487,12 @@ type platformDeployment struct {
 
 func safeCoordinatorDeploymentCode(logs string) string {
 	allowed := []string{
+		"configuration_invalid",
+		"journal_open_failed",
+		"coolify_client_invalid",
+		"topology_validation_failed",
+		"topology_front_application_failed",
+		"topology_front_application_request_build_failed",
 		"topology_front_application_transport_target_failed",
 		"topology_front_application_transport_resolution_failed",
 		"topology_front_application_transport_address_policy_failed",
@@ -488,6 +501,28 @@ func safeCoordinatorDeploymentCode(logs string) string {
 		"topology_front_application_transport_route_unavailable",
 		"topology_front_application_transport_connection_failed",
 		"topology_front_application_transport_failed",
+		"topology_front_application_response_read_failed",
+		"topology_front_application_http_failed",
+		"topology_front_application_decode_failed",
+		"topology_front_application_identity_failed",
+		"topology_backend_application_failed",
+		"topology_identity_invalid",
+		"topology_front_backend_failed",
+		"topology_contract_invalid",
+		"durable_state_failed",
+		"status_publish_failed",
+		"status_publish_request_build_failed",
+		"status_publish_transport_failed",
+		"status_publish_transport_target_failed",
+		"status_publish_transport_resolution_failed",
+		"status_publish_transport_address_policy_failed",
+		"status_publish_transport_connection_refused",
+		"status_publish_transport_connection_timed_out",
+		"status_publish_transport_route_unavailable",
+		"status_publish_transport_connection_failed",
+		"status_publish_response_read_failed",
+		"status_publish_http_failed",
+		"status_publish_response_decode_failed",
 	}
 	matched := ""
 	for _, code := range allowed {

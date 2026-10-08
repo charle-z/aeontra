@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -80,7 +81,7 @@ func TestProjectPreparationCloneUsesClosedGitAuthorityAndRegistersAlias(t *testi
 	if runner.calls != 1 || runner.dir != candidate {
 		t.Fatalf("runner=%+v", runner)
 	}
-	wantArgs := []string{"clone", "--single-branch", "--", "https://github.com/charle-z/repo.git", "."}
+	wantArgs := []string{"clone", "--single-branch", "--", "https://github.com/charle-z/repo.git", candidate}
 	if !reflect.DeepEqual(runner.args, wantArgs) {
 		t.Fatalf("args=%q want=%q", runner.args, wantArgs)
 	}
@@ -104,6 +105,9 @@ func TestProjectPreparationAssociatesExistingCheckoutWithoutGit(t *testing.T) {
 	if err := os.Mkdir(legacy, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Mkdir(filepath.Join(legacy, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	inspector := pathProjectInspector{states: map[string]ProjectCheckoutState{legacy: ProjectCheckoutReady}}
 	workspaces, projects := openProjectPreparationRegistries(t, state, roots, inspector)
 	runner := &projectPreparationRunner{}
@@ -123,6 +127,180 @@ func TestProjectPreparationAssociatesExistingCheckoutWithoutGit(t *testing.T) {
 	}
 	if _, err := os.Lstat(filepath.Join(roots.Dev, "repo")); !os.IsNotExist(err) {
 		t.Fatalf("association created canonical clone: %v", err)
+	}
+}
+
+func TestProjectPreparationAssociatesUnregisteredCanonicalCheckoutWithoutGit(t *testing.T) {
+	state := t.TempDir()
+	roots := newProjectDiscoveryRoots(t)
+	canonical := filepath.Join(roots.Dev, "repo")
+	if err := os.MkdirAll(filepath.Join(canonical, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	inspector := pathProjectInspector{states: map[string]ProjectCheckoutState{canonical: ProjectCheckoutReady}}
+	workspaces, projects := openProjectPreparationRegistries(t, state, roots, inspector)
+	runner := &projectPreparationRunner{}
+	config := ProjectPreparationConfig{
+		StateRoot: state, Projects: projects, Workspaces: workspaces, Roots: roots,
+		Credential: GitHubCredential{SchemaVersion: 1, Owner: "charle-z", Token: strings.Repeat("t", 32)}, Runner: runner,
+	}
+	request := ProjectPreparationRequest{Alias: "project", Repository: "repo", TargetAlias: "parrot", Profile: WorkspaceProfileLinuxWorkcell}
+	plan, err := PlanProjectPreparation(context.Background(), config, request)
+	if err != nil || plan.Action != ProjectPreparationAssociateExisting || plan.CandidatePath != canonical {
+		t.Fatalf("unregistered canonical plan=%+v err=%v", plan, err)
+	}
+	status, err := ApplyProjectPreparation(context.Background(), config, plan)
+	if err != nil || status.State != "ready" || runner.calls != 0 {
+		t.Fatalf("status=%+v calls=%d err=%v", status, runner.calls, err)
+	}
+	resolved, err := projects.Resolve(context.Background(), request.Alias, request.TargetAlias)
+	if err != nil || resolved.Workspace.Path != canonical || resolved.Workspace.Profile != request.Profile {
+		t.Fatalf("resolved=%+v err=%v", resolved, err)
+	}
+	reuse, err := PlanProjectPreparation(context.Background(), config, request)
+	if err != nil || reuse.Action != ProjectPreparationReuseExisting || reuse.CandidatePath != canonical {
+		t.Fatalf("registered canonical plan=%+v err=%v", reuse, err)
+	}
+	if _, err := ApplyProjectPreparation(context.Background(), config, reuse); err != nil || runner.calls != 0 {
+		t.Fatalf("registered canonical reuse calls=%d err=%v", runner.calls, err)
+	}
+}
+
+func TestProjectPreparationRejectsDisappearedRegisteredBinding(t *testing.T) {
+	state := t.TempDir()
+	roots := newProjectDiscoveryRoots(t)
+	canonical := filepath.Join(roots.Dev, "repo")
+	if err := os.MkdirAll(filepath.Join(canonical, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	states := map[string]ProjectCheckoutState{canonical: ProjectCheckoutReady}
+	workspaces, projects := openProjectPreparationRegistries(t, state, roots, pathProjectInspector{states: states})
+	workspace, _, err := workspaces.AddProfile(canonical, WorkspaceProfileLinuxWorkcell)
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, _, err := projects.Register(ProjectRegistration{
+		Alias: "project", Owner: "charle-z", Repository: "repo", PreferredTarget: "parrot", TargetAlias: "parrot",
+		WorkspaceID: workspace.ID, AllowedProfiles: []WorkspaceProfile{WorkspaceProfileLinuxWorkcell},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &projectPreparationRunner{}
+	config := ProjectPreparationConfig{
+		StateRoot: state, Projects: projects, Workspaces: workspaces, Roots: roots,
+		Credential: GitHubCredential{SchemaVersion: 1, Owner: "charle-z", Token: strings.Repeat("t", 32)}, Runner: runner,
+	}
+	plan, err := PlanProjectPreparation(context.Background(), config, ProjectPreparationRequest{
+		Alias: "project", Repository: "repo", TargetAlias: "parrot", Profile: WorkspaceProfileLinuxWorkcell,
+	})
+	if err != nil || plan.Action != ProjectPreparationReuseExisting {
+		t.Fatalf("registered plan=%+v err=%v", plan, err)
+	}
+	if err := workspaces.Remove(workspace.ID); err != nil {
+		t.Fatal(err)
+	}
+	claims, err := projects.ReconcileClaims()
+	if err != nil || len(claims) != 1 || claims[0].State != ProjectClaimStale || claims[0].Reason != ProjectErrorWorkspaceMissing {
+		t.Fatalf("stale claims=%+v err=%v", claims, err)
+	}
+	if err := projects.ReleaseClaim("project", "charle-z", "repo", "parrot", project.ClaimGeneration); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ApplyProjectPreparation(context.Background(), config, plan); !projectErrorIs(err, ProjectErrorPlanChanged) || runner.calls != 0 {
+		t.Fatalf("disappeared binding calls=%d err=%v", runner.calls, err)
+	}
+	if _, err := projects.ResolveRegistered("project", "parrot"); !projectErrorIs(err, ProjectErrorProjectNotFound) {
+		t.Fatalf("disappeared binding was recreated: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(canonical, ".git")); err != nil {
+		t.Fatalf("source checkout changed: %v", err)
+	}
+}
+
+func TestProjectPreparationUsesRegistryBeforeDiscoveryForClaimedRepository(t *testing.T) {
+	state := t.TempDir()
+	roots := newProjectDiscoveryRoots(t)
+	claimedPath := filepath.Join(roots.Dev, "legacy-name")
+	if err := os.Mkdir(claimedPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(claimedPath, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	inspector := pathProjectInspector{states: map[string]ProjectCheckoutState{claimedPath: ProjectCheckoutReady}}
+	workspaces, projects := openProjectPreparationRegistries(t, state, roots, inspector)
+	workspace, _, err := workspaces.AddProfile(claimedPath, WorkspaceProfileLinuxWorkcell)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := projects.Register(ProjectRegistration{
+		Alias: "owner", Owner: "charle-z", Repository: "repo", PreferredTarget: "parrot", TargetAlias: "parrot",
+		WorkspaceID: workspace.ID, AllowedProfiles: []WorkspaceProfile{WorkspaceProfileLinuxWorkcell},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	config := ProjectPreparationConfig{
+		StateRoot: state, Projects: projects, Workspaces: workspaces, Roots: roots,
+		Credential: GitHubCredential{SchemaVersion: 1, Owner: "charle-z", Token: strings.Repeat("t", 32)},
+		Runner:     &projectPreparationRunner{},
+	}
+	_, err = PlanProjectPreparation(context.Background(), config, ProjectPreparationRequest{
+		Alias: "ghost", Repository: "repo", TargetAlias: "parrot", Profile: WorkspaceProfileLinuxWorkcell,
+	})
+	var projectFailure *ProjectError
+	if !errors.As(err, &projectFailure) || projectFailure.Code != ProjectErrorRepositoryConflict || projectFailure.Claim == nil || projectFailure.Claim.Alias != "owner" {
+		t.Fatalf("phantom repository conflict err=%v", err)
+	}
+}
+
+func TestProjectPreparationAndListingHandleClaimsBeyondLegacyLimit(t *testing.T) {
+	const legacyProjectClaimsLimit = 32
+	state := t.TempDir()
+	roots := newProjectDiscoveryRoots(t)
+	states := make(map[string]ProjectCheckoutState)
+	inspector := pathProjectInspector{states: states}
+	workspaces, projects := openProjectPreparationRegistries(t, state, roots, inspector)
+	for index := 0; index <= legacyProjectClaimsLimit; index++ {
+		alias := fmt.Sprintf("existing-%02d", index)
+		path := filepath.Join(roots.Dev, alias)
+		if err := os.MkdirAll(filepath.Join(path, ".git"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		states[path] = ProjectCheckoutReady
+		workspace, _, err := workspaces.AddProfile(path, WorkspaceProfileLinuxWorkcell)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := projects.Register(ProjectRegistration{
+			Alias: alias, Owner: "charle-z", Repository: alias, PreferredTarget: "parrot", TargetAlias: "parrot",
+			WorkspaceID: workspace.ID, AllowedProfiles: []WorkspaceProfile{WorkspaceProfileLinuxWorkcell},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		states[path] = ProjectCheckoutRemoteMismatch
+	}
+	config := ProjectPreparationConfig{
+		StateRoot: state, Projects: projects, Workspaces: workspaces, Roots: roots,
+		Credential: GitHubCredential{SchemaVersion: 1, Owner: "charle-z", Token: strings.Repeat("t", 32)},
+		Runner:     &projectPreparationRunner{},
+	}
+	claims, err := projects.ListClaims()
+	if err != nil || len(claims) != legacyProjectClaimsLimit+1 {
+		t.Fatalf("registry listing claims=%d err=%v", len(claims), err)
+	}
+	plan, err := PlanProjectPreparation(context.Background(), config, ProjectPreparationRequest{
+		Alias: "new-project", Repository: "new-project", TargetAlias: "parrot", Profile: WorkspaceProfileLinuxWorkcell,
+	})
+	if err != nil || plan.Action != ProjectPreparationClone {
+		t.Fatalf("plan=%+v err=%v", plan, err)
+	}
+	_, err = PlanProjectPreparation(context.Background(), config, ProjectPreparationRequest{
+		Alias: "conflicting-alias", Repository: "existing-32", TargetAlias: "parrot", Profile: WorkspaceProfileLinuxWorkcell,
+	})
+	var projectFailure *ProjectError
+	if !errors.As(err, &projectFailure) || projectFailure.Code != ProjectErrorRepositoryConflict || projectFailure.Claim == nil || projectFailure.Claim.Alias != "existing-32" {
+		t.Fatalf("repository claim bypassed beyond list limit: %v", err)
 	}
 }
 
@@ -180,6 +358,103 @@ func TestProjectPreparationCloneFailureCleansOnlyReservedDirectory(t *testing.T)
 			}
 			if !test.wantRemain && !os.IsNotExist(statErr) {
 				t.Fatalf("reserved directory remained: %v", statErr)
+			}
+		})
+	}
+}
+
+func TestProjectPreparationReportsRegistrationStageAndCleansClone(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		close     func(*WorkspaceRegistry, *ProjectRegistry) error
+		wantError ProjectErrorCode
+	}{
+		{
+			name: "workspace registry write",
+			close: func(workspaces *WorkspaceRegistry, _ *ProjectRegistry) error {
+				return workspaces.Close()
+			},
+			wantError: ProjectErrorWorkspaceLookup,
+		},
+		{
+			name: "project registry write",
+			close: func(_ *WorkspaceRegistry, projects *ProjectRegistry) error {
+				return projects.Close()
+			},
+			// Registry-first preparation fails before cloning when the durable
+			// registry is unavailable; no later registration stage is reachable.
+			wantError: ProjectErrorRegistryUnavailable,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			state := t.TempDir()
+			roots := newProjectDiscoveryRoots(t)
+			candidate := filepath.Join(roots.Dev, "repo")
+			states := map[string]ProjectCheckoutState{}
+			workspaces, projects := openProjectPreparationRegistries(t, state, roots, pathProjectInspector{states: states})
+			runner := &projectPreparationRunner{after: func(dir string) {
+				if err := os.Mkdir(filepath.Join(dir, ".git"), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				states[dir] = ProjectCheckoutReady
+			}}
+			config := ProjectPreparationConfig{
+				StateRoot: state, Projects: projects, Workspaces: workspaces, Roots: roots,
+				Credential: GitHubCredential{SchemaVersion: 1, Owner: "charle-z", Token: strings.Repeat("t", 32)}, Runner: runner,
+			}
+			plan, err := PlanProjectPreparation(context.Background(), config, ProjectPreparationRequest{
+				Alias: "project", Repository: "repo", TargetAlias: "parrot", Profile: WorkspaceProfileLinuxWorkcell,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := test.close(workspaces, projects); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ApplyProjectPreparation(context.Background(), config, plan); !projectErrorIs(err, test.wantError) {
+				t.Fatalf("err=%v want=%s", err, test.wantError)
+			}
+			if _, err := os.Lstat(candidate); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("failed clone was not removed: %v", err)
+			}
+		})
+	}
+}
+
+func TestProjectRegistrationFailureCodePreservesActionableProjectErrors(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		err  error
+		want ProjectErrorCode
+	}{
+		{name: "checkout", err: projectErr(ProjectErrorCheckoutUnsafe, errors.New("unsafe")), want: ProjectErrorCheckoutUnsafe},
+		{name: "registry", err: projectErr(ProjectErrorRegistryUnavailable, errors.New("closed")), want: ProjectErrorProjectRegistration},
+		{name: "unclassified", err: errors.New("failed"), want: ProjectErrorProjectRegistration},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := projectRegistrationFailureCode(test.err); got != test.want {
+				t.Fatalf("got=%s want=%s", got, test.want)
+			}
+		})
+	}
+}
+
+func TestWorkspaceRegistrationFailureCodeReportsSafeStage(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		stage workspaceRegistrationStage
+		want  ProjectErrorCode
+	}{
+		{name: "validation", stage: workspaceRegistrationValidation, want: ProjectErrorWorkspaceValidation},
+		{name: "lookup", stage: workspaceRegistrationLookup, want: ProjectErrorWorkspaceLookup},
+		{name: "identity", stage: workspaceRegistrationIdentity, want: ProjectErrorWorkspaceRegistration},
+		{name: "write", stage: workspaceRegistrationWrite, want: ProjectErrorWorkspaceWrite},
+		{name: "profile", stage: workspaceRegistrationProfile, want: ProjectErrorProfileDenied},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := workspaceRegistrationErr(test.stage, errors.New("failed"))
+			if got := workspaceRegistrationFailureCode(err); got != test.want {
+				t.Fatalf("got=%s want=%s", got, test.want)
 			}
 		})
 	}

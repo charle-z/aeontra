@@ -48,10 +48,10 @@ func TestCoreCIContainsBlockingVerifyRaceStaticAndVulnerabilityJobs(t *testing.T
 	if got := strings.Count(text, "timeout-minutes:"); got != 5 {
 		t.Fatalf("timeout count = %d, want 5 blocking jobs", got)
 	}
-	if got := strings.Count(text, "uses: actions/checkout@v5"); got != 5 {
+	if got := strings.Count(text, "uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09"); got != 5 {
 		t.Fatalf("checkout count = %d, want 5", got)
 	}
-	if got := strings.Count(text, "uses: actions/setup-go@v6"); got != 4 {
+	if got := strings.Count(text, "uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16"); got != 4 {
 		t.Fatalf("setup-go count = %d, want 4", got)
 	}
 }

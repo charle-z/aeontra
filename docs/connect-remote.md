@@ -13,6 +13,19 @@ The complete configuration inventory is canonical in
 [`configuration.md`](configuration.md). This guide lists only the settings needed for
 connection.
 
+## Operator boundary
+
+A remote Aeontra deployment belongs to a single operator. That operator configures the
+server, OAuth owner passphrase, policies, credentials, Edge devices, repository roots,
+and their own MCP connection in ChatGPT. The current service does not provide
+multitenant isolation, so do not reuse one deployment for unrelated users.
+
+The supported public endpoint uses a stable public HTTPS hostname with a valid
+certificate. A VPS is one way to host it, but it is not mandatory: a server, managed
+container platform, or reviewed outbound tunnel is also valid when it preserves the
+routes and transport behavior documented below. A bare IP address is not the supported
+ChatGPT/OAuth setup.
+
 ## Local stdio
 
 Start with `read-only`:
@@ -89,11 +102,11 @@ Expected:
 - later `GET`, `POST`, or `DELETE /mcp` requests must send that session header;
 - query-string credentials return `401`, even when correct.
 
-HTTP sessions exist only in the current server process and expire after bounded idle
-use. A normal container replacement intentionally invalidates the old session. Keep the
-same URL and OAuth credential, call `initialize` again, and continue with the fresh
-session ID. Do not persist the session header as a credential or attempt authority
-fallback when the server returns `404` for an old session.
+HTTP sessions expire after bounded idle use. With the configured durable session store,
+a normal replacement preserves the logical session and its principal binding. A revoked,
+expired, unknown, or non-durable session returns `404`; keep the same URL and OAuth
+credential, call `initialize` once, and continue with the fresh session ID. Do not
+persist the session header as a credential or attempt authority fallback.
 
 ## Public HTTPS and OAuth
 
@@ -104,6 +117,7 @@ issuer and owner passphrase in the platform secret/environment manager:
 MCP_DEVBOX_PUBLIC_URL=https://mcp.example.com
 MCP_DEVBOX_OAUTH_PASSPHRASE=REPLACE_WITH_LONG_OWNER_PASSPHRASE
 MCP_DEVBOX_OAUTH_CLIENT_STORE=/state/oauth-clients.json
+MCP_DEVBOX_OAUTH_ACCESS_STORE=/state/oauth-access.json
 MCP_DEVBOX_OAUTH_REFRESH_STORE=/state/oauth-refresh.json
 ```
 
@@ -123,15 +137,25 @@ Configure the clean endpoint:
 https://mcp.example.com/mcp
 ```
 
-1. Open ChatGPT connector/app settings and create an MCP connection.
+For an unverified private MCP, enable **Developer mode** in ChatGPT first. In the
+current web interface, open **Settings → Plugins → Developer mode**; the link opens the
+Developer mode control under **Security & sign-in**. Read ChatGPT's elevated-risk
+warning and OpenAI's [MCP risks and safety guidance](https://platform.openai.com/docs/mcp#risks-and-safety)
+before enabling it. The exact labels can vary by client or plan.
+
+Then configure one connection for this operator:
+
+1. Return to ChatGPT's plugin/MCP settings and use the developer connection flow.
 2. Enter the clean `/mcp` URL without credentials in the query string.
 3. Select OAuth.
-4. Complete the owner authorization step.
+4. Complete the owner authorization step using this deployment's owner identity.
 5. After connection, call a read-only tool and verify the server identity with
    `system_runtime_info`.
 
 A ChatGPT connector generally cannot inject an arbitrary recovery bearer. That is
-expected; use OAuth.
+expected; use OAuth. The connection controls only the operator's own Aeontra deployment
+and paired Edge devices. It does not grant access to the maintainer's demo or another
+operator's repositories.
 
 ## Other remote MCP clients
 
@@ -202,6 +226,7 @@ recovery header, then call a normal read-only tool and confirm redaction.
 | Connector cannot send a bearer header | Configure OAuth on the clean URL. |
 | `/healthz` works but connector is stale | Compare `/version` or `system_runtime_info` with the expected exact commit, then refresh the client catalog. |
 | No tools appear | Verify the URL, OAuth completion, reverse-proxy routing to internal port `8765`, and MCP initialization. |
+| Some tools appear or the app namespace is disabled while `/version` is current | Run `cmd/mcp-routing-smoke`. If it lists and calls the complete catalog, reselect/reconnect the app; do not redeploy a healthy backend. |
 | Tool reports outside the jail | The selected path is not under a configured root. |
 | Secret read returns `access-required` | Expected. Only the local human grant flow can approve it. |
 | Secret appears unredacted | Treat it as a security vulnerability and follow `../SECURITY.md`. |

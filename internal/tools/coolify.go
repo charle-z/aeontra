@@ -118,7 +118,7 @@ func (c *CoolifyClient) deploy(ctx context.Context, uuid string, force bool) (in
 		forceValue = "true"
 	}
 	u := c.baseURL + "/api/v1/deploy?" + url.Values{"uuid": {uuid}, "force": {forceValue}}.Encode()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, nil)
 	if err != nil {
 		return 0, "", err
 	}
@@ -134,6 +134,13 @@ func (c *CoolifyClient) deploy(ctx context.Context, uuid string, force bool) (in
 }
 
 func (c *CoolifyClient) request(ctx context.Context, method, path string, payload any) (int, string, error) {
+	return c.requestBounded(ctx, method, path, payload, 1<<20)
+}
+
+func (c *CoolifyClient) requestBounded(ctx context.Context, method, path string, payload any, limit int64) (int, string, error) {
+	if limit <= 0 {
+		return 0, "", fmt.Errorf("coolify response limit must be positive")
+	}
 	var body io.Reader
 	if payload != nil {
 		data, err := json.Marshal(payload)
@@ -156,7 +163,13 @@ func (c *CoolifyClient) request(ctx context.Context, method, path string, payloa
 		return 0, "", err
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	if err != nil {
+		return 0, "", err
+	}
+	if int64(len(data)) > limit {
+		return resp.StatusCode, "", fmt.Errorf("coolify response exceeds %d bytes", limit)
+	}
 	return resp.StatusCode, strings.TrimSpace(string(data)), nil
 }
 
@@ -365,6 +378,10 @@ func (s *PlatformCapability) CoolifySetEnv(app string, vars map[string]string, a
 	}
 	storageSummary := ""
 	if brainRoot, requested := vars["MCP_DEVBOX_BRAIN_ROOT"]; requested {
+		if err := s.requireMaintainerProfile(); err != nil {
+			sp.Finish(audit.Deny, "coolify_set_env "+app+" MCP_DEVBOX_BRAIN_ROOT", nil, err)
+			return "", err
+		}
 		if app != p9BrainAppUUID {
 			err := fmt.Errorf("MCP_DEVBOX_BRAIN_ROOT may only be configured on the fixed P9 Brain application")
 			sp.Finish(audit.Deny, "coolify_set_env "+app+" MCP_DEVBOX_BRAIN_ROOT", nil, err)
@@ -433,7 +450,7 @@ func validCoolifyBuildPack(v string) bool {
 
 func (c *CoolifyClient) domainAllowed(raw string) bool {
 	if len(c.allowedDomainRules) == 0 {
-		return true
+		return false
 	}
 	host := strings.ToLower(strings.TrimSpace(raw))
 	if u, err := url.Parse(raw); err == nil && u.Host != "" {

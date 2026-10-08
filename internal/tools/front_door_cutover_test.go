@@ -17,6 +17,7 @@ import (
 func configuredManagedCutoverService(t *testing.T, baseURL string) *Service {
 	t.Helper()
 	svc, _ := newTestService(t, config.ModeAllow)
+	svc.WithMaintainerProfile(MaintainerProfileCharleZProduction)
 	svc.WithGitHub(NewGitHubClient(baseURL, "github-token", "acme", "org", "private"))
 	svc.WithCoolify(NewCoolifyClient(baseURL, "coolify-token", nil).
 		WithBuilderConfig("server1", "project1", "production", "", []string{
@@ -39,7 +40,7 @@ func TestPlatformFrontDoorManagedCutoverSequenceIsReversible(t *testing.T) {
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/git/ref/heads/front-door-stable":
 			_, _ = w.Write([]byte(`{"object":{"sha":"` + frontDoorTestSHA + `"}}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications":
 			_, _ = w.Write([]byte(`[{"uuid":"front1","name":"mcp-devbox-front-door-managed"}]`))
@@ -65,7 +66,7 @@ func TestPlatformFrontDoorManagedCutoverSequenceIsReversible(t *testing.T) {
 		case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/applications/front1/envs":
 			environmentUpdates++
 			_, _ = w.Write([]byte(`{"uuid":"env1"}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deploy":
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/deploy":
 			deployments++
 			_, _ = w.Write([]byte(`{"deployment_uuid":"dep1","status":"queued"}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deployments/dep1":
@@ -163,7 +164,7 @@ func TestPlatformFrontDoorManagedRollbackSequence(t *testing.T) {
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/git/ref/heads/front-door-stable":
 			_, _ = w.Write([]byte(`{"object":{"sha":"` + frontDoorTestSHA + `"}}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications":
 			_, _ = w.Write([]byte(`[{"uuid":"front1","name":"mcp-devbox-front-door-managed"}]`))
@@ -186,7 +187,7 @@ func TestPlatformFrontDoorManagedRollbackSequence(t *testing.T) {
 			_, _ = w.Write([]byte(`[{"uuid":"env1","key":"MCP_FRONT_DOOR_BACKEND_URL"},{"uuid":"env2","key":"MCP_FRONT_DOOR_EXPECTED_PROTOCOL"},{"uuid":"env3","key":"MCP_FRONT_DOOR_EXPECTED_CATALOG_HASH"}]`))
 		case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/applications/front1/envs":
 			_, _ = w.Write([]byte(`{"uuid":"env1"}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deploy":
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/deploy":
 			deployments++
 			_, _ = w.Write([]byte(`{"deployment_uuid":"dep2","status":"queued"}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deployments/dep2":
@@ -233,7 +234,7 @@ func TestPlatformFrontDoorRenameTemporaryCompensatesOnProbeFailure(t *testing.T)
 	deployments := 0
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/git/ref/heads/front-door-stable":
 			_, _ = w.Write([]byte("{\"object\":{\"sha\":\"" + frontDoorTestSHA + "\"}}"))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications":
 			_, _ = w.Write([]byte("[{\"uuid\":\"front1\",\"name\":\"mcp-devbox-front-door-managed\"}]"))
@@ -245,7 +246,7 @@ func TestPlatformFrontDoorRenameTemporaryCompensatesOnProbeFailure(t *testing.T)
 			frontDomain, _ = payload["domains"].(string)
 			updates = append(updates, frontDomain)
 			_, _ = w.Write([]byte("{\"uuid\":\"front1\"}"))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deploy":
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/deploy":
 			deployments++
 			_, _ = w.Write([]byte(`{"deployment_uuid":"dep-rename","status":"queued"}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deployments/dep-rename":
@@ -285,7 +286,7 @@ func TestPlatformFrontDoorRenameTemporaryCompensatesOnProbeFailure(t *testing.T)
 func TestPlatformFrontDoorPublicReconcileRejectsBackendOriginDrift(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
+		case r.URL.Path == "/repos/acme/aeontra/git/ref/heads/front-door-stable":
 			_, _ = w.Write([]byte("{\"object\":{\"sha\":\"" + frontDoorTestSHA + "\"}}"))
 		case r.URL.Path == "/api/v1/applications":
 			_, _ = w.Write([]byte("[{\"uuid\":\"front1\",\"name\":\"mcp-devbox-front-door-managed\"}]"))

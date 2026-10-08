@@ -1,5 +1,5 @@
 // Package showcase owns the canonical, public, build-embedded evidence used by
-// the MCP Devbox presentation. The JSON remains the source of truth; this package
+// the Aeontra presentation. The JSON remains the source of truth; this package
 // only validates and exposes those exact bytes.
 package showcase
 

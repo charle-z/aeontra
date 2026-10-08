@@ -13,8 +13,10 @@ import (
 )
 
 const (
-	MinLeaseTTL = 15 * time.Second
-	MaxLeaseTTL = 10 * time.Minute
+	MinLeaseTTL                  = 15 * time.Second
+	MaxLeaseTTL                  = 10 * time.Minute
+	maxTaskLeaseAttempts         = 4
+	taskRecoveryExhaustedSummary = "task_recovery_exhausted"
 )
 
 var ErrNoTaskAvailable = errors.New("no edge task available")
@@ -147,7 +149,17 @@ func (s *Store) LeaseNext(deviceID, workcell, holder string, ttl time.Duration) 
 		return Lease{}, errors.New("lease unavailable")
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`UPDATE edge_tasks SET state=?,lease_id=NULL,lease_holder=NULL,lease_until=NULL,updated_at=? WHERE device_id=? AND state=? AND lease_until<=?`, TaskQueued, now.Unix(), deviceID, TaskLeased, now.Unix()); err != nil {
+	if _, err := tx.Exec(`UPDATE edge_tasks SET
+		state=CASE WHEN cancel_requested=1 THEN ? WHEN attempt_count>=? THEN ? ELSE ? END,
+		outcome=CASE WHEN cancel_requested=1 THEN ? WHEN attempt_count>=? THEN ? ELSE NULL END,
+		result_summary=CASE WHEN cancel_requested=1 THEN 'cancelled' WHEN attempt_count>=? THEN ? ELSE NULL END,
+		result_ref=NULL,
+		lease_id=NULL,lease_holder=NULL,lease_until=NULL,updated_at=?
+		WHERE device_id=? AND state=? AND lease_until<=?`,
+		TaskCancelled, maxTaskLeaseAttempts, TaskFailed, TaskQueued,
+		OutcomeCancelled, maxTaskLeaseAttempts, OutcomeFailed,
+		maxTaskLeaseAttempts, taskRecoveryExhaustedSummary,
+		now.Unix(), deviceID, TaskLeased, now.Unix()); err != nil {
 		return Lease{}, errors.New("lease unavailable")
 	}
 	if lease, err := leaseForHolder(tx, deviceID, workcell, holder, now); err == nil {
@@ -156,8 +168,11 @@ func (s *Store) LeaseNext(deviceID, workcell, holder string, ttl time.Duration) 
 		return Lease{}, errors.New("lease unavailable")
 	}
 	var taskID string
-	if err := tx.QueryRow(`SELECT task_id FROM edge_tasks WHERE device_id=? AND workcell=? AND state=? AND cancel_requested=0 ORDER BY created_at,task_id LIMIT 1`, deviceID, workcell, TaskQueued).Scan(&taskID); err != nil {
+	if err := tx.QueryRow(`SELECT task_id FROM edge_tasks WHERE device_id=? AND workcell=? AND state=? AND cancel_requested=0 ORDER BY updated_at,task_id LIMIT 1`, deviceID, workcell, TaskQueued).Scan(&taskID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			if err := tx.Commit(); err != nil {
+				return Lease{}, errors.New("lease unavailable")
+			}
 			return Lease{}, ErrNoTaskAvailable
 		}
 		return Lease{}, errors.New("lease unavailable")

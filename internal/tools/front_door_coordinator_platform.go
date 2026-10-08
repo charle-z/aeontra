@@ -55,6 +55,10 @@ func (s *PlatformCapability) managedFrontDoorCoordinatorCoolifyURL() (string, er
 
 func (s *PlatformCapability) PlatformFrontDoorCoordinatorPreview(request PlatformFrontDoorCoordinatorRequest) (string, error) {
 	sp := s.log.Start("platform_front_door_coordinator_preview")
+	if err := s.requireMaintainerProfile(); err != nil {
+		sp.Finish(audit.Deny, "preview", nil, err)
+		return "", err
+	}
 	if err := s.frontDoorPlatformConfigError(); err != nil {
 		sp.Finish(audit.Deny, "preview", nil, err)
 		return "", err
@@ -69,13 +73,13 @@ func (s *PlatformCapability) PlatformFrontDoorCoordinatorPreview(request Platfor
 		sp.Finish(audit.Deny, "preview", nil, err)
 		return "", err
 	}
-	mainSHA, err := s.github.branchSHA(context.Background(), "mcp-devbox", managedFrontDoorCoordinatorBranch)
+	mainSHA, err := s.github.branchSHA(context.Background(), managedSourceRepository, managedFrontDoorCoordinatorBranch)
 	if err != nil || !frontDoorCommitPattern.MatchString(mainSHA) {
 		err = errors.New("main branch returned an invalid commit")
 		sp.Finish(audit.Error, "preview main", nil, err)
 		return "", err
 	}
-	frontSHA, err := s.github.branchSHA(context.Background(), "mcp-devbox", managedFrontDoorBranch)
+	frontSHA, err := s.github.branchSHA(context.Background(), managedSourceRepository, managedFrontDoorBranch)
 	if err != nil || !frontDoorCommitPattern.MatchString(frontSHA) {
 		err = errors.New("stable front-door branch returned an invalid commit")
 		sp.Finish(audit.Error, "preview front", nil, err)
@@ -133,6 +137,10 @@ func (s *PlatformCapability) PlatformFrontDoorCoordinatorPreview(request Platfor
 
 func (s *PlatformCapability) PlatformFrontDoorCoordinatorCreate(planID string, approve bool) (string, error) {
 	sp := s.log.Start("platform_front_door_coordinator_create")
+	if err := s.requireMaintainerProfile(); err != nil {
+		sp.Finish(audit.Deny, "create", nil, err)
+		return "", err
+	}
 	if err := s.frontDoorPlatformConfigError(); err != nil {
 		sp.Finish(audit.Deny, planID, nil, err)
 		return "", err
@@ -166,13 +174,13 @@ func (s *PlatformCapability) PlatformFrontDoorCoordinatorCreate(planID string, a
 		sp.Finish(audit.Deny, planID, nil, err)
 		return "", err
 	}
-	mainSHA, err := s.github.branchSHA(context.Background(), "mcp-devbox", managedFrontDoorCoordinatorBranch)
+	mainSHA, err := s.github.branchSHA(context.Background(), managedSourceRepository, managedFrontDoorCoordinatorBranch)
 	if err != nil || mainSHA != plan.Args["main_sha"] {
 		err = errors.New("main branch changed after coordinator preview")
 		sp.Finish(audit.Deny, planID, nil, err)
 		return "", err
 	}
-	frontSHA, err := s.github.branchSHA(context.Background(), "mcp-devbox", managedFrontDoorBranch)
+	frontSHA, err := s.github.branchSHA(context.Background(), managedSourceRepository, managedFrontDoorBranch)
 	if err != nil || frontSHA != plan.Args["front_sha"] {
 		err = errors.New("stable front-door branch changed after coordinator preview")
 		sp.Finish(audit.Deny, planID, nil, err)
@@ -197,6 +205,11 @@ func (s *PlatformCapability) PlatformFrontDoorCoordinatorCreate(planID string, a
 	app, exists, err := s.managedFrontDoorCoordinatorApp()
 	if err != nil {
 		sp.Finish(audit.Error, planID, nil, err)
+		return "", err
+	}
+	coordinatorTarget, coordinatorRequestID, err := managedFrontDoorCoordinatorDispatch(app.Description, exists)
+	if err != nil {
+		sp.Finish(audit.Deny, planID, nil, err)
 		return "", err
 	}
 	created := false
@@ -243,6 +256,10 @@ func (s *PlatformCapability) PlatformFrontDoorCoordinatorCreate(planID string, a
 		"MCP_FRONT_DOOR_COORDINATOR_STATE_ROOT":  managedFrontDoorCoordinatorStateMount,
 		"MCP_FRONT_DOOR_COORDINATOR_ADDR":        "0.0.0.0:" + managedFrontDoorCoordinatorPort,
 	}
+	vars["MCP_FRONT_DOOR_COORDINATOR_TARGET"] = string(coordinatorTarget)
+	if coordinatorRequestID != "" {
+		vars["MCP_FRONT_DOOR_COORDINATOR_REQUEST_ID"] = coordinatorRequestID
+	}
 	keys := make([]string, 0, len(vars))
 	for key := range vars {
 		keys = append(keys, key)
@@ -270,6 +287,10 @@ func (s *PlatformCapability) PlatformFrontDoorCoordinatorCreate(planID string, a
 
 func (s *PlatformCapability) PlatformFrontDoorTransitionPreview(targetRaw string) (string, error) {
 	sp := s.log.Start("platform_front_door_transition_preview")
+	if err := s.requireMaintainerProfile(); err != nil {
+		sp.Finish(audit.Deny, "preview", nil, err)
+		return "", err
+	}
 	target, err := frontdoorcoordinator.ParseTarget(targetRaw)
 	if err != nil || target == frontdoorcoordinator.TargetIdle {
 		if err == nil {
@@ -343,7 +364,7 @@ func (s *PlatformCapability) PlatformFrontDoorTransitionPreview(targetRaw string
 		"action": action, "target": string(target), "coordinator_app": app.UUID,
 		"front_app": front.UUID, "backend_app": backend.UUID, "front_domain": topology.FrontDomain,
 		"front_backend": topology.FrontBackendURL, "backend_domains": topology.BackendDomains, "status_revision": fmt.Sprint(published.Revision),
-		"main_commit": identity.MainCommit, "front_commit": identity.FrontCommit,
+		"coordinator_commit": identity.CoordinatorCommit, "main_commit": identity.MainCommit, "front_commit": identity.FrontCommit,
 		"expected_protocol": identity.Protocol, "expected_catalog_hash": identity.CatalogHash,
 	})
 	if err != nil {
@@ -357,12 +378,16 @@ func (s *PlatformCapability) PlatformFrontDoorTransitionPreview(targetRaw string
 	}
 	return fmt.Sprintf("action: %s\ndisposition: %s\ntarget: %s\nphase: %s\ncoordinator_application_uuid: %s\nfront_application_uuid: %s\nbackend_application_uuid: %s\nfront_domain: %s\nfront_backend: %s\nbackend_domains: %s\ncurrent_state: %s\ncurrent_revision: %d\ncoordinator_commit: %s\nfront_commit: %s\nbackend_commit: %s\nexpected_protocol: %s\nexpected_catalog_hash: %s\neffect: %s\nplan_id: %s\nexpiry: %s\n",
 		headlineAction, action, target, phase, app.UUID, front.UUID, backend.UUID, topology.FrontDomain, topology.FrontBackendURL, topology.BackendDomains,
-		published.State, published.Revision, identity.MainCommit, identity.FrontCommit, identity.MainCommit, identity.Protocol, identity.CatalogHash,
+		published.State, published.Revision, identity.CoordinatorCommit, identity.FrontCommit, identity.MainCommit, identity.Protocol, identity.CatalogHash,
 		managedFrontDoorTransitionEffect(action), plan.ID, plan.ExpiresAt.Format(time.RFC3339)), nil
 }
 
 func (s *PlatformCapability) PlatformFrontDoorTransition(planID string, approve bool) (string, error) {
 	sp := s.log.Start("platform_front_door_transition")
+	if err := s.requireMaintainerProfile(); err != nil {
+		sp.Finish(audit.Deny, "transition", nil, err)
+		return "", err
+	}
 	needsApproval, err := s.pol.CheckAction()
 	if err != nil {
 		sp.Finish(audit.Deny, planID, nil, err)
@@ -415,7 +440,7 @@ func (s *PlatformCapability) PlatformFrontDoorTransition(planID string, approve 
 	if err == nil {
 		frontBackend, err = s.managedFrontDoorConfiguredBackend(front.UUID)
 	}
-	if err != nil || identity.MainCommit != plan.Args["main_commit"] || identity.FrontCommit != plan.Args["front_commit"] ||
+	if err != nil || identity.CoordinatorCommit != plan.Args["coordinator_commit"] || identity.MainCommit != plan.Args["main_commit"] || identity.FrontCommit != plan.Args["front_commit"] ||
 		identity.Protocol != plan.Args["expected_protocol"] || identity.CatalogHash != plan.Args["expected_catalog_hash"] || backend.UUID != plan.Args["backend_app"] || front.domain() != plan.Args["front_domain"] || frontBackend != plan.Args["front_backend"] || backend.domain() != plan.Args["backend_domains"] {
 		if err == nil {
 			err = errors.New("managed topology changed after transition preview")
@@ -462,6 +487,10 @@ func (s *PlatformCapability) PlatformFrontDoorTransition(planID string, approve 
 
 func (s *PlatformCapability) PlatformFrontDoorTransitionStatus() (string, error) {
 	sp := s.log.Start("platform_front_door_transition_status")
+	if err := s.requireMaintainerProfile(); err != nil {
+		sp.Finish(audit.Deny, "status", nil, err)
+		return "", err
+	}
 	app, exists, err := s.managedFrontDoorCoordinatorApp()
 	if err != nil || !exists {
 		if err == nil {

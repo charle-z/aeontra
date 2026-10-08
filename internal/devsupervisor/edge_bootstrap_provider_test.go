@@ -1,0 +1,674 @@
+package devsupervisor
+
+import (
+	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"errors"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/charle-z/mcp-devbox/internal/development"
+	"github.com/charle-z/mcp-devbox/internal/edge"
+	"github.com/charle-z/mcp-devbox/internal/workqueue"
+)
+
+type bootstrapJournal struct {
+	*edge.Store
+	loseNextResolveACK bool
+	substituteResolve  bool
+	createCalls        int
+}
+
+var errBootstrapLostACK = errors.New("test: Edge journal acknowledgement lost")
+
+func (journal *bootstrapJournal) CreateOperation(device string, kind edge.OperationKind, request edge.OperationRequest) (edge.Operation, bool, error) {
+	journal.createCalls++
+	operation, created, err := journal.Store.CreateOperation(device, kind, request)
+	if err == nil && created && kind == edge.OperationProjectDevelopmentBootstrapResolve && journal.loseNextResolveACK {
+		journal.loseNextResolveACK = false
+		return edge.Operation{}, false, errBootstrapLostACK
+	}
+	return operation, created, err
+}
+
+func TestEdgeBootstrapPlansAreBoundAndSupportOnlyMissingOfficialSelectors(t *testing.T) {
+	anchor := development.WorkspaceAnchor{DeviceID: "ed_" + strings.Repeat("a", 32), WorkspaceID: "ws_" + strings.Repeat("b", 32), Generation: 7, Owner: "charle-z", Repository: "repo"}
+	scope, err := development.NewObjectiveScope("project", "parrot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope.Anchor = anchor
+	objective, step := bootstrapPlanObjective(t, "objective-bootstrap-plans", scope,
+		"toolchain.go.v1-26", "toolchain.go.v1-26-6", "toolchain.rust.v1-95-0", "toolchain.cargo.v1-95-0")
+	provider := &EdgeBootstrapProvider{}
+	workcell := supervisorEnvironment(t, "workcell:"+anchor.WorkspaceID, development.ClassWorkcell, anchor.Generation, "toolchain.go", "toolchain.go.v1-26")
+	plans, err := provider.Plans(context.Background(), objective, step, supervisorCatalog(t, workcell))
+	if err != nil || len(plans) != 1 || plans[0].Provider != edgeBootstrapProvider || plans[0].Pool != edgeBootstrapPool ||
+		plans[0].Profile != edgeBootstrapProfile || plans[0].OutputClass != development.ClassWorkcell || plans[0].BaseEnvironmentDigest != workcell.Digest ||
+		!plans[0].Covers(requirementIDs(step.Requirements)) {
+		t.Fatalf("plans=%+v err=%v", plans, err)
+	}
+	selectors, err := selectorsForPlan(plans[0])
+	if err != nil || len(selectors) != 2 || selectors[0].toolchain != "go" || selectors[0].capability != "toolchain.go.v1-26-6" || selectors[1].toolchain != "rust" || selectors[1].capability != "toolchain.rust.v1-95-0" {
+		t.Fatalf("selectors=%+v err=%v", selectors, err)
+	}
+	if _, err := provider.Plans(context.Background(), objective, step, supervisorCatalog(t, supervisorEnvironment(t, "other", development.ClassWorkcell, anchor.Generation, "toolchain.go"))); !errors.Is(err, ErrProvisionUnavailable) {
+		t.Fatal("unregistered workcell identity misclassified", err)
+	}
+
+	for name, caps := range map[string][]string{
+		"missing-host-capability": {"build.docker"},
+		"missing-pnpm":            {"toolchain.pnpm.v10-13-1", "toolchain.rust.v1-95-0"},
+		"conflicting-go-pins":     {"toolchain.go.v1-26", "toolchain.go.v1-27-1"},
+		"unsupported-go-version":  {"toolchain.go.v2-26"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			badObjective, badStep := bootstrapPlanObjective(t, "objective-bootstrap-invalid", scope, caps...)
+			_, err := provider.Plans(context.Background(), badObjective, badStep, supervisorCatalog(t, supervisorEnvironment(t, "workcell:"+anchor.WorkspaceID, development.ClassWorkcell, anchor.Generation)))
+			if !errors.Is(err, ErrProvisionUnsupported) {
+				t.Fatal("unsupported plan misclassified", err)
+			}
+		})
+	}
+	if _, err := provider.Plans(context.Background(), objective, step, supervisorCatalog(t, supervisorEnvironment(t, "workcell:"+anchor.WorkspaceID, development.ClassL3Sandbox, anchor.Generation))); !errors.Is(err, ErrProvisionUnavailable) {
+		t.Fatal("non-workcell environment misclassified", err)
+	}
+	if unbound, unboundStep := bootstrapPlanObjective(t, "objective-bootstrap-unbound", development.ObjectiveScope{Project: "project", Target: "parrot"}, "toolchain.go.v1-26"); true {
+		if _, err := provider.Plans(context.Background(), unbound, unboundStep, supervisorCatalog(t, workcell)); !errors.Is(err, ErrProvisionUnavailable) {
+			t.Fatal("unbound scope misclassified", err)
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := provider.Plans(ctx, objective, step, supervisorCatalog(t, workcell)); !errors.Is(err, ErrProvisionUnavailable) {
+		t.Fatal("cancelled inspection misclassified", err)
+	}
+	if _, err := provider.Plans(context.Background(), objective, step, development.EnvironmentCatalog{}); !errors.Is(err, ErrProvisionUnavailable) {
+		t.Fatal("invalid catalog misclassified", err)
+	}
+}
+
+func TestEdgeBootstrapAlreadyAttestedUnsupportedRequirementDoesNotBlockSupportedMissingSelector(t *testing.T) {
+	anchor := development.WorkspaceAnchor{DeviceID: "ed_" + strings.Repeat("a", 32), WorkspaceID: "ws_" + strings.Repeat("b", 32), Generation: 7, Owner: "charle-z", Repository: "repo"}
+	scope, err := development.NewObjectiveScope("project", "parrot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope.Anchor = anchor
+	objective, step := bootstrapPlanObjective(t, "objective-bootstrap-pnpm-present", scope, "toolchain.go.v1-26-6", "toolchain.pnpm.v10-13-1")
+	workcell := supervisorEnvironment(t, "workcell:"+anchor.WorkspaceID, development.ClassWorkcell, anchor.Generation, "toolchain.pnpm.v10-13-1")
+	plans, err := (&EdgeBootstrapProvider{}).Plans(context.Background(), objective, step, supervisorCatalog(t, workcell))
+	if err != nil || len(plans) != 1 || !plans[0].Covers(requirementIDs(step.Requirements)) {
+		t.Fatalf("attested pnpm prevented Go provisioning: plans=%+v err=%v", plans, err)
+	}
+	selectors, err := selectorsForPlan(plans[0])
+	if err != nil || len(selectors) != 1 || selectors[0].toolchain != "go" {
+		t.Fatalf("attested requirement created extra selector: %+v %v", selectors, err)
+	}
+}
+
+func TestEdgeBootstrapResolveLostACKAndRestartReuseExactJournalRecord(t *testing.T) {
+	fixture := newBootstrapFixture(t, true)
+	provider := NewEdgeBootstrapProvider(fixture.journal, fixture.queue)
+	effect, err := provider.Reconcile(context.Background(), fixture.request)
+	if err != nil || !effect.Pending || effect.ResultRef != "" {
+		t.Fatalf("first reconcile=%+v err=%v", effect, err)
+	}
+	key := bootstrapOperationKey("resolve", fixture.request.Provision, bootstrapSelector{toolchain: "go", capability: "toolchain.go.v1-26", version: []string{"1", "26"}})
+	first, found, err := fixture.journal.OperationByIdempotency(fixture.anchor.DeviceID, edge.OperationProjectDevelopmentBootstrapResolve, key)
+	if err != nil || !found || first.State != edge.OperationQueued {
+		t.Fatalf("first operation=%+v found=%v err=%v", first, found, err)
+	}
+	if fixture.journal.createCalls != 1 {
+		t.Fatalf("create calls after lost ACK=%d", fixture.journal.createCalls)
+	}
+	if err := fixture.journal.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := edge.Open(edge.Config{Root: fixture.edgeRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	restarted := NewEdgeBootstrapProvider(reopened, fixture.queue)
+	effect, err = restarted.Reconcile(context.Background(), fixture.request)
+	if err != nil || !effect.Pending {
+		t.Fatalf("restart reconcile=%+v err=%v", effect, err)
+	}
+	recovered, found, err := reopened.OperationByIdempotency(fixture.anchor.DeviceID, edge.OperationProjectDevelopmentBootstrapResolve, key)
+	if err != nil || !found || recovered.ID != first.ID || recovered.Request.DevelopmentBootstrap == nil || recovered.Request.DevelopmentBootstrap.Resolution != nil {
+		t.Fatalf("recovered=%+v found=%v err=%v", recovered, found, err)
+	}
+	if fixture.journal.createCalls != 1 {
+		t.Fatalf("restart submitted duplicate resolve: create calls=%d", fixture.journal.createCalls)
+	}
+}
+
+func TestEdgeBootstrapRejectsStaleLeaseAndWrongTargetBeforeOperation(t *testing.T) {
+	fixture := newBootstrapFixture(t, false)
+	provider := NewEdgeBootstrapProvider(fixture.journal, fixture.queue)
+	stale := fixture.request
+	stale.Lease.Fence++
+	if _, err := provider.Reconcile(context.Background(), stale); !errors.Is(err, ErrProvisionConflict) {
+		t.Fatalf("stale lease error=%v", err)
+	}
+	wrongTarget := fixture.request
+	wrongTarget.Scope.Target = "other"
+	if _, err := provider.Reconcile(context.Background(), wrongTarget); !errors.Is(err, ErrProvisionConflict) {
+		t.Fatalf("wrong target error=%v", err)
+	}
+	key := bootstrapOperationKey("resolve", fixture.request.Provision, bootstrapSelector{toolchain: "go", capability: "toolchain.go.v1-26", version: []string{"1", "26"}})
+	if _, found, err := fixture.journal.OperationByIdempotency(fixture.anchor.DeviceID, edge.OperationProjectDevelopmentBootstrapResolve, key); err != nil || found {
+		t.Fatalf("invalid lease staged operation found=%v err=%v", found, err)
+	}
+}
+
+func TestEdgeBootstrapPinsResolvedMinorAcrossRestartAndRequiresKnownVerifiedExit(t *testing.T) {
+	cases := map[string]struct {
+		exitKnown bool
+		marker    bool
+	}{
+		"verified":       {exitKnown: true, marker: true},
+		"unknown-exit":   {exitKnown: false, marker: true},
+		"missing-marker": {exitKnown: true, marker: false},
+	}
+	for name, testCase := range cases {
+		t.Run(name, func(t *testing.T) {
+			fixture := newBootstrapFixture(t, false)
+			provider := NewEdgeBootstrapProvider(fixture.journal, fixture.queue)
+			effect, err := provider.Reconcile(context.Background(), fixture.request)
+			if err != nil || !effect.Pending {
+				t.Fatalf("resolve queue=%+v err=%v", effect, err)
+			}
+			selector := bootstrapSelector{toolchain: "go", capability: "toolchain.go.v1-26", version: []string{"1", "26"}}
+			resolveKey := bootstrapOperationKey("resolve", fixture.request.Provision, selector)
+			resolve, found, err := fixture.journal.OperationByIdempotency(fixture.anchor.DeviceID, edge.OperationProjectDevelopmentBootstrapResolve, resolveKey)
+			if err != nil || !found {
+				t.Fatalf("resolve=%+v found=%v err=%v", resolve, found, err)
+			}
+			binding := *resolve.Request.DevelopmentBootstrap
+			resolution := goBootstrapResolution(selector.capability)
+			resolutionDigest, err := development.BootstrapResolutionDigest(resolution)
+			if err != nil {
+				t.Fatal(err)
+			}
+			binding.Resolution, binding.ResolutionDigest = &resolution, resolutionDigest
+			completeBootstrapOperation(t, fixture.journal.Store, resolve, bootstrapProjectResult(fixture.request.Scope, &binding, "registered"), "")
+
+			effect, err = provider.Reconcile(context.Background(), fixture.request)
+			if err != nil || !effect.Pending {
+				t.Fatalf("start queue=%+v err=%v", effect, err)
+			}
+			startKey := bootstrapOperationKey("start", fixture.request.Provision, selector)
+			start, found, err := fixture.journal.OperationByIdempotency(fixture.anchor.DeviceID, edge.OperationProjectDevelopmentBootstrapStart, startKey)
+			if err != nil || !found || start.Request.DevelopmentBootstrap == nil || !start.Request.DevelopmentBootstrap.Valid(true) ||
+				start.Request.DevelopmentBootstrap.ResolutionDigest != resolutionDigest {
+				t.Fatalf("start selection=%+v found=%v err=%v", start, found, err)
+			}
+			// A fresh provider must consume the exact journaled patch; it must not
+			// submit a second metadata resolve for the floating minor selector.
+			provider = NewEdgeBootstrapProvider(fixture.journal, fixture.queue)
+			effect, err = provider.Reconcile(context.Background(), fixture.request)
+			if err != nil || !effect.Pending {
+				t.Fatalf("start replay=%+v err=%v", effect, err)
+			}
+			if fixture.journal.createCalls != 2 {
+				t.Fatalf("resolve/start were not reused: create calls=%d", fixture.journal.createCalls)
+			}
+			processID := "pr_" + strings.Repeat("a", 32)
+			startResult := bootstrapProcessResult(fixture.request.Scope, &binding, processID, "running", false, 0, "", false)
+			completeBootstrapOperation(t, fixture.journal.Store, start, startResult, "")
+
+			effect, err = provider.Reconcile(context.Background(), fixture.request)
+			if err != nil || !effect.Pending {
+				t.Fatalf("first status=%+v err=%v", effect, err)
+			}
+			statusRequest := edge.OperationRequest{Alias: fixture.request.Scope.Project, TargetAlias: fixture.request.Scope.Target, Profile: edgeBootstrapRuntime,
+				BackgroundProcessID: processID, OutputLimit: edgeBootstrapStatusLimit}
+			firstStatus, found, err := fixture.journal.LatestDevelopmentProcessOperation(fixture.anchor.DeviceID, edge.OperationProjectProcessStatus, statusRequest)
+			if err != nil || !found || firstStatus.State != edge.OperationQueued {
+				t.Fatalf("first status=%+v found=%v err=%v", firstStatus, found, err)
+			}
+			completeBootstrapOperation(t, fixture.journal.Store, firstStatus, bootstrapProcessResult(fixture.request.Scope, nil, processID, "running", false, 0, "", false), "")
+			effect, err = provider.Reconcile(context.Background(), fixture.request)
+			if err != nil || !effect.Pending {
+				t.Fatalf("running poll=%+v err=%v", effect, err)
+			}
+			secondStatus, found, err := fixture.journal.LatestDevelopmentProcessOperation(fixture.anchor.DeviceID, edge.OperationProjectProcessStatus, statusRequest)
+			if err != nil || !found || secondStatus.ID == firstStatus.ID || secondStatus.State != edge.OperationQueued {
+				t.Fatalf("new read after running=%+v found=%v err=%v", secondStatus, found, err)
+			}
+			stdout := "go version go1.26.6 linux/amd64\n"
+			if testCase.marker {
+				stdout += "mcp-devbox-bootstrap-verified=go:1.26.6\n"
+			}
+			completeBootstrapOperation(t, fixture.journal.Store, secondStatus,
+				bootstrapProcessResult(fixture.request.Scope, nil, processID, "exited", testCase.exitKnown, 0, stdout, true), "")
+			provider = NewEdgeBootstrapProvider(fixture.journal, fixture.queue)
+			effect, err = provider.Reconcile(context.Background(), fixture.request)
+			if err != nil {
+				t.Fatalf("terminal reconcile error=%v", err)
+			}
+			if name == "verified" {
+				if effect.Pending || effect.Failure != "" || !regexp.MustCompile(`^rs_[a-f0-9]{32}$`).MatchString(effect.ResultRef) {
+					t.Fatalf("verified result=%+v", effect)
+				}
+			} else if effect.Pending || effect.Failure != development.FailureReconciliationNeeded || effect.ResultRef != "" {
+				t.Fatalf("unverified process result accepted: %+v", effect)
+			}
+		})
+	}
+}
+
+func TestEdgeBootstrapRejectsJournalBindingSubstitutionBeforeStarting(t *testing.T) {
+	fixture := newBootstrapFixture(t, false)
+	provider := NewEdgeBootstrapProvider(fixture.journal, fixture.queue)
+	effect, err := provider.Reconcile(context.Background(), fixture.request)
+	if err != nil || !effect.Pending {
+		t.Fatalf("resolve queue=%+v err=%v", effect, err)
+	}
+	selector := bootstrapSelector{toolchain: "go", capability: "toolchain.go.v1-26", version: []string{"1", "26"}}
+	key := bootstrapOperationKey("resolve", fixture.request.Provision, selector)
+	resolve, found, err := fixture.journal.OperationByIdempotency(fixture.anchor.DeviceID, edge.OperationProjectDevelopmentBootstrapResolve, key)
+	if err != nil || !found {
+		t.Fatalf("resolve=%+v found=%v err=%v", resolve, found, err)
+	}
+	binding := *resolve.Request.DevelopmentBootstrap
+	resolution := goBootstrapResolution(selector.capability)
+	binding.Resolution = &resolution
+	binding.ResolutionDigest, err = development.BootstrapResolutionDigest(resolution)
+	if err != nil {
+		t.Fatal(err)
+	}
+	completeBootstrapOperation(t, fixture.journal.Store, resolve, bootstrapProjectResult(fixture.request.Scope, &binding, "registered"), "")
+	fixture.journal.substituteResolve = true
+	effect, err = provider.Reconcile(context.Background(), fixture.request)
+	if err != nil || effect.Failure != development.FailureReconciliationNeeded || effect.Pending {
+		t.Fatalf("substitution result=%+v err=%v", effect, err)
+	}
+	startKey := bootstrapOperationKey("start", fixture.request.Provision, selector)
+	if _, found, err := fixture.journal.Store.OperationByIdempotency(fixture.anchor.DeviceID, edge.OperationProjectDevelopmentBootstrapStart, startKey); err != nil || found {
+		t.Fatalf("substituted selection started effect; found=%v err=%v", found, err)
+	}
+}
+
+func TestEdgeBootstrapCancelCancelsOnlyExistingResolveAndRequiresReconciliationForLostStart(t *testing.T) {
+	t.Run("queued resolve", func(t *testing.T) {
+		fixture := newBootstrapFixture(t, false)
+		provider := NewEdgeBootstrapProvider(fixture.journal, fixture.queue)
+		if effect, err := provider.Reconcile(context.Background(), fixture.request); err != nil || !effect.Pending {
+			t.Fatalf("reconcile=%+v err=%v", effect, err)
+		}
+		if _, err := fixture.queue.Cancel(fixture.request.Lease.Job.ID); err != nil {
+			t.Fatal(err)
+		}
+		owner, _, found, err := fixture.queue.DevelopmentProvisionOwner(fixture.request.Provision.ProvisionID)
+		if err != nil || !found {
+			t.Fatalf("owner=%+v found=%v err=%v", owner, found, err)
+		}
+		owner, err = owner.Cancel()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := fixture.queue.SaveDevelopmentObjective(owner); err != nil {
+			t.Fatal(err)
+		}
+		cancelledRequest := fixture.request
+		cancelledRequest.Provision = owner.Steps[0].Provisioning[0]
+		effect, err := provider.Cancel(context.Background(), cancelledRequest)
+		if err != nil || effect.Pending || effect.Failure != "" || !strings.HasPrefix(effect.ResultRef, "rs_") {
+			t.Fatalf("cancel=%+v err=%v", effect, err)
+		}
+	})
+
+	t.Run("failed start without process", func(t *testing.T) {
+		fixture := newBootstrapFixture(t, false)
+		provider := NewEdgeBootstrapProvider(fixture.journal, fixture.queue)
+		if effect, err := provider.Reconcile(context.Background(), fixture.request); err != nil || !effect.Pending {
+			t.Fatalf("resolve queue=%+v err=%v", effect, err)
+		}
+		selector := bootstrapSelector{toolchain: "go", capability: "toolchain.go.v1-26", version: []string{"1", "26"}}
+		resolveKey := bootstrapOperationKey("resolve", fixture.request.Provision, selector)
+		resolve, _, _ := fixture.journal.OperationByIdempotency(fixture.anchor.DeviceID, edge.OperationProjectDevelopmentBootstrapResolve, resolveKey)
+		binding := *resolve.Request.DevelopmentBootstrap
+		resolution := goBootstrapResolution(selector.capability)
+		binding.Resolution = &resolution
+		binding.ResolutionDigest, _ = development.BootstrapResolutionDigest(resolution)
+		completeBootstrapOperation(t, fixture.journal.Store, resolve, bootstrapProjectResult(fixture.request.Scope, &binding, "registered"), "")
+		if effect, err := provider.Reconcile(context.Background(), fixture.request); err != nil || !effect.Pending {
+			t.Fatalf("start queue=%+v err=%v", effect, err)
+		}
+		startKey := bootstrapOperationKey("start", fixture.request.Provision, selector)
+		start, found, err := fixture.journal.OperationByIdempotency(fixture.anchor.DeviceID, edge.OperationProjectDevelopmentBootstrapStart, startKey)
+		if err != nil || !found {
+			t.Fatalf("start=%+v found=%v err=%v", start, found, err)
+		}
+		completeBootstrapOperation(t, fixture.journal.Store, start, edge.OperationResult{}, "project_process_unavailable")
+		effect, err := provider.Reconcile(context.Background(), fixture.request)
+		if err != nil || !effect.Pending {
+			t.Fatalf("recovery queue=%+v err=%v", effect, err)
+		}
+		recoveryKey := "bootstrap-recover:" + digestStrings("aeontra-development-bootstrap-recovery-v1", start.ID, startKey, string(selector.capability))[:32]
+		recovery, found, err := fixture.journal.OperationByIdempotency(fixture.anchor.DeviceID, edge.OperationProjectDevelopmentBootstrapStart, recoveryKey)
+		if err != nil || !found || recovery.Request.DevelopmentRecoveryOperationID != start.ID || recovery.Request.DevelopmentRecoveryIdempotencyKey != startKey {
+			t.Fatalf("recovery=%+v found=%v err=%v", recovery, found, err)
+		}
+		completeBootstrapOperation(t, fixture.journal.Store, recovery, edge.OperationResult{}, "project_development_reconciliation_required")
+		effect, err = provider.Reconcile(context.Background(), fixture.request)
+		if err != nil || effect.Pending || effect.Failure != development.FailureReconciliationNeeded || effect.ResultRef != "" {
+			t.Fatalf("unknown start was claimed clean: %+v err=%v", effect, err)
+		}
+	})
+}
+
+func TestEdgeBootstrapCancelFailedResolutionRequiresExactUnstartedProof(t *testing.T) {
+	for _, mode := range []string{"unstarted", "cleared-lease", "present-start", "failed-start", "lookup-error", "missing-resolve", "queued-resolve", "leased-resolve", "succeeded-resolve", "wrong-project", "wrong-generation", "wrong-request", "wrong-scope", "wrong-fence", "wrong-job", "wrong-payload"} {
+		t.Run(mode, func(t *testing.T) {
+			fixture := newBootstrapFixture(t, false)
+			provider := NewEdgeBootstrapProvider(fixture.journal, fixture.queue)
+			if effect, err := provider.Reconcile(context.Background(), fixture.request); err != nil || !effect.Pending {
+				t.Fatalf("resolve queue=%+v err=%v", effect, err)
+			}
+			selectors, err := selectorsForPlan(fixture.request.Provision.Plan)
+			if err != nil || len(selectors) != 1 {
+				t.Fatal("test requires one bootstrap selector", err)
+			}
+			selector := selectors[0]
+			resolveKey := bootstrapOperationKey("resolve", fixture.request.Provision, selector)
+			resolve, found, err := fixture.journal.OperationByIdempotency(fixture.anchor.DeviceID, edge.OperationProjectDevelopmentBootstrapResolve, resolveKey)
+			if err != nil || !found {
+				t.Fatal("test lacks resolve operation", err)
+			}
+			completeBootstrapOperation(t, fixture.journal.Store, resolve, edge.OperationResult{}, "project_development_resolution_unavailable")
+			resolve, err = fixture.journal.OperationStatus(resolve.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			job, err := fixture.queue.Complete(fixture.request.Lease.Job.ID, fixture.request.Lease.ID, fixture.request.Lease.Fence,
+				workqueue.Result{Outcome: workqueue.StateFailed, Summary: string(development.FailureReconciliationNeeded)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			owner, stepID, found, err := fixture.queue.DevelopmentProvisionOwner(fixture.request.Provision.ProvisionID)
+			if err != nil || !found {
+				t.Fatal("test lacks provision owner", err)
+			}
+			owner, err = owner.FailProvision(stepID, fixture.request.Provision.ProvisionID, development.FailureReconciliationNeeded)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if owner, _, err = fixture.queue.SaveDevelopmentObjective(owner); err != nil {
+				t.Fatal(err)
+			}
+			owner, err = owner.Cancel()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if owner, _, err = fixture.queue.SaveDevelopmentObjective(owner); err != nil {
+				t.Fatal(err)
+			}
+			request := ProvisionRequest{Scope: owner.Scope, Provision: owner.Steps[0].Provisioning[0],
+				Lease: workqueue.Lease{Job: job, ID: job.LeaseID, Fence: job.Fence}}
+			journal := &failedBootstrapJournal{bootstrapJournal: fixture.journal, resolve: resolve}
+			queue := &failedBootstrapQueue{Store: fixture.queue, job: job}
+			switch mode {
+			case "cleared-lease":
+				// Expired-lease terminalization clears these fields, but retains
+				// the immutable job specification and fence.
+				queue.job.LeaseID, queue.job.LeaseHolder = "", ""
+				queue.job.LeaseExpiresAt = time.Time{}
+				request.Lease = workqueue.Lease{Job: queue.job, Fence: queue.job.Fence}
+			case "present-start", "failed-start":
+				binding := *resolve.Request.DevelopmentBootstrap
+				resolution := goBootstrapResolution(selector.capability)
+				binding.Resolution = &resolution
+				binding.ResolutionDigest, _ = development.BootstrapResolutionDigest(resolution)
+				startKey := bootstrapOperationKey("start", request.Provision, selector)
+				start, _, err := fixture.journal.CreateOperation(fixture.anchor.DeviceID, edge.OperationProjectDevelopmentBootstrapStart,
+					bootstrapOperationRequest(request.Scope, selector, &binding, startKey))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if mode == "failed-start" {
+					completeBootstrapOperation(t, fixture.journal.Store, start, edge.OperationResult{}, "operation_execution_interrupted")
+				}
+			case "lookup-error":
+				journal.startLookupError = true
+			case "missing-resolve":
+				journal.missingResolve = true
+			case "queued-resolve":
+				journal.resolve.State = edge.OperationQueued
+			case "leased-resolve":
+				journal.resolve.State = edge.OperationLeased
+			case "succeeded-resolve":
+				journal.resolve.State = edge.OperationSucceeded
+			case "wrong-project":
+				journal.resolve.Request.Alias = "other"
+			case "wrong-generation":
+				binding := *journal.resolve.Request.DevelopmentBootstrap
+				binding.Anchor.Generation++
+				journal.resolve.Request.DevelopmentBootstrap = &binding
+			case "wrong-request":
+				journal.resolve.Request.Profile = "other"
+			case "wrong-scope":
+				request.Scope.Project = "other"
+			case "wrong-fence":
+				request.Provision.JobFence++
+			case "wrong-job":
+				request.Lease.Job.ID = "wj_" + strings.Repeat("f", 32)
+			case "wrong-payload":
+				queue.job.PayloadHash = "sha256:" + strings.Repeat("f", 64)
+			}
+			provider = NewEdgeBootstrapProvider(journal, queue)
+			created := fixture.journal.createCalls
+			effect, err := provider.Cancel(context.Background(), request)
+			if mode == "unstarted" || mode == "cleared-lease" {
+				if err != nil || effect.Pending || effect.Failure != "" || !regexp.MustCompile(`^rs_[a-f0-9]{32}$`).MatchString(effect.ResultRef) {
+					t.Fatalf("failed resolution without start did not settle: effect=%+v err=%v", effect, err)
+				}
+			} else if err == nil && !effect.Pending && effect.Failure == "" && effect.ResultRef != "" {
+				t.Fatalf("unproven cancellation settled: effect=%+v", effect)
+			}
+			if fixture.journal.createCalls != created {
+				t.Fatal("terminal-failure cancellation dispatched an Edge operation")
+			}
+			retained, _, err := fixture.queue.Get(job.ID)
+			if err != nil || retained.State != workqueue.StateFailed || retained.Fence != job.Fence || retained.ResultRef != "" {
+				t.Fatal("terminal-failure proof rewrote failed queue evidence", err)
+			}
+		})
+	}
+}
+
+type failedBootstrapJournal struct {
+	*bootstrapJournal
+	resolve          edge.Operation
+	missingResolve   bool
+	startLookupError bool
+}
+
+func (journal *failedBootstrapJournal) OperationByIdempotency(device string, kind edge.OperationKind, key string) (edge.Operation, bool, error) {
+	if kind == edge.OperationProjectDevelopmentBootstrapResolve {
+		return journal.resolve, !journal.missingResolve, nil
+	}
+	if kind == edge.OperationProjectDevelopmentBootstrapStart && journal.startLookupError {
+		return edge.Operation{}, false, errBootstrapLostACK
+	}
+	return journal.bootstrapJournal.OperationByIdempotency(device, kind, key)
+}
+
+type failedBootstrapQueue struct {
+	*workqueue.Store
+	job workqueue.Job
+}
+
+func (queue *failedBootstrapQueue) Get(id string) (workqueue.Job, bool, error) {
+	if id == queue.job.ID {
+		return queue.job, true, nil
+	}
+	return queue.Store.Get(id)
+}
+
+func (journal *bootstrapJournal) OperationByIdempotency(device string, kind edge.OperationKind, key string) (edge.Operation, bool, error) {
+	operation, found, err := journal.Store.OperationByIdempotency(device, kind, key)
+	if err == nil && found && kind == edge.OperationProjectDevelopmentBootstrapResolve && journal.substituteResolve && operation.State == edge.OperationSucceeded {
+		journal.substituteResolve = false
+		copy := *operation.Result.DevelopmentBootstrap
+		copy.CapabilityID = "toolchain.go.v1-27"
+		operation.Result.DevelopmentBootstrap = &copy
+	}
+	return operation, found, err
+}
+
+func goBootstrapResolution(capability development.CapabilityID) development.BootstrapResolution {
+	return development.BootstrapResolution{CapabilityID: capability, Toolchain: "go", Version: "1.26.6", Platform: "amd64",
+		ArtifactFile: "go1.26.6.linux-amd64.tar.gz", ArtifactSHA256: strings.Repeat("1", 64), ArtifactSize: 128}
+}
+
+func bootstrapProjectResult(scope development.ObjectiveScope, binding *edge.ProjectDevelopmentBootstrapBinding, state string) edge.OperationResult {
+	return edge.OperationResult{WorkspaceID: scope.Anchor.WorkspaceID, ProjectAlias: scope.Project, ProjectOwner: scope.Anchor.Owner,
+		ProjectRepository: scope.Anchor.Repository, ProjectTarget: scope.Target, ProjectState: state, ProjectProfile: edgeBootstrapRuntime,
+		ProjectMode: "dev", DevelopmentBootstrap: binding}
+}
+
+func bootstrapProcessResult(scope development.ObjectiveScope, binding *edge.ProjectDevelopmentBootstrapBinding, processID, state string, exitKnown bool, exitCode int, stdout string, eof bool) edge.OperationResult {
+	started := time.Now().UTC().Add(-time.Minute)
+	result := bootstrapProjectResult(scope, binding, "ready")
+	result.BackgroundProcessID, result.BackgroundProcessState = processID, state
+	result.BackgroundStartedAt = started.Format(time.RFC3339Nano)
+	result.BackgroundStdout, result.BackgroundStdoutNext, result.BackgroundStdoutEOF = stdout, int64(len(stdout)), eof
+	result.BackgroundStderrEOF = eof
+	result.BackgroundExitKnown, result.BackgroundExitCode = exitKnown, exitCode
+	if state == "exited" || state == "stopped" || state == "failed" {
+		result.BackgroundFinishedAt = started.Add(time.Second).Format(time.RFC3339Nano)
+	}
+	return result
+}
+
+func completeBootstrapOperation(t *testing.T, store *edge.Store, operation edge.Operation, result edge.OperationResult, safeCode string) {
+	t.Helper()
+	lease, err := store.LeaseOperation(operation.DeviceID, time.Minute)
+	if err != nil || lease.Operation.ID != operation.ID {
+		t.Fatalf("operation lease=%+v err=%v want=%s", lease, err, operation.ID)
+	}
+	if _, err := store.CompleteOperation(operation.DeviceID, operation.ID, lease.LeaseID, result, safeCode); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type bootstrapFixture struct {
+	edgeRoot string
+	journal  *bootstrapJournal
+	queue    *workqueue.Store
+	anchor   development.WorkspaceAnchor
+	request  ProvisionRequest
+}
+
+func newBootstrapFixture(t *testing.T, loseACK bool) bootstrapFixture {
+	t.Helper()
+	root := t.TempDir()
+	edgeRoot := filepath.Join(root, "edge")
+	journalStore, err := edge.Open(edge.Config{Root: edgeRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = journalStore.Close() })
+	pairing, err := journalStore.CreatePairing(time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	device, err := journalStore.Pair(pairing, "bootstrap-edge", publicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	queue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(root, "queue"), ControllerID: "bootstrap-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = queue.Close() })
+	anchor := development.WorkspaceAnchor{DeviceID: device.ID, WorkspaceID: "ws_" + strings.Repeat("c", 32), Generation: 3, Owner: "charle-z", Repository: "repo"}
+	scope, err := development.NewObjectiveScope("project", "parrot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope.Anchor = anchor
+	plan, err := development.NewProvisionPlan(edgeBootstrapProvider, edgeBootstrapPool, edgeBootstrapProfile, development.ClassWorkcell,
+		"sha256:"+strings.Repeat("d", 64), []development.CapabilityID{"toolchain.go.v1-26"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := development.NewResolutionPolicy(development.TierWorkcell, development.ClassWorkcell)
+	if err != nil {
+		t.Fatal(err)
+	}
+	objective, err := development.NewScopedObjective("objective-bootstrap-test", scope, policy, []development.StepSpec{{StepID: "validate", Requirements: []development.Requirement{{ID: "toolchain.go.v1-26"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	objective, _, err = queue.SaveDevelopmentObjective(objective)
+	if err != nil {
+		t.Fatal(err)
+	}
+	objective, err = objective.PlanProvisioning("validate", "provision-bootstrap-test", "sha256:"+strings.Repeat("e", 64), plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	objective, _, err = queue.SaveDevelopmentObjective(objective)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempt := objective.Steps[0].Provisioning[0]
+	job, _, err := queue.Enqueue(provisionSpec(objective, attempt))
+	if err != nil {
+		t.Fatal(err)
+	}
+	objective, err = objective.BindProvisionJob("validate", attempt.ProvisionID, job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	objective, _, err = queue.SaveDevelopmentObjective(objective)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := queue.LeaseNext(plan.Pool, "bootstrap-worker", time.Minute)
+	if err != nil || lease.Job.ID != job.ID {
+		t.Fatalf("lease=%+v err=%v", lease, err)
+	}
+	objective, err = objective.BindProvisionFence("validate", attempt.ProvisionID, lease.Fence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	objective, _, err = queue.SaveDevelopmentObjective(objective)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempt = objective.Steps[0].Provisioning[0]
+	journal := &bootstrapJournal{Store: journalStore, loseNextResolveACK: loseACK}
+	return bootstrapFixture{edgeRoot: edgeRoot, journal: journal, queue: queue, anchor: anchor,
+		request: ProvisionRequest{Scope: scope, Provision: attempt, Lease: lease}}
+}
+
+func bootstrapPlanObjective(t *testing.T, id string, scope development.ObjectiveScope, raw ...string) (development.Objective, development.ObjectiveStep) {
+	t.Helper()
+	requirements, err := development.Requirements(raw...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := development.NewResolutionPolicy(development.TierWorkcell, development.ClassWorkcell)
+	if err != nil {
+		t.Fatal(err)
+	}
+	objective, err := development.NewScopedObjective(id, scope, policy, []development.StepSpec{{StepID: "validate", Requirements: requirements}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return objective, objective.Steps[0]
+}

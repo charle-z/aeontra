@@ -239,6 +239,17 @@ func TestRuntimeAcceptsEdgePhaseRequiresAuthoritativeOrder(t *testing.T) {
 	if !RuntimeAcceptsEdgePhase(runtime, RuntimePhaseOpenCodeProcessStarted) {
 		t.Fatal("OpenCode process phase rejected after driver readiness")
 	}
+	codexRuntime := Runtime{State: RuntimeStateAwaitingModel, Phases: []RuntimePhaseEvent{
+		{Phase: RuntimePhaseCreated}, {Phase: RuntimePhaseLeaseAssigned},
+		{Phase: RuntimePhaseLocalPreflightComplete}, {Phase: RuntimePhaseStartedConfirmed},
+	}}
+	if !RuntimeAcceptsEdgePhase(codexRuntime, RuntimePhaseModelAdapterReady) || RuntimeAcceptsEdgePhase(codexRuntime, RuntimePhaseCodexProcessStarted) {
+		t.Fatalf("Codex adapter phase order was not enforced: %+v", codexRuntime.Phases)
+	}
+	codexRuntime.Phases = append(codexRuntime.Phases, RuntimePhaseEvent{Phase: RuntimePhaseModelAdapterReady})
+	if !RuntimeAcceptsEdgePhase(codexRuntime, RuntimePhaseCodexProcessStarted) {
+		t.Fatal("Codex process phase rejected after adapter readiness")
+	}
 	runtime.State = RuntimeStateCompleted
 	if RuntimeAcceptsEdgePhase(runtime, RuntimePhaseOpenCodeProcessStarted) {
 		t.Fatal("terminal runtime accepted an Edge phase")

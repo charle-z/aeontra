@@ -18,7 +18,8 @@ export default defineConfig({
   use: {
     baseURL: "http://127.0.0.1:4173",
     browserName: "chromium",
-    colorScheme: "dark",
+    channel: process.env.CONSOLE_PLAYWRIGHT_CHANNEL || undefined,
+    colorScheme: "light",
     locale: "en-US",
     screenshot: "only-on-failure",
     trace: "retain-on-failure",

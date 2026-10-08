@@ -1,0 +1,263 @@
+{
+  "benchmark": "front-door-backend-https-ingress",
+  "error_count": 0,
+  "limitation": "External HTTPS ingress from parrot-trusted-linux; not the private network path from GPT Web.",
+  "route": "Edge external HTTPS -> MCP Front Door -> backend /version -> response",
+  "sample_count": 20,
+  "samples": [
+    {
+      "connect_us": 448809.0,
+      "dns_us": 350500.0,
+      "error": false,
+      "exit_code": 0,
+      "http_status": 200,
+      "sequence": 1,
+      "tls_us": 572939.0,
+      "total_us": 682075.0,
+      "ttfb_us": 681936.0
+    },
+    {
+      "connect_us": 131477.0,
+      "dns_us": 22821.0,
+      "error": false,
+      "exit_code": 0,
+      "http_status": 200,
+      "sequence": 2,
+      "tls_us": 247612.0,
+      "total_us": 345517.0,
+      "ttfb_us": 345396.0
+    },
+    {
+      "connect_us": 125261.0,
+      "dns_us": 19896.0,
+      "error": false,
+      "exit_code": 0,
+      "http_status": 200,
+      "sequence": 3,
+      "tls_us": 246504.0,
+      "total_us": 355770.0,
+      "ttfb_us": 355648.0
+    },
+    {
+      "connect_us": 129066.0,
+      "dns_us": 24492.0,
+      "error": false,
+      "exit_code": 0,
+      "http_status": 200,
+      "sequence": 4,
+      "tls_us": 252624.0,
+      "total_us": 358290.0,
+      "ttfb_us": 358134.0
+    },
+    {
+      "connect_us": 117356.0,
+      "dns_us": 19072.0,
+      "error": false,
+      "exit_code": 0,
+      "http_status": 200,
+      "sequence": 5,
+      "tls_us": 240425.0,
+      "total_us": 351285.0,
+      "ttfb_us": 351154.0
+    },
+    {
+      "connect_us": 134387.0,
+      "dns_us": 27179.0,
+      "error": false,
+      "exit_code": 0,
+      "http_status": 200,
+      "sequence": 6,
+      "tls_us": 267764.0,
+      "total_us": 374577.0,
+      "ttfb_us": 374450.0
+    },
+    {
+      "connect_us": 131075.0,
+      "dns_us": 29668.0,
+      "error": false,
+      "exit_code": 0,
+      "http_status": 200,
+      "sequence": 7,
+      "tls_us": 254671.0,
+      "total_us": 362426.0,
+      "ttfb_us": 362194.0
+    },
+    {
+      "connect_us": 140186.0,
+      "dns_us": 34374.0,
+      "error": false,
+      "exit_code": 0,
+      "http_status": 200,
+      "sequence": 8,
+      "tls_us": 265135.0,
+      "total_us": 374970.0,
+      "ttfb_us": 374846.0
+    },
+    {
+      "connect_us": 176815.0,
+      "dns_us": 70925.0,
+      "error": false,
+      "exit_code": 0,
+      "http_status": 200,
+      "sequence": 9,
+      "tls_us": 298672.0,
+      "total_us": 410635.0,
+      "ttfb_us": 410478.0
+    },
+    {
+      "connect_us": 125770.0,
+      "dns_us": 23086.0,
+      "error": false,
+      "exit_code": 0,
+      "http_status": 200,
+      "sequence": 10,
+      "tls_us": 250703.0,
+      "total_us": 363478.0,
+      "ttfb_us": 363274.0
+    },
+    {
+      "connect_us": 143986.0,
+      "dns_us": 39927.0,
+      "error": false,
+      "exit_code": 0,
+      "http_status": 200,
+      "sequence": 11,
+      "tls_us": 266446.0,
+      "total_us": 378116.0,
+      "ttfb_us": 377876.0
+    },
+    {
+      "connect_us": 125164.0,
+      "dns_us": 21047.0,
+      "error": false,
+      "exit_code": 0,
+      "http_status": 200,
+      "sequence": 12,
+      "tls_us": 247008.0,
+      "total_us": 354801.0,
+      "ttfb_us": 354665.0
+    },
+    {
+      "connect_us": 120960.0,
+      "dns_us": 21471.0,
+      "error": false,
+      "exit_code": 0,
+      "http_status": 200,
+      "sequence": 13,
+      "tls_us": 252302.0,
+      "total_us": 352654.0,
+      "ttfb_us": 352535.0
+    },
+    {
+      "connect_us": 128221.0,
+      "dns_us": 26992.0,
+      "error": false,
+      "exit_code": 0,
+      "http_status": 200,
+      "sequence": 14,
+      "tls_us": 250202.0,
+      "total_us": 355350.0,
+      "ttfb_us": 355228.0
+    },
+    {
+      "connect_us": 126351.0,
+      "dns_us": 22379.0,
+      "error": false,
+      "exit_code": 0,
+      "http_status": 200,
+      "sequence": 15,
+      "tls_us": 245811.0,
+      "total_us": 350646.0,
+      "ttfb_us": 350522.0
+    },
+    {
+      "connect_us": 127053.0,
+      "dns_us": 23039.0,
+      "error": false,
+      "exit_code": 0,
+      "http_status": 200,
+      "sequence": 16,
+      "tls_us": 245897.0,
+      "total_us": 360539.0,
+      "ttfb_us": 360412.0
+    },
+    {
+      "connect_us": 124475.0,
+      "dns_us": 19705.0,
+      "error": false,
+      "exit_code": 0,
+      "http_status": 200,
+      "sequence": 17,
+      "tls_us": 245305.0,
+      "total_us": 353767.0,
+      "ttfb_us": 353644.0
+    },
+    {
+      "connect_us": 122610.0,
+      "dns_us": 25103.0,
+      "error": false,
+      "exit_code": 0,
+      "http_status": 200,
+      "sequence": 18,
+      "tls_us": 247297.0,
+      "total_us": 357300.0,
+      "ttfb_us": 357167.0
+    },
+    {
+      "connect_us": 127847.0,
+      "dns_us": 25596.0,
+      "error": false,
+      "exit_code": 0,
+      "http_status": 200,
+      "sequence": 19,
+      "tls_us": 249574.0,
+      "total_us": 361689.0,
+      "ttfb_us": 361517.0
+    },
+    {
+      "connect_us": 122872.0,
+      "dns_us": 17229.0,
+      "error": false,
+      "exit_code": 0,
+      "http_status": 200,
+      "sequence": 20,
+      "tls_us": 245335.0,
+      "total_us": 350685.0,
+      "ttfb_us": 350532.0
+    }
+  ],
+  "schema_version": 1,
+  "summary": {
+    "connect_us": {
+      "max": 448809.0,
+      "p50": 127450.0,
+      "p90": 147268.9,
+      "p95": 190414.7
+    },
+    "dns_us": {
+      "max": 350500.0,
+      "p50": 23789.0,
+      "p90": 43026.8,
+      "p95": 84903.75
+    },
+    "tls_us": {
+      "max": 572939.0,
+      "p50": 249888.0,
+      "p90": 270854.8,
+      "p95": 312385.35
+    },
+    "total_us": {
+      "max": 682075.0,
+      "p50": 357795.0,
+      "p90": 381367.9,
+      "p95": 424207.0
+    },
+    "ttfb_us": {
+      "max": 681936.0,
+      "p50": 357650.5,
+      "p90": 381136.2,
+      "p95": 424050.9
+    }
+  },
+  "url_path": "/version"
+}

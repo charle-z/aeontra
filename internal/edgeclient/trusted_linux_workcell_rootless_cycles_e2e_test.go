@@ -169,7 +169,7 @@ func p12RunRootlessCycle(t *testing.T, endpoint *RootlessContainerEndpoint, runt
 	workspaceOutput := p12Engine(t, endpoint, append(prefix,
 		"run", "--name", containerName, "--label", label, "--network", network,
 		"--volume", volume+":/data", "--volume", workspaceMount,
-		image, "/bin/sh", "-c", "test -f /workspace/fixture.txt && if touch /workspace/p12-denied 2>/dev/null; then exit 1; fi; echo workspace-ready",
+		image, "/bin/sh", "-c", "test -f /workspace/fixture.txt || exit 41; if touch /workspace/p12-denied 2>/dev/null; then exit 42; fi; echo workspace-ready",
 	)...)
 	workspaceBindValidated := strings.TrimSpace(workspaceOutput) == "workspace-ready"
 	if !workspaceBindValidated {

@@ -91,7 +91,7 @@ func TestAdversarial_RunTestsArgInjection(t *testing.T) {
 		{"$(rm -rf /)"},
 		{"`whoami`"},
 	} {
-		if _, err := svc.RunTests(true, extra...); err == nil {
+		if _, err := svc.RunTests(extra...); err == nil {
 			t.Errorf("injected extra args %v should be denied", extra)
 		}
 	}
@@ -101,7 +101,7 @@ func TestAdversarial_RunTestsCannotSwapToShell(t *testing.T) {
 	svc, _ := newTestService(t, config.ModeAllow)
 	// Even if a shell is configured as the test command, it must be blocked.
 	svc.WithTestCommand([]string{"bash", "-c", "echo pwned"}).WithRunner(fakeRunner("pwned", nil))
-	if _, err := svc.RunTests(true); err == nil {
+	if _, err := svc.RunTests(); err == nil {
 		t.Error("bash as test command must be blocked")
 	}
 }

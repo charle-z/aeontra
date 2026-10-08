@@ -9,6 +9,7 @@ type platformAppPreviewCapability interface {
 var (
 	_ catalog.PlatformCoreService             = (*PlatformCapability)(nil)
 	_ catalog.PlatformDeploymentService       = (*PlatformCapability)(nil)
+	_ catalog.PlatformDomainService           = (*PlatformCapability)(nil)
 	_ catalog.PlatformEnvironmentService      = (*PlatformCapability)(nil)
 	_ catalog.ValidationRunnerPlatformService = (*PlatformCapability)(nil)
 	_ platformAppPreviewCapability            = (*PlatformCapability)(nil)

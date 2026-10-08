@@ -31,3 +31,25 @@ func TestReleaseChannelHasCanonicalSignedClosedIdentity(t *testing.T) {
 		t.Fatal("tampered channel signature verified")
 	}
 }
+
+func TestWindowsReleaseChannelRequiresPlatformBoundVersion(t *testing.T) {
+	channel := Channel{
+		Version: 2, Release: "v1.2.0", Commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		ProtocolVersion: "mcp-devbox.edge-bundle.v1",
+		CatalogHash:     "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		Architecture:    "amd64", Platform: "windows",
+		ArchiveHash: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+	}
+	if _, err := CanonicalChannel(channel); err != nil {
+		t.Fatal(err)
+	}
+	channel.Platform = ""
+	if _, err := CanonicalChannel(channel); err == nil {
+		t.Fatal("version two channel accepted without a Windows platform binding")
+	}
+	channel.Version = 1
+	channel.Platform = "windows"
+	if _, err := CanonicalChannel(channel); err == nil {
+		t.Fatal("legacy channel accepted a platform field")
+	}
+}

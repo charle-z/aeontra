@@ -265,3 +265,82 @@ func TestDiscardRuntimeGoalRejectsMismatchedIdentity(t *testing.T) {
 		t.Fatalf("mismatched cleanup removed body: count=%d err=%v", count, err)
 	}
 }
+
+func TestPinnedTaskGoalSurvivesExpiryAndStoreReopen(t *testing.T) {
+	clock := &testClock{now: time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)}
+	root := filepath.Join(t.TempDir(), "turns")
+	store, err := OpenStore(StoreConfig{Root: root, Now: clock.Now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	goal := []byte("keep this queued task goal available across restart")
+	body, err := store.StageRuntimeGoal(context.Background(), goal, MaxTurnTTL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := TaskGoalOwner{
+		OwnerDigest: IdempotencyDigest("queued-task-owner"),
+		References:  []TaskGoalReference{{BodyRef: body.BodyRef, ContentDigest: body.ContentDigest}},
+	}
+	if err := store.PinTaskGoalReferences(context.Background(), owner.OwnerDigest, owner.References); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	clock.Add(2 * time.Hour)
+
+	reopened, err := OpenStore(StoreConfig{Root: root, Now: clock.Now, TaskGoalOwners: []TaskGoalOwner{owner}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	var count int
+	if err := reopened.db.QueryRow(`SELECT COUNT(*) FROM runtime_bodies WHERE body_ref=?`, body.BodyRef).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("expired pinned goal was not retained: count=%d err=%v", count, err)
+	}
+	runtime, created, err := reopened.StartBoundRuntime(context.Background(), BoundRuntimeRequest{
+		DeviceID: "ed_0123456789abcdef0123456789abcdef", WorkspaceID: "ws_abcdefabcdefabcdefabcdefabcdefab",
+		Controller: ControllerRemoteEdge, GoalSummary: GoalSummary(goal), GoalRef: body.BodyRef, GoalDigest: body.ContentDigest,
+		IdempotencyKeyDigest: IdempotencyDigest("queued-task-worker-0"), TTL: time.Minute,
+	})
+	if err != nil || !created {
+		t.Fatalf("runtime=%+v created=%v err=%v", runtime, created, err)
+	}
+	content, digest, err := reopened.RuntimeGoal(context.Background(), runtime.RuntimeID, runtime.DeviceID)
+	if err != nil || string(content) != string(goal) || digest != body.ContentDigest {
+		t.Fatalf("task goal unavailable: content=%q digest=%q err=%v", content, digest, err)
+	}
+	if err := reopened.CompleteRuntime(context.Background(), runtime.RuntimeID); err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.UnpinTaskGoalReferences(context.Background(), owner.OwnerDigest, owner.References); err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.Cleanup(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.db.QueryRow(`SELECT COUNT(*) FROM runtime_bodies WHERE body_ref=?`, body.BodyRef).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("terminal unpinned goal was not reclaimed: count=%d err=%v", count, err)
+	}
+}
+
+func TestTaskGoalPinRejectsMissingAndMismatchedReferences(t *testing.T) {
+	clock := &testClock{now: time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)}
+	store, _ := openTestStore(t, clock, 0)
+	body, err := store.StageRuntimeGoal(context.Background(), []byte("private task goal"), time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := IdempotencyDigest("task-goal-validation")
+	if err := store.PinTaskGoalReferences(context.Background(), owner, []TaskGoalReference{{BodyRef: body.BodyRef, ContentDigest: "sha256:" + strings.Repeat("0", 64)}}); !errors.Is(err, ErrRequestRefConflict) {
+		t.Fatalf("mismatched digest error=%v", err)
+	}
+	if err := store.PinTaskGoalReferences(context.Background(), owner, []TaskGoalReference{{BodyRef: "mb_11111111111111111111111111111111", ContentDigest: body.ContentDigest}}); !errors.Is(err, ErrRequestRefConflict) {
+		t.Fatalf("missing body error=%v", err)
+	}
+	var count int
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM runtime_goal_pins`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("invalid goal left pin rows: count=%d err=%v", count, err)
+	}
+}

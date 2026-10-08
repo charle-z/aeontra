@@ -137,8 +137,9 @@ func (r Runner) Run(ctx context.Context, target Target) (Status, error) {
 	return r.compensate(ctx, current, "transition_budget_exhausted", budgetErr)
 }
 
-func transitionInterrupted(ctx context.Context, err error) bool {
-	return ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+func transitionInterrupted(ctx context.Context, _ error) bool {
+	// Only cancellation of the coordinator itself preserves an active journal.
+	return ctx.Err() != nil
 }
 
 func interruptedTransition(current Status, cause error) (Status, error) {
@@ -239,11 +240,11 @@ func (r Runner) publishStatus(ctx context.Context, status Status) error {
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			return errors.Join(ctx.Err(), fmt.Errorf("%w: %v", ErrStatusPublish, lastErr))
+			return errors.Join(ctx.Err(), ErrStatusPublish, lastErr)
 		case <-timer.C:
 		}
 	}
-	return fmt.Errorf("%w after %d attempts: %v", ErrStatusPublish, attempts, lastErr)
+	return errors.Join(fmt.Errorf("%w after %d attempts", ErrStatusPublish, attempts), lastErr)
 }
 
 func (r Runner) fail(ctx context.Context, current Status, reason string, cause error) (Status, error) {

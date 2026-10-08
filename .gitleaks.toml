@@ -1,0 +1,71 @@
+title = "MCP Devbox secret scanning policy"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Synthetic development admission retry key; no credential"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "line"
+paths = ['''^internal/mcpserver/project_development_recovery_test\.go$''']
+regexes = ['''"idempotency_key":"validation-key-001"''']
+
+[[allowlists]]
+description = "Synthetic GitHub PAT used only to verify redaction"
+targetRules = ["github-pat"]
+condition = "AND"
+regexTarget = "line"
+paths = ['''^internal/edgeclient/htb_checkpoint_redaction_test\.go$''']
+regexes = ['''ghp_012345678901234567890123456789012345''']
+
+[[allowlists]]
+description = "Synthetic sandbox idempotency key used only by executor tests"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "line"
+paths = [
+  '''^internal/sandboxexecutor/executor_test\.go$''',
+  '''^internal/sandboxexecutor/podman_engine_e2e_test\.go$''',
+  '''^internal/sandboxexecutor/podman_engine_test\.go$''',
+]
+regexes = ['''sx_0123456789abcdef0123456789abcdef''']
+
+[[allowlists]]
+description = "Historical synthetic managed test process ID; no credential"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "line"
+paths = ['''^internal/edge/project_worktree_test_operations_test\.go$''']
+regexes = ['''request\.BackgroundProcessID, request\.TestProfileID, request\.TestProfileDigest, request\.IdempotencyKey = "pr_0123456789abcdef0123456789abcdef"''']
+
+[[allowlists]]
+description = "Exact synthetic values and key names used by tests and documentation"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "line"
+paths = [
+  '''^\.github/workflows/trusted-linux-workcell-e2e\.yml$''',
+  '''^docs/workspace-runtime-continuation\.md$''',
+  '''^docs/security\.md$''',
+  '''^internal/edgeclient/htb_checkpoint_redaction_test\.go$''',
+  '''^internal/edgeclient/dev_git_broker_unix\.go$''',
+  '''^internal/edgeclient/htb_lab_broker_unix\.go$''',
+  '''^internal/edgeclient/htb_actions_test\.go$''',
+  '''^internal/edgeclient/trusted_linux_workcell_e2e_test\.go$''',
+  '''^packaging/debian/package_contract_test\.go$''',
+  '''^internal/policy/secrets_test\.go$''',
+]
+regexes = [
+  '''p12-fixture-user-secret", "p12-fixture-root-secret''',
+  '''"idempotency_key": "continue-20260720T230000Z-a1b2c3d4"''',
+  '''"recovered-lab-password",''',
+  '''ghp_012345678901234567890123456789012345''',
+  '''normalized non-secret arguments, creation/expiry timestamps''',
+  '''"PATH=" \+ runner\.toolPath, "HOME=" \+ secretRoot''',
+  '''"HOME=" \+ secretDir,''',
+  '''secret, "0123456789abcdef0123456789abcdef"''',
+  '''p12FixtureRootSecret = "p12-fixture-root-secret"''',
+  '''"EDGE_BUNDLE_ED25519_PRIVATE_KEY_B64", "EDGE_DEB_GPG_PRIVATE_KEY_B64"''',
+  '''DB_TOKEN=abcdef0123456789''',
+]

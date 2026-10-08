@@ -213,14 +213,15 @@ func (s *GitCapability) RepoFastForwardPreview(repo string) (string, error) {
 
 func (s *GitCapability) RepoFastForward(planID string, approve bool) (string, error) {
 	sp := s.log.Start("repo_fast_forward")
-	needsApproval, err := s.pol.CheckAction()
-	if err != nil {
+	_ = approve // retained for schema compatibility; contained execution is admin-selected.
+	if !s.gitMutation.Status(context.Background()).Available {
+		err := fmt.Errorf("repo_fast_forward requires an attested private L3 executor; host Git mutation is disabled")
 		sp.Finish(audit.Deny, planID, nil, err)
 		return "", err
 	}
-	if needsApproval && !approve {
-		sp.Finish(audit.Ask, planID, nil, nil)
-		return "APPROVAL REQUIRED: repo_fast_forward would execute the reviewed single-use plan. Re-invoke with approve=true.", nil
+	if err := s.pol.CheckContainedExecution(); err != nil {
+		sp.Finish(audit.Deny, planID, nil, err)
+		return "", err
 	}
 	plan, err := s.plans.Consume(strings.TrimSpace(planID), "repo-fast-forward")
 	if err != nil {
@@ -265,7 +266,7 @@ func (s *GitCapability) RepoFastForward(planID string, approve bool) (string, er
 		sp.Finish(audit.Deny, planID, []string{st.Dir}, err)
 		return "", err
 	}
-	out, runErr := s.run(context.Background(), st.Dir, "git", args)
+	out, runErr := s.runGitMutation(context.Background(), st.Dir, args)
 	if runErr != nil {
 		sp.Finish(audit.Error, planID, []string{st.Dir}, runErr)
 		return s.redact(out), fmt.Errorf("git merge --ff-only: %w", runErr)
@@ -278,7 +279,7 @@ func (s *GitCapability) gitRead(dir string, args ...string) (string, error) {
 	if err := s.pol.CheckCommandAllowed("git", args); err != nil {
 		return "", err
 	}
-	out, err := s.run(context.Background(), dir, "git", args)
+	out, err := s.gitReadRun(context.Background(), dir, "git", args)
 	if err != nil {
 		return s.redact(out), err
 	}

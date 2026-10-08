@@ -62,7 +62,7 @@ func ConfigureGitHubCredential(stateRoot, owner string, input io.Reader) (GitHub
 	}
 	temporaryPath := temporary.Name()
 	defer os.Remove(temporaryPath)
-	if err := temporary.Chmod(0o600); err != nil {
+	if err := securePrivateFile(temporary); err != nil {
 		_ = temporary.Close()
 		return GitHubCredentialStatus{}, errors.New("GitHub credential permissions failed")
 	}
@@ -81,7 +81,7 @@ func LoadGitHubCredential(stateRoot string) (GitHubCredential, error) {
 	if errors.Is(err, os.ErrNotExist) {
 		return GitHubCredential{}, ErrGitHubNotConfigured
 	}
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o600 || !ownedByCurrentUIDPortable(info) {
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || !ownedByCurrentUIDPortable(info) || requirePrivateRegularFile(path) != nil {
 		return GitHubCredential{}, errors.New("local GitHub credential file is unsafe")
 	}
 	body, err := os.ReadFile(path)

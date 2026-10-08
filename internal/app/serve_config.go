@@ -82,7 +82,7 @@ func parseServeOptions(args []string, output io.Writer) (serveOptions, error) {
 	auditPath := fs.String("audit", "", "audit log path")
 	httpAddr := fs.String("http", "", "serve MCP over HTTP at ADDR (e.g. :8765); omit for stdio")
 	httpToken := fs.String("http-token", "", "bearer token for HTTP (prefer "+tokenEnv+" env)")
-	sandbox := fs.String("sandbox", "", "L3 sandbox backend: none (default)|docker|nsjail|gvisor (plumbed, not yet enabled)")
+	sandbox := fs.String("sandbox", "", "L3 sandbox backend: none (default)|private-rootless; legacy names remain unavailable")
 	observabilityMode := fs.String("observability", "", "structured events: off|stderr|file|both (default: stderr)")
 	observabilityPath := fs.String("observability-path", "", "absolute private JSONL path for file/both mode")
 	observabilityMaxBytes := fs.String("observability-max-bytes", "", "rotation limit in bytes (default: 16777216)")

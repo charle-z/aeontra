@@ -58,6 +58,7 @@ func (s *Server) register() {
 	catalog.RegisterRepositoryReads(s.addCatalogTool, s.svc)
 
 	catalog.RegisterResults(s.addCatalogTool, s.svc)
+	catalog.RegisterAssets(s.addCatalogTool, s.svc)
 
 	catalog.RegisterRepositoryWrites(s.addCatalogTool, s.svc)
 
@@ -70,6 +71,8 @@ func (s *Server) register() {
 	catalog.RegisterValidationRunnerPlatform(s.addCatalogTool, s.svc)
 
 	catalog.RegisterPlatformAppPreview(s.addCatalogTool, platformAppPreviewAdapter{service: s.svc})
+
+	catalog.RegisterPlatformDomain(s.addCatalogTool, s.svc)
 
 	catalog.RegisterFrontDoorPlatform(s.addCatalogTool, frontDoorPlatformAdapter{service: s.svc})
 
@@ -93,6 +96,12 @@ func (s *Server) register() {
 
 	catalog.RegisterSourcePullRequests(s.addCatalogTool, s.svc)
 
+	catalog.RegisterSourcePublicOSS(s.addCatalogTool, s.svc)
+
+	catalog.RegisterSourceWorkflows(s.addCatalogTool, s.svc)
+
+	catalog.RegisterSourceEdgeRelease(s.addCatalogTool, s.svc)
+
 	catalog.RegisterGitRemoteManagement(s.addCatalogTool, s.svc)
 
 	catalog.RegisterValidation(s.addCatalogTool, s.svc)
@@ -110,6 +119,8 @@ func (s *Server) register() {
 	catalog.RegisterBrain(s.addCatalogTool, s.svc)
 
 	catalog.RegisterAnnotations(s.annotate)
+	s.annotate(map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}, "asset_search", "asset_materialize_preview")
+	s.annotate(map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true}, "asset_materialize")
 	s.annotate(map[string]any{
 		"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": true,
 	}, "platform_front_door_coordinator_preview", "platform_front_door_transition_preview", "platform_front_door_transition_status")

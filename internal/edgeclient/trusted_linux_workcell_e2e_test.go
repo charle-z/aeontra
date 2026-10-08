@@ -403,7 +403,7 @@ func p12HostFixture(t *testing.T, bubblewrapPath string) (*OpenCodeLauncher, Wor
 		t.Fatal(err)
 	}
 	lease := p12Lease(workspace.ID, "Run the trusted host fixture.")
-	prepared, err := PrepareLinuxWorkcell(t.Context(), workspace, lease, nil)
+	prepared, err := PrepareLinuxWorkcellWithToolPathAndStateRoot(t.Context(), workspace, lease, state, openCodeDefaultToolPath, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

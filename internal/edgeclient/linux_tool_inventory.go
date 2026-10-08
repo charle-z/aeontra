@@ -1,3 +1,5 @@
+//go:build !windows
+
 package edgeclient
 
 import (
@@ -11,13 +13,6 @@ import (
 	"time"
 )
 
-type LinuxToolInventoryEntry struct {
-	Name       string `json:"name"`
-	Available  bool   `json:"available"`
-	Version    string `json:"version"`
-	Capability string `json:"capability"`
-}
-
 type linuxToolDefinition struct {
 	Name        string
 	Executables []string
@@ -28,6 +23,16 @@ type linuxToolDefinition struct {
 var safeToolVersionPattern = regexp.MustCompile(`(?i)\bv?\d+(?:\.\d+){0,3}(?:[-+._][a-z0-9]+)*\b`)
 
 func CollectLinuxToolInventory(ctx context.Context, toolPath string) ([]LinuxToolInventoryEntry, error) {
+	return collectLinuxToolInventory(ctx, toolPath, false)
+}
+
+// CollectDevelopmentToolInventory avoids probing unrelated lab tools when a
+// development workflow requests a capability catalog.
+func CollectDevelopmentToolInventory(ctx context.Context, toolPath string) ([]LinuxToolInventoryEntry, error) {
+	return collectLinuxToolInventory(ctx, toolPath, true)
+}
+
+func collectLinuxToolInventory(ctx context.Context, toolPath string, developmentOnly bool) ([]LinuxToolInventoryEntry, error) {
 	if strings.TrimSpace(toolPath) == "" {
 		toolPath = openCodeDefaultToolPath
 	}
@@ -55,17 +60,29 @@ func CollectLinuxToolInventory(ctx context.Context, toolPath string) ([]LinuxToo
 		{Name: "hydra", Executables: []string{"hydra"}, VersionArgs: []string{"-h"}, Capability: "credential-validation"},
 		{Name: "python", Executables: []string{"python3", "python"}, VersionArgs: []string{"--version"}, Capability: "python-runtime"},
 		{Name: "gcc", Executables: []string{"gcc"}, VersionArgs: []string{"--version"}, Capability: "c-compiler"},
+		{Name: "g++", Executables: []string{"g++"}, VersionArgs: []string{"--version"}, Capability: "cxx-compiler"},
+		{Name: "make", Executables: []string{"make"}, VersionArgs: []string{"--version"}, Capability: "build-tool"},
+		{Name: "git", Executables: []string{"git"}, VersionArgs: []string{"--version"}, Capability: "version-control"},
+		{Name: "cmake", Executables: []string{"cmake"}, VersionArgs: []string{"--version"}, Capability: "build-tool"},
+		{Name: "shell", Executables: []string{"bash", "sh"}, VersionArgs: []string{"--version"}, Capability: "shell"},
 		{Name: "go", Executables: []string{"go"}, VersionArgs: []string{"version"}, Capability: "go-toolchain"},
 		{Name: "node", Executables: []string{"node"}, VersionArgs: []string{"--version"}, Capability: "node-runtime"},
 		{Name: "npm", Executables: []string{"npm"}, VersionArgs: []string{"--version"}, Capability: "node-packages"},
 		{Name: "pnpm", Executables: []string{"pnpm"}, VersionArgs: []string{"--version"}, Capability: "node-packages"},
 		{Name: "rust", Executables: []string{"rustc"}, VersionArgs: []string{"--version"}, Capability: "rust-toolchain"},
 		{Name: "cargo", Executables: []string{"cargo"}, VersionArgs: []string{"--version"}, Capability: "rust-packages"},
+		{Name: "java", Executables: []string{"java"}, VersionArgs: []string{"-version"}, Capability: "java-runtime"},
+		{Name: "javac", Executables: []string{"javac"}, VersionArgs: []string{"-version"}, Capability: "java-compiler"},
 		{Name: "docker", Executables: []string{"docker"}, VersionArgs: []string{"--version"}, Capability: "rootless-containers"},
 		{Name: "podman", Executables: []string{"podman"}, VersionArgs: []string{"--version"}, Capability: "rootless-containers"},
 	}
 	entries := make([]LinuxToolInventoryEntry, 0, len(definitions))
 	for _, definition := range definitions {
+		if developmentOnly {
+			if _, relevant := developmentCapabilityForInventoryTool(definition.Name); !relevant {
+				continue
+			}
+		}
 		entry := LinuxToolInventoryEntry{Name: definition.Name, Version: "absent", Capability: definition.Capability}
 		path := ""
 		for _, executable := range definition.Executables {
@@ -81,6 +98,9 @@ func CollectLinuxToolInventory(ctx context.Context, toolPath string) ([]LinuxToo
 		entry.Available = true
 		entry.Version = safeLinuxToolVersion(ctx, path, definition.VersionArgs, toolPath)
 		entries = append(entries, entry)
+	}
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 	return entries, nil
 }
@@ -109,7 +129,7 @@ func findSafeLinuxTool(name, toolPath string) (string, bool) {
 }
 
 func safeLinuxToolRoot(path string) bool {
-	for _, root := range []string{"/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin", "/sbin", "/bin", openCodeManagedToolRoot} {
+	for _, root := range []string{"/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin", "/sbin", "/bin", "/opt/mcp-devbox/releases", openCodeManagedToolRoot} {
 		if pathInside(root, path) {
 			return true
 		}

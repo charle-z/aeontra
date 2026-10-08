@@ -38,13 +38,7 @@ func TestPairPersistsDeviceKeyPrivatelyAndCanSignRequests(t *testing.T) {
 		t.Fatalf("identity=%+v", identity)
 	}
 	for _, path := range []string{stateRoot, filepath.Join(stateRoot, identityFile), filepath.Join(stateRoot, privateKeyFile)} {
-		info, err := os.Stat(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if info.Mode().Perm()&0o077 != 0 {
-			t.Fatalf("permissions %s=%o", path, info.Mode().Perm())
-		}
+		assertPrivateIdentityPath(t, path)
 	}
 	loaded, key, err := LoadIdentity(stateRoot)
 	if err != nil {

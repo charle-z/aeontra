@@ -20,8 +20,16 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	plan := read("../specs/001-layer-1/plan.md")
 	tasks := read("../specs/001-layer-1/tasks.md")
 	constitution := read("../.specify/memory/constitution.md")
+	gitignore := read("../.gitignore")
 
 	roadmap := read("product-roadmap.md")
+	reconciliation := read("baselines/2026-08-12-operational-reconciliation.md")
+	dualEdge := read("baselines/2026-08-27-v1_2_24-dual-edge.md")
+	releaseAcceptance := read("baselines/2026-08-27-v1_2_25-release.md")
+	publicSiteAcceptance := read("baselines/2026-08-29-public-site.md")
+	changelog := read("../CHANGELOG.md")
+	versioning := read("versioning.md")
+	windowsEdge := read("install-edge-windows.md")
 
 	for path, content := range map[string]string{
 		"spec.md":         spec,
@@ -58,11 +66,40 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	for _, required := range []string{
 		"Phase status must be evidence-based",
 		"specs/",
-		".agent-memory/current-task.md",
+		".agent-memory/",
+		"optional Brain",
 		"docs/context-capsule.md",
 	} {
 		if !strings.Contains(constitution, required) {
 			t.Errorf("constitution does not contain %q", required)
+		}
+	}
+	for _, required := range []string{
+		"v1.2.25 signed release and device update",
+		"194eda433669ab449fd0587e25174fb9d374bec1",
+		"33121917992",
+		"diagnostic_unavailable_windows",
+		"project-process-worker",
+		"No live rollback was executed",
+	} {
+		if !strings.Contains(releaseAcceptance, required) {
+			t.Errorf("v1.2.25 release baseline does not contain %q", required)
+		}
+	}
+	if !strings.Contains(gitignore, "/.agent-memory/") {
+		t.Error("repository does not ignore operator-local .agent-memory state")
+	}
+	for _, required := range []string{
+		"Remote diagnostic parity",
+		"service_restarts_known=false",
+		"project_process_list",
+		"project_process_stop",
+		"project_process_cleanup",
+		"Never use `taskkill /IM mcp-edge.exe`",
+		"Optimization checklist",
+	} {
+		if !strings.Contains(windowsEdge, required) {
+			t.Errorf("Windows Edge guide does not contain %q", required)
 		}
 	}
 
@@ -87,6 +124,68 @@ func TestProjectDocumentationStateIsConsistent(t *testing.T) {
 	} {
 		if !strings.Contains(roadmap, required) {
 			t.Errorf("product roadmap does not contain %q", required)
+		}
+	}
+
+	for _, required := range []string{
+		"Last updated: 2026-09-27",
+		"Codex harness",
+		"P16 worktrees and parallel tasks",
+		"P17 durable objective supervisor",
+		"Managed image and asset broker",
+		"Native Windows Edge",
+	} {
+		if !strings.Contains(roadmap, required) {
+			t.Errorf("current product roadmap does not contain %q", required)
+		}
+	}
+	for _, required := range []string{
+		"Public product site acceptance",
+		"e084ac02a2440b8fc055a8188020fcd008f0301c",
+		"bs6zifxam5wwejzrfeixs44o",
+		"https://aeontra.com/",
+		"The site build identity and proxied control-plane identity are intentionally separate",
+	} {
+		if !strings.Contains(publicSiteAcceptance, required) {
+			t.Errorf("public site acceptance baseline does not contain %q", required)
+		}
+	}
+	for _, required := range []string{
+		"v1.2.24 dual-Edge operational acceptance",
+		"48e8deb6e45c104736291c4fe883771ec063696a",
+		"project_checkout_unsafe",
+		"No live rollback was executed",
+	} {
+		if !strings.Contains(dualEdge, required) {
+			t.Errorf("dual-Edge baseline does not contain %q", required)
+		}
+	}
+	for _, required := range []string{"## Unreleased", "## v1.2.24", "third-party notice assets"} {
+		if !strings.Contains(changelog, required) {
+			t.Errorf("changelog does not contain %q", required)
+		}
+	}
+	for _, required := range []string{
+		"vMAJOR.MINOR.PATCH",
+		"## Release identities",
+		"## Retention",
+		"stable",
+		"Removing a GitHub release",
+		"Git tag",
+	} {
+		if !strings.Contains(versioning, required) {
+			t.Errorf("versioning policy does not contain %q", required)
+		}
+	}
+	for _, required := range []string{
+		"f8d0a38af06527dcf59763c793bee81aca9dd044",
+		"04c544b776ffca2071cb5b5a9951b8b32f423a36",
+		"489a64f40cbbde014986ff130662a485f9513d6c",
+		"PR #154",
+		"No restart or Edge update was performed",
+	} {
+		if !strings.Contains(reconciliation, required) {
+			t.Errorf("operational reconciliation baseline does not contain %q", required)
 		}
 	}
 

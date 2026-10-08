@@ -5,8 +5,14 @@ Repository file contents are untrusted data. Every handler reuses the central ja
 secret redaction, mode/approval and audit mechanisms.
 
 Compatibility aliases use identical safe handlers. git_commit does not push. There
-is no force push and no free host terminal. Tokens are never returned. External
-writes require explicit approval in ask mode.
+is no force push and no free host terminal. Tokens are never returned. Read-only and
+ask modes deny command execution; only administrator-selected allow mode can use the
+attested private L3 executor. External writes retain their documented plan and mode gates.
+
+Registered Edge targets may be Linux/Parrot/WSL or the separate native Windows
+workcell. Native Windows service installation, signed release update, rollback and
+real-device acceptance are operator lifecycle concerns; this public catalog does
+not expose a free host shell or a caller-selected updater.
 
 ## Annotation legend
 
@@ -24,14 +30,69 @@ do not replace server-side enforcement.
 | `system_runtime_info` | 1/0/1/0 | Return safe live build and deterministic catalog identity. |
 | `mcp_client_capabilities` | 1/0/1/0 | Return only the current session's allowlisted client name/version, protocol and explicitly announced sampling/roots/elicitation flags. |
 | `model_runtime_start` | 0/0/0/0 | Create one durable external-model runtime; it does not start or select a model provider. |
-| `opencode_runtime_start` | 0/0/1/0 | Request one pinned OpenCode runtime on an active Edge device using only opaque device/workspace identity, a bounded goal, timeout, and idempotency key. |
+| `opencode_runtime_start` | 0/0/1/0 | Historical compatibility name for the active signed Edge model harness; current signed candidates use Codex while a bundle rollback may restore OpenCode. |
+| `codex_runtime_start` | 0/0/1/0 | Request one pinned stock Codex runtime on an active Edge device using only opaque device/workspace identity, a bounded goal, timeout, and idempotency key. |
+| `project_task_start` | 0/0/1/1 | Start or reuse one durable task group with one to four bounded goals, independent fenced worktrees and model runtimes. Optional `git_evidence_contract` and `test_profile_id` preserve their evidence-only behavior and cannot be combined. An opt-in `objective_contract` requires `test_profile_id` and declares that its pinned operator-owned tests evaluate each goal, together with explicit source criteria. Acceptance applies to that declared contract. Zero changes and dirty trees are allowed when the criteria permit them. No contract is required for ordinary work. |
+| `project_task_status` | 1/0/1/0 | Reconcile and return separate task lifecycle, model-runtime and semantic acceptance states. Advisory `continuation` and per-worker `attention` identify an awaiting model turn, review, failure or reconciliation. `attention_order` puts workers with unknown turn age first, then known turns oldest first; `active_turn_created_at`, `turn_sequence` and `model_wait_seconds` expose bounded, content-free timing where known. `last_runtime_phase` and its timestamp show the latest recorded phase without labeling a slow worker as failed. When attention requires reconciliation, `reconciliation_reason` identifies the bounded failure class (control plane, disconnected or unavailable runtime, Edge, worktree, receipt, Git evidence, test evidence or lifecycle mismatch); it does not include raw errors. The versioned `handoff` contains a revision digest and a short resume prompt that directs a new chat to fetch fresh status before acting. It does not transfer ownership, wake a closed ChatGPT chat, choose tools or retry effects. A completed runtime remains `acceptance_pending` until trusted objective and test criteria exist. Opt-in Git and test evidence are reported separately. A test receipt requires a terminal, known zero exit plus revalidated profile, worktree, branch, HEAD, lease/fence and selected source-content digest; it does not prove the natural-language goal. Receipts are revalidated before cleanup and retained afterward. Missing or inconsistent evidence becomes `reconciliation_required`. Goals, transcripts, leases, fences, paths, credentials and process internals remain private. |
+| `project_task_list` | 1/0/1/0 | List up to 20 recent task IDs and bounded lifecycle metadata for one project/Edge target, including retained terminal tasks. It reads the indexed local journal without polling the Edge or starting a worker. A new chat can find a lost task ID, then call `project_task_status` for current runtime and acceptance evidence. It does not return goals, prompts, leases, paths or credentials. |
+| `project_development_start` | 0/1/1/1 | Stage and pin one exact scoped argv command, relative cwd, non-secret environment, stdin, timeout and optional extra capability requirements before any Edge effect. Return a durable `dr_` request immediately. The existing coordinator inspects the registered workspace and measured capabilities, executes only a supported registered route, and binds command acceptance to the exact source, environment, private body and captured process. Registered Linux source fingerprinting is Git-selected and finitely bounded; leaf symlink text is included without following targets, while directories/gitlinks and special files fail inspection. An isolated runner requires an explicit administrator-registered profile; private or dirty source is not moved. Capability requirements never grant execution authority. |
+| `project_development_status` | 1/0/1/0 | Read only durable request and objective metadata. No Edge polling, dispatch, raw command body, environment, paths or output is returned. `command_verified` means the exact command had a known zero exit and its source/environment bindings were revalidated; it does not establish a natural-language goal. Code failure, source drift, a requirement explicitly unsupported by every available provisioner, or a requirement missing from the selected calibrated runner template reports `awaiting_reasoning`. Unavailable provisioning, unknown or pending runner calibration, and unverified receipts remain pending. |
+| `project_development_cancel` | 0/1/1/0 | Persist cancellation for one exact request. The existing coordinator recovers lost start acknowledgments and stops only the process captured from its authenticated original operation. A failed stop enters durable, identity-bound read-only reconciliation; journal retention or a lost observation acknowledgment cannot replay the stop. The result may remain `cancelling` until terminal evidence is observed; cancellation cannot create passing command evidence. |
+| `project_task_test_start` | 0/0/1/1 | Start or reuse one pinned operator-owned test profile after the worker runtime succeeds. The Edge runs fixed argv asynchronously in that worker's exact managed worktree. The caller cannot supply argv, environment, stdin or cwd. |
+| `project_task_test_status` | 1/0/1/0 | Observe one durable test process and revalidate its identity, profile and selected source-content digest. A passing terminal result records an immutable receipt; status never stops the process. Nonzero, unknown, stopped, stale and unavailable results do not pass. |
+| `project_task_test_stop` | 0/1/1/0 | Stop only the process captured for this task worker using its durable identity, including after a lease rotation or checkout change. Stop is not a passing test result. |
+| `project_task_cancel` | 0/1/1/0 | Idempotently request cancellation of every nonterminal worker runtime in one durable task group while retaining terminal evidence and worktree branches. |
+| `project_task_cleanup` | 0/1/1/0 | Remove only terminal managed worktrees for one task after exact lease/fence validation; an opt-in verified Git or test receipt is revalidated against live Edge evidence before cleanup and retained afterward. Neither receipt semantically accepts the task. The caller idempotency key is a retry-correlation token, while each Edge cleanup operation uses a stable server-derived task/worker key so a completed cleanup can be recovered if its SQLite marker write failed. Worker branches and durable evidence remain available for explicit review and integration. |
 | `workspace_runtime_continue` | 0/0/1/0 | Continue one registered dev or HTB workspace through the active ChatGPT session using its local trusted contract; accepts the opaque workspace id, timeout and a fresh caller-generated idempotency key, creates one runtime, and does not retry automatically. |
 | `workspace_lab_prepare` | 0/0/1/0 | Queue idempotent HTB Linux workspace preparation on a paired Edge using closed lab metadata; commands and credentials never enter the control plane. |
 | `project_prepare` | 0/0/1/1 | Create, recover, or associate one development project using only project alias, repository name and human Edge target alias; local Git authority, paths and opaque IDs remain inside the Edge. |
-| `project_status` | 1/0/1/0 | Resolve one Edge project by alias and human target, returning only safe repository, profile, mode, readiness or blocker metadata. |
-| `project_snapshot` | 1/0/1/0 | Queue or reuse one durable Edge operation by caller idempotency key, resolve the selected development workspace locally, run only fixed read-only Git identity/cleanliness commands, and return bounded repository, branch, commit and operation metadata without starting another model. |
+| `project_status` | 1/0/1/0 | Resolve one Edge project by alias and human target, returning safe repository readiness plus bounded manifest detection and its L3, persistent-toolbox or pin-resolution route. |
+| `project_registry_list` | 1/0/1/0 | List bounded durable project claims for one target on a paired Edge without running Git status or discovery, or changing workspaces; it performs a bounded repository-identity check and returns repository identity, target, generation and lifecycle state without paths or internal workspace IDs. |
+| `project_reconcile` | 0/0/1/0 | Reconcile one registered project claim after a recoverable registry or workspace interruption. It revalidates the owner-bound workspace and never deletes source files or associates a new repository. |
+| `project_release` | 0/1/0/0 | Release one stale project claim only when alias, owner-bound repository, target and exact claim generation match; it removes registry metadata and never deletes or resets the workspace. |
+| `project_snapshot` | 1/0/1/0 | Queue or reuse one durable Edge operation by caller idempotency key, resolve the selected development workspace locally, run only fixed read-only Git identity/cleanliness commands, and return bounded repository, branch, commit and operation metadata without starting another model. A new branch without its first commit reports `unborn: true` and an empty commit. |
+| `project_exec` | 0/1/1/1 | Execute one bounded foreground argv inside the selected trusted development workcell through Bubblewrap, with workspace-only writable state, relative cwd, optional stdin and non-secret environment, process-group cancellation, a 120-second maximum timeout, separate bounded redacted stdout/stderr, and safe preflight/execution/result durations. The operation and idempotency result remain durable, but an unstarted command fails with `operation_queue_expired` after three minutes; an offline Edge cannot execute that stale command on reconnect. Already-started commands and background processes are unaffected. A missing executable remains a normal nonzero result and adds `execution_hint=workcell_executable_unavailable` plus `next_tool=project_toolbox_status` when Bubblewrap reports that exact failure. The hint does not create a toolbox or reroute a command. No implicit shell is added. |
+| `project_network_route` | 1/0/1/1 | Resolve the selected Edge workcell route to one private IPv4 destination and return only the validated `tun*`/`tap*` interface and source IPv4. No executable, URL, path or credential is accepted. |
+| `project_network_probe` | 1/0/1/1 | Perform at most 64 explicit TCP connect probes to one private IPv4 destination after validating a `tun*`/`tap*` VPN route. Ports and a 50-1500 ms per-port timeout are structured inputs; results use closed port states. |
+| `project_browser_harness_start` | 0/1/1/1 | Start or reuse arbitrary argv in the project's persistent rootless toolbox for Playwright, Puppeteer, Selenium, WebDriver, browser CLIs or any language/framework installed by the project. Standard managed run, artifacts, downloads and persistent-profile directories are supplied through environment variables; no browser action, JavaScript, domain or browser-engine allowlist is imposed. |
+| `project_browser_harness_status` | 1/0/1/0 | Read one durable harness run's opaque lifecycle, configurable timeout/storage limits, bounded incremental redacted stdout/stderr and aggregate artifact metadata without returning argv, environment, PID, cookies, host paths or profile contents. |
+| `project_browser_harness_list` | 1/0/1/0 | List at most 50 durable harness runs bound to one authorized development project and Edge target. |
+| `project_browser_harness_stop` | 0/1/1/0 | Idempotently stop one owned harness process tree after PID/start-time revalidation, bounded TERM grace and KILL only when required. |
+| `project_browser_harness_cleanup` | 0/1/1/0 | Explicitly remove terminal managed run directories and metadata; persistent profiles are removed only on request and only when no retained run uses them. |
+| `project_browser_harness_artifact_list` | 1/0/1/0 | List bounded metadata for arbitrary regular files under a run's managed `artifacts/` or `downloads/` trees, including screenshots, PDFs, traces, videos, HARs, logs and downloads. |
+| `project_browser_harness_artifact_read` | 1/0/1/0 | Read one exact bounded base64 chunk from a relative managed artifact/download path; traversal, symlinks and non-owned files fail closed. |
+| `project_browser_create` | 0/0/1/1 | Convenience API: create or reuse one durable Edge-private Chromium session using the authorized workcell's general HTTP/HTTPS network, including Internet, private endpoints and localhost. |
+| `project_browser_status` | 1/0/1/0 | Convenience API: read one bounded Chromium-session summary with opaque identity, safe URL without query/fragment, title, state, revision and timestamps. |
+| `project_browser_list` | 1/0/1/0 | Convenience API: list at most 20 Chromium-session summaries for one registered project and Edge target. |
+| `project_browser_run` | 0/1/1/1 | Convenience API: execute up to 32 common navigation/locator actions in ephemeral Chromium backed by a persistent Edge-private profile. It is not the only automation path; arbitrary code uses `project_browser_harness_start`. Downloads are allowed into the managed profile. |
+| `project_browser_artifact_read` | 1/0/1/0 | Convenience API: read one bounded base64 chunk from an Edge-private JPEG capture by opaque session/artifact identities and byte offset. |
+| `project_browser_close` | 0/1/1/0 | Convenience API: idempotently close one non-busy Chromium session while preserving its private profile and artifacts until cleanup. |
+| `project_browser_cleanup` | 0/1/1/0 | Convenience API: explicitly remove only closed Chromium sessions, exact private profiles and exact JPEG artifacts. Ready/busy sessions are preserved. |
+| `project_process_start` | 0/1/1/1 | Start or reuse one durable background argv through the same Bubblewrap/workcell executor as `project_exec`, keyed by a caller idempotency key. It returns an opaque process id; PID, paths, argv and environment remain private. |
+| `project_process_status` | 1/0/1/0 | Read safe durable state plus bounded incremental redacted stdout/stderr for one owned background process by opaque id and byte offsets. |
+| `project_process_stdin` | 0/1/1/1 | Write one ordered bounded non-secret UTF-8 chunk to an owned durable process stdin, or close stdin explicitly, using an idempotency key and expected byte offset. The incremental stream is capped at 16 MiB; receipts report exact accepted bytes and closed state without returning input content. |
+| `project_process_stop` | 0/1/1/0 | Idempotently stop one owned process group after PID/start-time revalidation, using TERM followed by bounded grace and KILL only when needed. |
+| `project_process_signal` | 0/1/0/0 | Send one closed `interrupt`, `terminate`, or `kill` signal to an owned process group after PID/start-time revalidation; arbitrary signals and host-wide targets are rejected. |
+| `project_process_list` | 1/0/1/0 | List at most 100 opaque process identities, states and timestamps for one project/target without exposing PID, argv, environment, paths or log contents. |
+| `project_process_cleanup` | 0/1/1/0 | Explicitly remove terminal journal records and private logs for one process or a project/target; live processes are reported and preserved. |
+| `project_git_status` | 1/0/1/1 | Inspect the registered Edge checkout and fixed owner-bound `origin`, returning only branch/commit/remote relation and clean, detached, unpublished or diverged state. A new branch without its first commit reports `unborn: true` and an empty commit; publication requires a committed HEAD, while a clean unborn branch may fast-forward to its fetched first remote commit. No path, URL or credential is returned. |
+| `project_github_status` | 1/0/1/1 | Ask the local Edge broker to verify the configured GitHub authority against the repository already bound to a development project. The broker invokes only fixed `gh api` reads and returns bounded repository metadata plus closed permission diagnostics; token, URL, headers and CLI output never enter the public result. |
+| `project_git_fetch` | 0/0/1/1 | Fetch exactly `origin` with `--no-tags` and an Edge-constructed current-branch refspec, using the existing private Git broker credential; no caller refspec is accepted. An unborn local branch may fetch the remote's first commit without gaining publication authority. |
+| `project_git_fast_forward_preview` | 1/0/1/1 | Create a five-minute Edge-owned single-use plan bound to project, target, branch, clean tree, local HEAD (or unborn state) and fetched remote HEAD. Dirty, detached, ahead or diverged checkouts fail closed. |
+| `project_git_fast_forward` | 0/0/1/1 | Consume and revalidate one exact plan, then run only `git merge --ff-only <bound-commit>`; this can initialize a clean unborn branch from its fetched first remote commit. No reset, checkout, force, tags, URL or free refspec exists. |
+| `project_git_publish_preview` | 1/0/1/1 | Create a five-minute Edge-owned single-use publication plan bound to the exact clean attached branch, local HEAD and current same-name remote-branch state. An existing remote commit must be locally resolvable and a proven ancestor; a stale optional tracking ref does not replace that proof. |
+| `project_git_publish` | 0/0/1/1 | Consume and revalidate one exact publication plan, then push the checkout's Git objects for the bound branch to its same-name branch on the fixed owner-bound `origin`, verifying the remote commit. No force, tags, caller URL or caller refspec. Never reconstruct a branch from redacted command output. |
+| `project_toolbox_create` | 0/1/1/1 | Create or recover one Debian rootfs through the registered workspace's user-owned rootless engine. Lifecycle defaults to `persistent`; `disposable` must be explicit. Existing lifecycle is immutable on reuse. Optional CPU, memory and process limits remain bounded; no host engine socket is mounted. |
+| `project_toolbox_status` | 1/0/1/1 | Return opaque state/base identity, lifecycle, generation, conservative reclaimability, applied resource limits, writable/rootfs byte usage and timestamps without changing toolbox metadata or creating/repairing private runtime roots; host paths, socket paths and container identity remain private. A missing container is reported only after bounded label and exact-name checks succeed on its recorded endpoint; engine/socket failures remain unavailable. Safe failures distinguish endpoint discovery/open, ownership inspection, state inspection and storage-size inspection as `project_toolbox_endpoint_unavailable`, `project_toolbox_ownership_inspect_unavailable`, `project_toolbox_state_inspect_unavailable` and `project_toolbox_storage_inspect_unavailable`; no raw stderr, paths, socket addresses or container IDs are returned. |
+| `project_toolbox_repair` | 0/1/1/1 | Restart or reconcile only a stopped server-owned toolbox after revalidating its workspace, recorded image, labels, generation and exact mounts. A stale compatible record may be recreated in place without deleting the project workspace; a missing container is reported as `project_toolbox_container_missing` and is not rebuilt automatically. Unknown, foreign-owned or unsafe state fails closed. |
+| `project_toolbox_exec` | 0/1/1/1 | Execute explicit arbitrary argv inside the project's toolbox with the project at `/workspace`, relative cwd, non-secret environment overlay, bounded redacted output and no implicit shell or command allowlist. A completed command reports `exit_code`, including nonzero exits; engine failures remain operation failures. Host container-engine sockets are absent. |
+| `project_toolbox_install` | 0/1/1/1 | Run explicit package, toolchain or rootless container-client installation argv as container root inside the rootless user namespace; a completed command reports `exit_code`. The host WSL package database and global toolchains are not modified. |
+| `project_toolbox_service_start` | 0/1/1/1 | Start or reuse one named background argv inside the project's toolbox. Only an opaque service id, name, state and timestamps are returned; caller argv is positional and never interpolated into the fixed supervisor script. |
+| `project_toolbox_service_status` | 1/0/1/1 | Revalidate one opaque service identity and report `running` or `stopped` without starting a stopped toolbox or exposing PID, argv, paths, logs or container internals. |
+| `project_toolbox_service_stop` | 0/1/1/1 | Stop one owned service after PID/start-tick revalidation using TERM, a bounded grace period and KILL only when necessary; repeated requests are idempotent. |
+| `project_toolbox_cleanup` | 0/1/1/1 | Explicitly remove only the project's toolbox rootfs and private toolbox metadata. With one rootless endpoint, a missing container permits record-only cleanup after the pinned endpoint, workspace identity, name and label have been checked. Cleanup is idempotent, never automatic, and does not delete the project workspace or other workspace storage. |
 | `edge_operation_list` | 1/0/1/0 | List bounded queued/running operation identity, kind, progress and cancellation state for one human Edge target without exposing device/workspace ids, paths, request bodies or raw output. |
-| `edge_operation_status` | 1/0/1/0 | Read one durable Edge operation's bounded lifecycle and progress metadata by operation id. |
+| `edge_operation_status` | 1/0/1/0 | Read one durable Edge operation's bounded lifecycle, progress and derived queue/pickup/work/completion/total durations by operation id; internal absolute phase timestamps remain private. |
 | `edge_operation_cancel` | 0/1/1/0 | Idempotently cancel one queued operation or one interruptible running operation; updater, rollback and repair effects become non-cancellable after pickup. |
 | `workspace_lab_retarget` | 0/0/1/0 | Queue a private-IP retarget; the Edge validates VPN routing and rotates local authorization while preserving the workspace ID and evidence. |
 | `workspace_autopilot_start` | 0/0/1/0 | Start or reuse one durable local job with `run_until=completed_or_cancelled`; no free-form objective is accepted. |
@@ -39,14 +100,19 @@ do not replace server-side enforcement.
 | `workspace_autopilot_pause` | 0/0/1/0 | Pause the local job after its current bounded cycle without discarding checkpoint or evidence. |
 | `workspace_autopilot_resume` | 0/0/1/0 | Resume a paused or safely blocked job using the existing local state and provider configuration. |
 | `workspace_autopilot_cancel` | 0/1/1/0 | Cancel the durable job and prevent further local cycles while preserving collected evidence. |
-| `edge_bundle_status` | 1/0/1/0 | Return only signed release, commit, manifest/component compatibility, service health and update availability metadata from one paired Edge. |
+| `edge_bundle_status` | 1/0/1/0 | Return only signed release, commit, manifest/component compatibility and bounded runtime health from one paired Edge. Linux includes a known systemd restart count and channel availability; Windows binds the responder to SCM and leaves its unavailable restart count explicitly unknown. |
 | `edge_bundle_update` | 0/0/1/0 | Request only `release=stable`; the restricted root updater resolves and verifies the official signed channel. |
 | `edge_bundle_rollback` | 0/1/1/0 | Activate only the previous locally known signed release and verify Edge health. |
 | `edge_repair` | 0/0/1/0 | Restore only reviewed signed components, permissions, fixed symlinks, packaged unit and Edge health. |
-| `edge_onboarding_status` | 1/0/1/0 | Return safe pairing, service, bundle, provider, driver, Bubblewrap, rootless, workspace count and blocker metadata. |
+| `edge_onboarding_status` | 1/0/1/0 | Return safe pairing, service, platform-known restart state, bundle, compatible components, workspace count and blocker metadata. Linux additionally reports Bubblewrap/rootless checks plus filesystem capacity, optional reserve pressure, and the outer rootless storage-driver posture without exposing paths; Windows binds the responder to the current SCM process and derives provider/driver compatibility from the verified signed bundle. |
 | `model_runtime_status` | 1/0/1/0 | Return only public runtime identity, state, controller, sequence, update time, optional result ref, and the bounded server-owned startup phase timeline. |
+| `model_runtime_control` | 0/0/0/0 | Opt in to generation-fenced model responses. Claim a pending turn, prepare a successor, ACK the exact turn, transfer, then release the previous controller. Abort recovers a pending handoff at a new generation. It keeps the same runtime and worker and never replays effects or adds host authority. |
 | `model_turn_next` | 1/0/1/0 | Poll for the next awaiting turn and return its canonical request plus offered tool ids. |
-| `model_turn_respond` | 0/0/0/0 | Submit one bounded text/tool-call response after runtime, sequence, digest and offered-tool validation. |
+| `model_turn_next_any` | 1/0/1/0 | Poll or wait up to 180 seconds across one to four distinct known runtime IDs and per-runtime sequence cursors. Return only the oldest pending turn, or one terminal runtime when no turn is pending; no turn is consumed. The shared store wakeup avoids serial per-worker waits. A lost response can be recovered with cursor zero. Runtime IDs remain opaque and do not grant new authority. |
+| `model_turn_respond` | 0/0/0/0 | Submit one bounded response. Explicit `task_state` is preferred; cached legacy schemas may omit it and the server infers the state from `finish_reason`. `active` requires an offered tool call, `blocked` requires `error`/`cancelled`, and `complete` requires `stop` without pending-action language. |
+| `asset_search` | 1/0/1/0 | Search the operator-reviewed PNG/JPEG library locally; return pinned hashes, provenance, license review and attribution. No network search or legal clearance is implied. |
+| `asset_materialize_preview` | 1/0/1/0 | Bind one reviewed image and exact new relative file path in a configured backend repository to a five-minute single-use plan. Parent must already exist; no download, write or Edge selection occurs. |
+| `asset_materialize` | 0/0/0/1 | Revalidate the plan, fetch its fixed public HTTPS source, verify actual hash/MIME/raster bytes and exclusively create the file. Ask mode requires approval. Returns provenance; no overwrite or uncertain automatic cleanup. Linux backend only. |
 | `model_runtime_cancel` | 0/1/1/0 | Idempotently cancel a runtime and all active unconsumed turns. |
 | `build_context_pack` | 1/0/1/0 | Read a compact jailed repo context pack. |
 | `workspace_checkpoint` | 1/0/1/0 | Return a bounded schema-only Git/task checkpoint without fetch, file bodies, absolute paths, or external calls. |
@@ -60,8 +126,8 @@ do not replace server-side enforcement.
 | `result_stage` | 1/0/1/0 | Read one indexed result stage by opaque ref in fragments capped at 16 KiB. |
 | `apply_patch` | 0/1/0/0 | Validate and apply a diff that may replace or delete content. |
 | `create_file` | 0/0/0/0 | Create a new file through the patch pipeline; no overwrite. |
-| `run_command` | 0/1/0/1 | Run one allowlisted argv without a shell; may reach network. |
-| `run_tests` | 0/1/0/1 | Run the configured allowlisted test command; may reach network. |
+| `run_command` | 0/1/0/0 | Run one allowlisted argv without a shell inside the network-denied private L3 executor; only allow mode enables it. |
+| `run_tests` | 0/1/0/0 | Run the configured allowlisted test command inside the network-denied private L3 executor; only allow mode enables it. |
 | `project_validation_preview` | 1/0/1/0 | Preview one fixed `pnpm-lockfile` or `pnpm-validate` private-runner profile. |
 | `project_validation_execute` | 0/1/0/1 | Execute one reviewed fixed Node/pnpm profile through the private runner. |
 | `git_status` | 1/0/1/0 | Compatibility name for `repo_status`. |
@@ -71,8 +137,162 @@ do not replace server-side enforcement.
 | `git_clone` | 0/0/0/1 | Clone a credential-free URL into a new jailed directory. |
 | `repo_fetch` | 0/0/1/1 | Run exactly `git fetch <remote>`; approval-gated in ask mode. |
 | `repo_fast_forward_preview` | 1/0/1/0 | Plan an exact clean-tree fast-forward to the tracked upstream. |
-| `repo_fast_forward` | 0/0/0/0 | Revalidate and run exactly `git merge --ff-only <upstream>`. |
-| `git_commit` | 0/0/0/0 | Stage and commit locally. It does not push. |
+| `repo_fast_forward` | 0/0/0/0 | Revalidate and run exactly `git merge --ff-only <upstream>` in the attested private L3 executor; allow mode only. |
+| `git_commit` | 0/0/0/0 | Stage and commit locally in the attested private L3 executor; allow mode only. It does not push. |
+
+### Task evidence after cleanup
+
+Git and test evidence contracts are opt-in. After a succeeded worker's worktree
+is cleaned, a task without either contract remains `acceptance_pending` for
+manual review. Status does not require a receipt or poll the removed worktree.
+Tasks with an evidence contract still require its durable verified receipt.
+Cleanup does not infer acceptance of a natural-language objective.
+
+Every task worker has an independent fenced worktree; no worker shares a writer checkout.
+
+### Declared objective acceptance
+
+`project_task_start` may receive an `objective_contract` with four required fields:
+`version: 1`, `minimum_commits_ahead_per_worker` and
+`minimum_changed_paths_per_worker` (each 0–10000), and `require_clean` (boolean).
+It requires `test_profile_id` and excludes `git_evidence_contract`.
+The caller explicitly declares that the operator-owned profile checks the goal;
+the server cannot determine whether an arbitrary test suite covers prose requirements.
+Operators must supply meaningful goal-specific checks before using this mode.
+
+`project_task_status` returns worker `acceptance_state: accepted` only after the runtime
+succeeds, the pinned profile has a known zero exit on the exact selected source digest,
+and current Git evidence meets every declared criterion. The task becomes `accepted`
+only when every worker is accepted. Missing tests or unmet criteria remain pending;
+source drift, unavailable evidence and identity mismatches require reconciliation.
+It records `objective_evidence_state` and `objective_recorded_at` separately from
+runtime, Git and test evidence. This does not authorize publication or integration.
+
+The immutable receipt binds the goal hashes, profile digest, test receipt and observed
+source criteria. While the worktree exists, status revalidates it rather than trusting
+the stored receipt alone. Cleanup requires fresh evidence, retains the receipt and
+recovers a confirmed cleanup with a lost SQLite marker without replaying that effect.
+After managed cleanup, acceptance describes the recorded contract and tested source;
+it is not an observation of later edits to the preserved branch.
+
+### Reviewed multiworker integration
+
+An optional `integration_contract` on `project_task_start` has required fields
+`version: 1`, `expected_base_commit`, `source_task_id`, and `workers`. Each of the two
+to four distinct workers selects an explicit zero-based `ordinal` and exact
+`head_commit`. All sources must be succeeded, committed and clean, on the same project,
+target and base. Recursive integration is unsupported. Supply exactly one goal, an
+operator-owned `test_profile_id` and an `objective_contract` with `require_clean: true`.
+The canonical checkout must still have the declared base.
+
+The server captures source bindings and creates a separate reviewer/integrator worker;
+it never writes into the source worktrees. Source drift rejects replay and acceptance,
+and active pins prevent their managed cleanup. The integrator reviews the selected
+changes and resolves conflicts in its own worktree. Unresolved conflicts remain
+blocked; no automatic ours/theirs, rebase or force operation is added.
+
+Acceptance requires fresh goal-specific passing tests, clean exact-HEAD evidence, and
+proof that every selected source commit is an ancestor of that HEAD. An older Edge
+without ancestry evidence reports `integration_ancestry_unavailable`, not success.
+`integration_state: verified` retains a receipt after managed cleanup. Publication,
+PR review, exact-head CI and merge are separate operations. Linked worktrees retain
+their existing trusted common-Git authority; source-ref isolation against a malicious
+worker is not claimed.
+
+### Optional controller handoff
+
+`model_runtime_control` coordinates model-response ownership within the existing
+authenticated single-owner boundary. It does not identify an authenticated chat or
+move filesystem authority. An opaque `controller_id` has the form `mc_` plus 32
+lowercase hexadecimal characters. Every transition binds the exact pending `turn_id`,
+`expected_sequence` and `request_digest`. Claim uses generation 0; later transitions
+use the generation reported by `model_runtime_status.control`.
+
+Prepare names a distinct `successor_id` and pauses response admission. Only that
+successor may ACK the bound turn. Transfer then increments generation atomically;
+the former controller releases its old generation. The successor can respond after
+transfer, but another prepare waits for that release. Abort before transfer restores
+the original controller at a new generation. A missing successor never causes an
+automatic takeover. Reconcile a lost reply by reading runtime status.
+
+Controlled `model_turn_respond` calls require `controller_id` and `control_generation`.
+Late controllers, stale generations, terminal/expired runtimes and responded batches
+are rejected. Uncontrolled runtimes retain their existing response contract. Pending
+commands and external operations must be reconciled before a successor acts; handoff
+does not stop them, start a second writer or retry them.
+
+### Optional efficiency measurements
+
+`project_task_status(include_metrics=true)` adds bounded, content-free worker timings
+and observed turn/retry counts. Missing or inconsistent metadata is unavailable rather
+than a fabricated zero. It does not load prompts, alter acceptance, estimate provider
+credits or establish that an interruption wasted work. The default does no metrics
+queries. See [observability.md](observability.md).
+
+### Reviewed image acquisition
+
+Asset tools require an administrator-owned `MCP_DEVBOX_ASSET_LIBRARY` configured at
+startup. Search matches only that immutable library. Preview selects an entry and a
+new relative PNG/JPEG destination in a configured backend repository; execute consumes
+the exact plan. The existing parent and root identities are revalidated before and
+after download, and creation refuses existing files and symlinks.
+
+The receipt includes the reviewed license, attribution, source and manifest digest.
+Keep it with distribution evidence; the operator's declaration is not legal clearance.
+If a write fails after creating a file, inspect that path before making a new preview:
+the tool reports incomplete state and does not remove uncertain bytes. This capability
+does not offer online image search, generation, private-source credentials or Edge
+materialization. See [configuration.md](configuration.md) for manifest bounds.
+
+### Development-environment v2 semantics
+
+Project and process tools distinguish ordinary development state from a boundary
+failure. `project_status` may report `ready` or `dirty` when the registered workspace
+identity is valid. `unavailable`, `timeout`, `identity_mismatch`, `corrupt` and
+`unsafe_boundary` identify different recovery classes; `unsafe` is retained only as a
+legacy wire value. When diagnostics are returned, they contain a stable reason,
+repairability and a bounded recommended action. Paths, Git output, credentials and
+internal IDs remain private.
+
+Resolution is registry-first for operations that do not need current Git state. In
+particular, a process-specific status/stdin/stop/signal or cleanup request that carries
+the process ID uses the durable binding captured at start; it does not require a clean
+checkout or a live project alias. A list request, or cleanup without a process ID,
+resolves the current registered alias and target without running Git so a reassociated
+alias cannot reach records from its former workspace. A source tree may be dirty while
+a process is running. Exact clean-tree operations such as registration, fast-forward
+and publication keep their explicit precondition.
+
+Each Edge workspace separates its registered source tree from private runtime, cache and
+artifact roots. Toolchain homes and package-manager caches are mounted from those roots,
+so normal provisioning does not create `.cargo`, `.rustup`, package caches or other
+infrastructure in the source tree. The private runtime `home` directory is created with
+owner-only permissions before the workcell starts. Existing legacy runtime directories are not deleted
+implicitly.
+
+Toolbox records bind workspace, mount policy, rootless engine identity and generation.
+`project_toolbox_repair` can restart only a stopped server-owned toolbox whose identity
+and mounts still validate; stale but safely reconcilable records use the controlled
+reconciliation path, while ownership or boundary drift fails closed. Cleanup is explicit
+and does not delete the project workspace. If repair reports a missing container, explicit
+cleanup followed by create can recover its record on a single rootless endpoint; an
+unavailable endpoint or a container found by either selector prevents record removal.
+For a missing container, the cleanup result reports zero rootfs and writable bytes
+because no live container remains to measure.
+
+The Edge executes a bounded set of independent operations concurrently. Normal project,
+Git inspection and process operations share capacity; signed bundle update, rollback
+and repair are Edge-wide exclusive effects. Leases and fences remain durable, and
+terminal completion is written under the same store lock as its validation.
+
+### GitHub authority views
+
+`project_github_status` describes the private Edge GitHub broker for an already bound
+development project. Source-hosting tools may instead use the server-side source broker.
+These are separate authority surfaces: a workcell's `gh auth status` is not evidence
+that the Edge broker is unconfigured, and an Edge Git transport credential is not exposed
+to a workcell or public tool result. Publication remains an owner-bound, exact
+preview/execute operation.
 
 ## GitHub source hosting and publication
 
@@ -83,15 +303,32 @@ do not replace server-side enforcement.
 | `source_repo_create_preview` | 1/0/1/1 | Confirm absence and plan private-by-default creation. |
 | `github_create_repo` | 0/0/0/1 | Compatibility name for planned `source_repo_create`. |
 | `source_repo_create` | 0/0/0/1 | Revalidate and create the planned owner-bound repository. |
+| `source_public_issue_status` | 1/0/1/1 | Read one public upstream issue, assignees, bounded conversation and linked PRs. |
+| `source_public_issue_create_preview` | 1/0/1/1 | Verify one public external repository and plan one bounded issue with an exact title and body. |
+| `source_public_issue_create` | 0/0/0/1 | Revalidate the public upstream identity and create the reviewed issue. |
+| `source_public_fork_create_preview` | 1/0/1/1 | Verify one public external repository and plan a fork under the configured owner. |
+| `source_public_fork_create` | 0/0/0/1 | Revalidate and create the planned public fork, then verify its parent and write permission. |
+| `source_public_issue_comment_preview` | 1/0/1/1 | Freeze one open public issue/PR conversation and plan an exact comment. |
+| `source_public_issue_comment` | 0/0/0/1 | Require the conversation to remain unchanged and post the planned comment. |
+| `source_public_review_reply_preview` | 1/0/1/1 | Bind one exact inline review comment, PR head and reply body. |
+| `source_public_review_reply` | 0/0/0/1 | Revalidate the PR and comment timestamp, then post one threaded reply. |
+| `source_cross_repo_pull_request_create_preview` | 1/0/1/1 | Bind fork/upstream SHAs, ancestry and duplicate state for one public PR. |
+| `source_cross_repo_pull_request_create` | 0/0/0/1 | Revalidate the fork, SHAs and duplicate state, then open the public upstream PR. |
+| `source_public_pull_request_status` | 1/0/1/1 | Read one public PR, exact-head checks, reviews and conversation comments. |
 | `source_pull_request_create_preview` | 1/0/1/1 | Bind head/base SHAs and plan one non-draft pull request. |
 | `source_pull_request_create` | 0/0/0/1 | Revalidate branch SHAs and create the planned pull request. |
-| `source_pull_request_status` | 1/0/1/1 | Read PR state and every check/status context for the exact head SHA. |
+| `source_pull_request_status` | 1/0/1/1 | Read PR state and every check/status context for the exact head SHA. A generic required-checks denial keeps evidence incomplete; only GitHub's exact feature-unavailable response for an ineligible private repository proves that no required-check feature exists. |
 | `source_pull_request_failure_diagnostics` | 1/0/1/1 | Read failed jobs on the exact PR head and return failed steps, annotations and line-numbered redacted log context. |
 | `source_pull_request_job_log` | 1/0/1/1 | Read one exact job log in redacted byte chunks with `next_offset`; no job ID, token or signed URL is exposed. |
 | `source_pull_request_merge_preview` | 1/0/1/1 | Require mergeable state and completely green checks, then plan a merge commit. |
 | `source_pull_request_merge` | 0/1/0/1 | Revalidate head, mergeability and checks, then merge with `merge_method=merge`. |
 | `source_default_branch_update_preview` | 1/0/1/1 | Bind the existing target branch SHA and plan a default-branch update. |
 | `source_default_branch_update` | 0/1/0/1 | Revalidate the target SHA and update the owner-bound repository default branch. |
+| `source_workflow_dispatch_preview` | 1/0/1/1 | Verify one active workflow file and exact branch SHA, reject secret-like bounded inputs, and plan one dispatch. |
+| `source_workflow_dispatch` | 0/1/0/1 | Revalidate workflow identity and branch SHA, then dispatch the reviewed owner-bound workflow once. |
+| `source_edge_release_status` | 1/0/1/1 | Read the maintainer profile's fixed `mcp-devbox` `edge-release` state, release runs/jobs, and release assets. |
+| `source_edge_release_maintenance_preview` | 1/0/1/1 | Plan cancellation of obsolete release runs followed by the fixed main-only custom deployment branch policy. |
+| `source_edge_release_maintenance_apply` | 0/1/0/1 | Revalidate and execute only that fixed maintenance plan; branch protection is never changed. |
 | `repo_remote_preview` | 1/0/1/0 | Plan an owner-restricted credential-free remote add/update. |
 | `repo_remote_set` | 0/1/0/0 | Revalidate and add or replace the planned named remote. |
 | `repo_publish_preview` | 1/0/1/1 | Inspect the exact remote branch and plan one safe push. |
@@ -99,17 +336,27 @@ do not replace server-side enforcement.
 | `repo_publish` | 0/0/0/1 | Revalidate and push one branch; no force/tags/mirror/refspecs. |
 
 The public catalog GitHub tools use the VPS/Coolify `GITHUB_TOKEN` for API operations
-such as repository metadata, exact-head PR/check status, Actions diagnostics and merge.
-Actions runs/jobs/logs require `Actions: Read`; check-run annotations require
-`Checks: Read`. Job-log downloads follow exactly one GitHub-issued redirect, omit the
+such as repository metadata, owner-bound publication, public issue and fork creation,
+issue/PR comments, cross-repository pull requests, exact-head checks, Actions diagnostics and
+owner-bound merge. Public OSS operations accept only a public external upstream, create
+forks under the configured owner, keep upstream read-only, use expiring single-use
+plans for every write, and do not expose an external merge operation.
+Actions runs/jobs/logs require `Actions: Read`; workflow dispatch requires
+`Actions: Write`; check-run annotations require `Checks: Read`. Job-log downloads follow exactly one GitHub-issued redirect, omit the
 Authorization header on the signed download request, redact returned content and expose
 at most 1 MiB per call within a 16 MiB per-job read window. A configured local
-development Edge separately injects `workspace_dev_git_clone`,
-`workspace_dev_publish_preview`, and `workspace_dev_publish` into its private OpenCode
-provider. Those owner-bound transport actions are intentionally absent from the
+development Edge separately exposes `workspace_dev_git_clone`,
+`workspace_dev_publish_preview`, and `workspace_dev_publish` through its private signed
+harness broker. Those owner-bound transport actions are intentionally absent from the
 exterior MCP catalog; see `docs/development-edge-git.md`.
 
 ## Coolify platform
+
+The fixed production backend, Front Door/coordinator, Brain deployment contract, and
+official Edge-release maintenance operations require the explicit repository-maintainer
+profile. They remain registered for catalog compatibility but fail closed in the
+portable default configuration. Generic app status, creation, deployment, logs, and
+domain operations continue to use only the operator's configured Coolify boundaries.
 
 | Tool | R/D/I/O | Effect |
 |---|---:|---|
@@ -122,6 +369,8 @@ exterior MCP catalog; see `docs/development-edge-git.md`.
 | `coolify_deployment_status` | 1/0/1/1 | Compatibility name for one deployment's safe status summary. |
 | `platform_deployment_status` | 1/0/1/1 | Return one deployment's status, commit, timestamps, application name, and only an unambiguous allowlisted Front Door coordinator `safe_code` when present in retained deployment logs. |
 | `platform_app_create_preview` | 1/0/1/1 | Validate and plan owner/domain-restricted app creation. |
+| `platform_app_domain_update_preview` | 1/0/1/1 | Validate one allowed healthy app, exact finished deployment (resolving owner-bound `HEAD` to its branch SHA), exact HTTPS origin and frozen non-secret configuration, then create a single-use domain-only plan. |
+| `platform_app_domain_update` | 0/1/0/1 | Revalidate and PATCH only `domains` with conflict override disabled; preserve the existing deployment/configuration and compensate to the prior domain if verification detects drift. |
 | `platform_front_door_create_preview` | 1/0/1/1 | Plan one fixed independently deployed MCP facade with allowed domain/backend and exact protocol/catalog pins. |
 | `platform_front_door_create` | 0/1/0/1 | Create or reconcile only the managed facade, configure its authenticated non-secret compatibility variables, allow at most one exact transition catalog, and deploy only when the pinned commit and catalog state are already active. |
 | `platform_front_door_status` | 1/0/1/1 | Read the managed facade by fixed server-owned name without exposing environment values or requiring its UUID in the general app allowlist. |
@@ -174,8 +423,8 @@ manual source content is redacted before cache insertion and again before return
 | `notes_read` | 1/0/1/0 | Read one jailed, non-symlink note with redaction. |
 | `notes_write_preview` | 1/0/1/0 | Plan size-limited create/append without overwrite. |
 | `notes_write` | 0/0/0/0 | Revalidate hash/state and create or append the note. |
-| `sandbox_status` | 1/0/1/0 | Report configured L3 containment status. |
-| `sandbox_exec` | 0/1/0/0 | Run argv only inside an available L3 sandbox. |
+| `sandbox_status` | 1/0/1/0 | Attest and report the private rootless L3 executor; unavailable on endpoint/image/profile drift. |
+| `sandbox_exec` | 0/1/0/0 | Run arbitrary explicit argv, optionally from a selected configured repository/workspace cwd, in the private rootless sandbox; only that workspace is mounted. L1 allowlists do not apply. Read-only and ask deny; allow mode is administrator-selected. |
 | `privileged_task_preview` | 1/0/1/0 | Preview one fixed administrator-enabled profile. |
 | `privileged_task_execute` | 0/1/0/1 | Execute one exact short-lived profile plan with timeout. |
 
@@ -198,7 +447,25 @@ message sequencing:
 12. `repo_publish`
 
 Steps 7-10 are needed only when creating/configuring a new GitHub repository.
-`git_commit` does not push. External writes require explicit approval in ask mode.
+`git_commit` does not push. Repository-code execution, including Git mutations that can
+invoke hooks or filters, requires administrator-selected allow mode and the attested
+private L3 executor. Its legacy `approve` input is retained for compatibility and does
+not grant execution authority. External writes require explicit approval through their
+documented mode or preview/execute gate.
+
+## Recommended public OSS contribution workflow
+
+1. `source_public_issue_status`
+2. repeat issue/comment/linked-PR review before claiming work
+3. `source_public_fork_create_preview`, then `source_public_fork_create`
+4. prepare the configured-owner fork locally, implement, verify and commit with DCO
+5. publish one branch through `repo_publish_preview` / `repo_publish`
+6. `source_public_issue_comment_preview`, then `source_public_issue_comment` when the project requires a claim
+7. `source_cross_repo_pull_request_create_preview`, then `source_cross_repo_pull_request_create`
+8. `source_public_pull_request_status` for checks, reviews, inline review comments and conversation
+9. use `source_public_review_reply_preview` / `source_public_review_reply` for an exact inline thread
+
+The broker never merges an external upstream PR. Maintainers retain merge authority.
 
 ## Recommended Coolify workflow
 
@@ -217,9 +484,10 @@ repo content. Tokens are sent only in HTTP authorization headers and never retur
 
 - Core/transport: `MCP_DEVBOX_TOKEN`, `MCP_DEVBOX_ROOT`, `MCP_DEVBOX_MODE`,
   `MCP_DEVBOX_TEST_CMD`, `MCP_DEVBOX_ALLOW_CMD`, `MCP_DEVBOX_BRAIN_ROOT`,
+  optional repository-only `MCP_DEVBOX_MAINTAINER_PROFILE`,
   `MCP_DEVBOX_PUBLIC_URL`,
   `MCP_DEVBOX_OAUTH_PASSPHRASE`, `MCP_DEVBOX_OAUTH_CLIENT_STORE`, and
-  `MCP_DEVBOX_OAUTH_REFRESH_STORE` as applicable.
+  `MCP_DEVBOX_OAUTH_ACCESS_STORE` and `MCP_DEVBOX_OAUTH_REFRESH_STORE` as applicable.
 - GitHub: `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_OWNER_TYPE` (`user` or `org`),
   and optional `GITHUB_DEFAULT_VISIBILITY` (`private` by default).
 - Coolify: `COOLIFY_URL`, `COOLIFY_API_TOKEN`, `COOLIFY_SERVER_UUID`,

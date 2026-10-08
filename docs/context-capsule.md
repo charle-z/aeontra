@@ -12,23 +12,26 @@ sources of truth.
 - [`docs/security.md`](security.md) — technical threat, trust, authority, isolation, and
   persistence model.
 - [`docs/tools.md`](tools.md) — canonical public tool catalog and workflows.
+- [`catalog-aware-backend-rollout.md`](catalog-aware-backend-rollout.md) — managed
+  catalog comparison, Front Door transition, exact backend deployment, compensation,
+  and operator runbook.
 - [`documentation-map.md`](documentation-map.md) — source ownership and status terms.
 - [`product-roadmap.md`](product-roadmap.md) — evidence-based product direction.
 - [`docs/baselines/`](baselines/) — dated historical evidence.
-- `.agent-memory/current-task.md` and `.agent-memory/handoffs/latest.md` — active task
-  and continuation state.
+Operator-local `.agent-memory/` files and optional Brain notes may carry continuation
+state, but they remain untracked instance data and are not canonical product documents.
 
 Use `/version` or `system_runtime_info` for the live server commit, protocol, tool count,
 and catalog hash. Do not copy those moving values into this capsule.
 
 ## Product in one paragraph
 
-MCP Devbox is a secure-by-default MCP server that lets AI clients inspect, change,
-validate, publish, and deploy software through narrow tools without exposing a free host
-shell or unrestricted machine authority. Policy is immutable at startup. Reads and
-bounded status operations execute directly under jail, secret, redaction, schema, and
-audit controls. Consequential effects use exact preview, single-use plan, approval when
-required, state revalidation, narrow execution, bounded result, and audit.
+MCP Devbox is the Aeontra compatibility server. It lets AI clients inspect, change,
+validate, publish and deploy software through a registered MCP tool catalog. Policy is
+immutable at startup. Reads and bounded status operations execute under jail, secret,
+redaction, schema and audit controls. Consequential effects use exact preview,
+single-use plans, approval when required, state revalidation, bounded execution and
+audit.
 
 ## Supported architecture
 
@@ -47,15 +50,27 @@ MCP Devbox control plane
       signed paired Edge with local private workspace contracts
 ```
 
-Supported deployment shapes:
+The development-environment v2 contract keeps four roots separate for every registered
+workspace: the source checkout, private runtime state, private package/compiler cache,
+and private managed artifacts. On Linux these are derived below the Edge state root as
+`project-runtime/<workspace-id>`, `project-cache/<workspace-id>`, and
+`project-artifacts/<workspace-id>`; Windows derives the same layout from its configured
+state root without fixing a drive letter. Toolchain homes and package-manager caches
+are pointed at these roots rather than being created in the Git tree.
 
-- local stdio in `read-only` or `ask`;
-- local authenticated HTTP;
-- VPS/Coolify HTTP control plane with OAuth;
-- global builder with optional GitHub and Coolify adapters;
-- persistent Brain and observability/state profiles;
-- VPS plus signed Linux/Parrot/WSL Edge;
-- optional fixed privileged and private validation profiles.
+Project resolution is registry-first. A dirty tree is an authorized development state;
+`unavailable`, `timeout`, `identity_mismatch`, `corrupt`, and `unsafe_boundary` describe
+different failures. Process status and termination use the durable identity captured at
+process start, so they do not depend on a clean tree or a second Git discovery pass.
+The Edge scheduler uses bounded shared capacity for ordinary independent operations and
+an exclusive gate for signed update, rollback, and repair. Toolbox and project registry
+records have versioned identity/generation metadata and additive migrations; recovery is
+explicit and never resets the source checkout.
+
+Supported deployments include local stdio or authenticated HTTP, a VPS/Coolify control
+plane with OAuth and optional GitHub/Coolify adapters, persistent Brain and state, and
+signed Linux, Parrot, WSL, or Windows Edge devices. Privileged validation remains an
+optional fixed private profile.
 
 ## Authority boundaries
 
@@ -68,13 +83,16 @@ Do not collapse these surfaces into one “sandbox” claim:
   `trusted_host_shared_network`; not universal egress isolation.
 - **Authorized target-locked workspace:** closed local actions bound to one private target
   and validated VPN route; not a host firewall.
-- **Development Edge Git broker:** owner-bound Git transport outside the model workcell;
-  credentials remain in private local state.
+- **Development Edge Git/GitHub broker:** owner-bound Git transport and fixed official
+  `gh` operations outside the model workcell; credentials remain in private local state
+  and only bounded parsed metadata returns to the control plane.
 - **Private validation runner:** fixed profiles in a separate service that owns the
   reviewed container-engine authority. The public MCP container has no Docker socket.
+- **Catalog rollout coordinator:** private server-owned Coolify authority, exact commit
+  pins, a two-catalog maximum, and a persistent journal. It does not add a public
+  deployment endpoint or expose tokens to the MCP client.
 
-Source release, package artifact, VPS deployment, and installed Edge are separate
-facts. Verify each with separate evidence.
+The source release, package artifact, VPS deployment, and installed Edge are separate facts. Verify each with separate evidence.
 
 ## Durable security invariants
 
@@ -89,6 +107,12 @@ facts. Verify each with separate evidence.
   credential surface.
 - OAuth is preferred publicly; static bearer is header-only recovery. Query-string
   credentials are rejected.
+- The managed MCP backend keeps Coolify auto-deploy and instant-deploy disabled. Its
+  `platform_deploy` path requires an exact candidate SHA, a CI-verified catalog identity,
+  complete exact-head green checks, and a durable coordinator rollout.
+- A Front Door transition admits only the previous and candidate catalog. Wildcards, a
+  third catalog, malformed hashes, direct force deployment, and concurrent topology and
+  catalog transitions fail closed.
 - Audit and observability are bounded and exclude prompts, content, credentials, paths,
   targets, and raw errors.
 - Signed Edge bundles bind the authority-bearing components; installed-device state must
@@ -96,24 +120,10 @@ facts. Verify each with separate evidence.
 
 ## Repository workflow
 
-For a normal change:
-
-```text
-workspace_checkpoint
-→ read/search the smallest relevant sources
-→ add or identify a failing test
-→ apply_patch/create_file
-→ focused validation
-→ go test ./... -count=1
-→ go vet ./...
-→ go build ./...
-→ git diff --check
-→ commit on a feature branch
-→ normal PR
-→ exact-head checks green
-→ merge commit
-→ synchronize clean main
-```
+For a normal change: checkpoint; read the smallest relevant sources; establish RED;
+implement and refactor; run focused and complete tests, vet, build, and diff checks;
+commit on a feature branch; open a normal PR; require exact-head green checks; merge;
+then synchronize clean main.
 
 Before creating a script or helper, use the tool-discovery index in `AGENTS.md` and the
 catalog in `tools.md`. Create an auxiliary only when no canonical tool covers the
@@ -121,52 +131,49 @@ operation and record why.
 
 ## Operational state
 
-Do not infer current state from this file. Resolve it as follows:
-
-| Question | Source |
-|---|---|
-| What is deployed on the VPS? | `/version`, `system_runtime_info`, and platform application/deployment status |
-| What tools are public? | `tools.md` and live MCP discovery |
-| What source release exists? | source-host release metadata and signed manifest |
-| What package artifact was published? | release/package workflow evidence |
-| What is installed on a real Edge? | supported local doctor/status and signed bundle metadata |
-| What task is active? | `.agent-memory/current-task.md` |
-| What happened historically? | a dated file in `baselines/`, an ADR/spec, PR, and Git history |
+Do not infer current state from this file. Use `/version`, `system_runtime_info`, and
+platform status for the VPS; `tools.md` plus live discovery for the public tools;
+source-host metadata and signed manifests for releases; workflow evidence for packages;
+local doctor/status plus bundle metadata for an installed Edge; current Git state plus
+operator-local `.agent-memory/` or Brain for active work; and `baselines/`, ADRs, PRs,
+and Git history for historical evidence.
 
 Use “validation pending” for a missing environment-specific proof. A green source test,
 tag, or automatic deployment is not evidence of a real-device installation.
 
+For development-environment v2, also verify these separately: source checkout state,
+workspace attestation, private runtime/cache/artifact roots, toolbox generation and
+rootless mount identity, scheduler capacity, and durable process binding. A dirty source
+tree is not by itself evidence of an unsafe boundary. A process that has already been
+authorized is observed and stopped using its captured binding, even if the project
+registry is later released or the source tree changes.
+
 ## Persistent state
 
-- `/repos`: repository jail and project data.
-- `/state`: OAuth stores, audit, observability, telemetry, tasks, results, console,
-  model-turn, queue, and Edge/control-plane coordination.
-- `/brain`: optional Brain Markdown truth and local Git; search cache is disposable.
-- `~/.local/state/mcp-edge`: private installed Edge identity, registry, journal, results,
-  and optional local Git authority.
+`/repos` holds jailed projects; `/state` holds OAuth, audit, telemetry, tasks, results,
+model turns, queues, and coordination; `/brain` holds optional Markdown truth.
+`~/.local/state/mcp-edge` holds private Edge identity, registries, journals, local Git
+authority, managed worktrees, and the per-workspace `project-runtime`, `project-cache`,
+and `project-artifacts` roots. `/state/workqueue` contains durable groups, leases and
+fences; `/coordinator-state/catalog-rollout` contains the rollout journal.
 
-Keep `/state`, `/brain`, OAuth stores, Edge private state, credentials, and engine sockets
-outside the repository jail. Preserve owner-only modes and reviewed backups.
+Keep `/state`, `/brain`, OAuth stores, Edge private state, credentials, and engine sockets outside the repository jail. Preserve owner-only modes and reviewed backups.
 
 ## Known limitations
 
-- A Layer-1 allowed command inherits the daemon user's ambient OS access.
-- Content secret detection is heuristic.
-- The trusted workcell shares host networking.
-- Rootless container authority remains broad inside that user's namespace.
-- Target-locking is not universal egress enforcement.
-- Signed bundles prove artifact identity, not correctness of every dependency or host.
-- The model can damage data inside its selected writable workspace.
-- No formal verification or universal cross-platform OS sandbox is claimed.
+Layer-1 commands inherit the daemon user's access; content secret detection is
+heuristic; trusted workcells share host networking; rootless authority is broad within
+its user namespace; and target-locking is not universal egress control. Signed bundles
+prove artifact identity, not host correctness. A model can damage its selected writable
+workspace. Edge capacity is bounded: ordinary operations overlap, but signed mutations
+remain exclusive and a full pool may wait until deadline. No formal verification or
+universal cross-platform OS sandbox is claimed.
 
 ## Resuming safely
 
-1. Read `AGENTS.md` and this capsule.
-2. Read `.agent-memory/current-task.md` and the latest handoff.
-3. Verify branch, HEAD, upstream, and working tree.
-4. Read the affected canonical source, runbook, implementation, and tests.
-5. Confirm live identity only when the task depends on deployment state.
-6. Preserve historical evidence instead of rewriting it to match the present.
+Read `AGENTS.md`, this capsule, and the current handoff or Brain checkpoint; verify
+branch, HEAD, upstream, and working tree; then read the affected canonical sources and
+tests. Confirm live identity only when deployment matters, and preserve historical
+evidence rather than rewriting it.
 
-If documentation conflicts, use `documentation-map.md` to identify the owner and fix the
-canonical source rather than adding another copy.
+If documentation conflicts, use `documentation-map.md` to identify the owner and fix the canonical source rather than adding another copy.

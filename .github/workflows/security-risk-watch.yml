@@ -1,0 +1,172 @@
+name: Daily sandbox security risk watch
+
+on:
+  schedule:
+    - cron: '41 11 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: security-risk-watch
+  cancel-in-progress: false
+
+jobs:
+  workcell:
+    name: Scan the inventoried sandbox workcell
+    if: github.repository == 'charle-z/aeontra' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GRYPE_DB_REQUIRE_UPDATE_CHECK: "true"
+      GRYPE_DB_MAX_ALLOWED_BUILT_AGE: 24h
+      GRYPE_DB_VALIDATE_AGE: "true"
+      GRYPE_DB_VALIDATE_BY_HASH_ON_START: "true"
+      GRYPE_DB_MAX_UPDATE_CHECK_FREQUENCY: 0s
+    steps:
+      - name: Checkout reviewed monitor and policy
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Validate the bounded inventory and exact recipe
+        id: inventory
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/monitored
+          cp security/monitored-images.json artifacts/monitored-images.json
+          jq -e '
+            .schema_version == 1 and
+            ((.coverage == "published-candidate" and .workcell.deployment_verified == false) or
+             (.coverage == "deployed-workcell" and .workcell.deployment_verified == true)) and
+            .workcell.repository == "ghcr.io/charle-z/aeontra-sandbox-workcell" and
+            ([.workcell.index_digest, .workcell.manifest_digest, .workcell.image_id] |
+              all(type == "string" and test("^sha256:[0-9a-f]{64}$"))) and
+            (.workcell.revision | type == "string" and test("^[0-9a-f]{40}$")) and
+            (.workcell.recipe_sha256 | type == "string" and test("^[0-9a-f]{64}$"))
+          ' security/monitored-images.json >/dev/null
+          revision="$(jq -er '.workcell.revision' security/monitored-images.json)"
+          expected_recipe="$(jq -er '.workcell.recipe_sha256' security/monitored-images.json)"
+          git show "$revision:Dockerfile.sandbox-workcell" > artifacts/monitored/Dockerfile.sandbox-workcell
+          committed_recipe="$(sha256sum artifacts/monitored/Dockerfile.sandbox-workcell | cut -d ' ' -f 1)"
+          test "$committed_recipe" = "$expected_recipe"
+          {
+            echo "repository=$(jq -er '.workcell.repository' security/monitored-images.json)"
+            echo "index_digest=$(jq -er '.workcell.index_digest' security/monitored-images.json)"
+            echo "manifest_digest=$(jq -er '.workcell.manifest_digest' security/monitored-images.json)"
+            echo "expected_id=$(jq -er '.workcell.image_id' security/monitored-images.json)"
+            echo "revision=$revision"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo '### Daily sandbox workcell scan scope'
+            echo
+            echo "Coverage: $(jq -er '.coverage' security/monitored-images.json)."
+            echo 'One inventoried image only; this run does not discover production deployments.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Authenticate read-only registry access
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/security-risk-watch-auth
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$DOCKER_CONFIG"
+          chmod 700 "$DOCKER_CONFIG"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Pull and verify the immutable amd64 workcell without executing it
+        id: identity
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/security-risk-watch-auth
+          IMAGE_REPOSITORY: ${{ steps.inventory.outputs.repository }}
+          INDEX_DIGEST: ${{ steps.inventory.outputs.index_digest }}
+          MANIFEST_DIGEST: ${{ steps.inventory.outputs.manifest_digest }}
+          EXPECTED_IMAGE_ID: ${{ steps.inventory.outputs.expected_id }}
+          EXPECTED_REVISION: ${{ steps.inventory.outputs.revision }}
+        run: |
+          set -euo pipefail
+          index_ref="$IMAGE_REPOSITORY@$INDEX_DIGEST"
+          manifest_ref="$IMAGE_REPOSITORY@$MANIFEST_DIGEST"
+          expected_id="$EXPECTED_IMAGE_ID"
+          docker buildx imagetools inspect "$index_ref" --raw > artifacts/workcell-index.json
+          jq -e --arg manifest "$MANIFEST_DIGEST" '
+            [.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64")] |
+            length == 1 and .[0].digest == $manifest
+          ' artifacts/workcell-index.json >/dev/null
+          docker buildx imagetools inspect "$manifest_ref" --raw > artifacts/workcell-manifest.json
+          jq -e --arg expected "$expected_id" '.config.digest == $expected' artifacts/workcell-manifest.json >/dev/null
+          docker pull --platform linux/amd64 "$manifest_ref"
+          actual_id="$(docker image inspect --format '{{.Id}}' "$manifest_ref")"
+          actual_revision="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$manifest_ref")"
+          actual_platform="$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$manifest_ref")"
+          test "$actual_id" = "$expected_id"
+          test "$actual_revision" = "$EXPECTED_REVISION"
+          test "$actual_platform" = "linux/amd64"
+          jq -n --arg image_id "$actual_id" --arg revision "$actual_revision" \
+            --arg platform "$actual_platform" --arg manifest "$manifest_ref" --arg index "$index_ref" \
+            '{image_id: $image_id, revision: $revision, platform: $platform,
+              manifest: $manifest, index: $index, verified_at: (now | todateiso8601)}' \
+            > artifacts/verified-image.json
+          # This tag enables the existing patched-zlib VEX only after exact identity and recipe verification.
+          docker tag "$actual_id" mcp-sandbox-workcell:ci
+          echo "image_id=$actual_id" >> "$GITHUB_OUTPUT"
+
+      - name: Remove registry credentials before analysis
+        if: always()
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/security-risk-watch-auth
+        run: docker logout ghcr.io
+
+      - name: Scan verified workcell with current vulnerability database
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0; Grype v0.110.0
+        with:
+          image: mcp-sandbox-workcell:ci
+          vex: security/vex/sandbox-workcell-zlib.openvex.json
+          fail-build: false
+          severity-cutoff: high
+          output-format: json
+          output-file: artifacts/sandbox-workcell-grype.json
+          cache-db: true
+
+      - name: Retain and verify database provenance
+        run: |
+          set -euo pipefail
+          test -s artifacts/sandbox-workcell-grype.json
+          jq -e '.descriptor.db | type == "object" and length > 0' artifacts/sandbox-workcell-grype.json >/dev/null
+          jq '{scanner: {name: .descriptor.name, version: .descriptor.version},
+            database: .descriptor.db, observed_at: (now | todateiso8601)}' \
+            artifacts/sandbox-workcell-grype.json > artifacts/db-provenance.json
+
+      - name: Enforce all other High and Critical findings and the accepted-risk expiry
+        env:
+          VERIFIED_IMAGE_ID: ${{ steps.identity.outputs.image_id }}
+        run: |
+          set -euo pipefail
+          test -n "$VERIFIED_IMAGE_ID"
+          go run ./cmd/grype-gate --report artifacts/sandbox-workcell-grype.json --minimum high \
+            --accepted-risk security/accepted-risks/http-cache-semantics-20261003.json \
+            --image-id "$VERIFIED_IMAGE_ID" --annotation-file artifacts/monitored/Dockerfile.sandbox-workcell
+
+      - name: Retain bounded scan and identity evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: security-risk-watch-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Remove registry credentials on every terminal path
+        if: always()
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/security-risk-watch-auth
+        run: docker logout ghcr.io

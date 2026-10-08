@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -19,8 +18,11 @@ const workspaceRegistryFile = "workspaces.db"
 var workspaceIDPattern = regexp.MustCompile(`^ws_[a-f0-9]{32}$`)
 
 type Workspace struct {
-	ID                    string           `json:"workspace_id"`
-	Path                  string           `json:"path"`
+	ID   string `json:"workspace_id"`
+	Path string `json:"path"`
+	// WindowsDevRoot is the registry-derived root retained for Windows
+	// foreground execution. It is intentionally not part of the public record.
+	WindowsDevRoot        string           `json:"-"`
 	Profile               WorkspaceProfile `json:"profile"`
 	Mode                  WorkspaceMode    `json:"mode"`
 	MachineName           string           `json:"machine_name,omitempty"`
@@ -45,8 +47,8 @@ func OpenWorkspaceRegistry(stateRoot string) (*WorkspaceRegistry, error) {
 		return nil, err
 	}
 	path := filepath.Join(filepath.Clean(stateRoot), workspaceRegistryFile)
-	if info, err := os.Lstat(path); err == nil {
-		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o077 != 0 {
+	if _, err := os.Lstat(path); err == nil {
+		if err := requirePrivateRegularFile(path); err != nil {
 			return nil, errors.New("workspace registry is unsafe")
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -57,7 +59,12 @@ func OpenWorkspaceRegistry(stateRoot string) (*WorkspaceRegistry, error) {
 		return nil, errors.New("workspace registry is unavailable")
 	}
 	db.SetMaxOpenConns(1)
-	registry := &WorkspaceRegistry{db: db, now: time.Now, roots: defaultWorkspaceRoots()}
+	roots := defaultWorkspaceRoots()
+	if err := validateWorkspaceStateSeparation(stateRoot, roots); err != nil {
+		_ = db.Close()
+		return nil, errors.New("workspace roots overlap private Edge state")
+	}
+	registry := &WorkspaceRegistry{db: db, now: time.Now, roots: roots}
 	for _, statement := range []string{
 		`PRAGMA journal_mode=DELETE`,
 		`PRAGMA synchronous=FULL`,
@@ -91,7 +98,7 @@ func OpenWorkspaceRegistry(stateRoot string) (*WorkspaceRegistry, error) {
 		_ = db.Close()
 		return nil, errors.New("workspace registry migration failed")
 	}
-	if err := os.Chmod(path, 0o600); err != nil {
+	if err := securePrivateRegularPath(path); err != nil {
 		_ = db.Close()
 		return nil, errors.New("workspace registry permissions failed")
 	}
@@ -117,6 +124,7 @@ func (r *WorkspaceRegistry) List() ([]Workspace, error) {
 		if err != nil {
 			return nil, errors.New("workspace registry read failed")
 		}
+		item = r.decorateWorkspace(item)
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
@@ -157,7 +165,18 @@ func (r *WorkspaceRegistry) Close() error {
 
 func (r *WorkspaceRegistry) byPath(path string) (Workspace, error) {
 	row := r.db.QueryRow(workspaceSelect+` WHERE w.path=?`, path)
-	return scanWorkspace(row)
+	item, err := scanWorkspace(row)
+	if err != nil {
+		return Workspace{}, err
+	}
+	return r.decorateWorkspace(item), nil
+}
+
+func (r *WorkspaceRegistry) decorateWorkspace(workspace Workspace) Workspace {
+	if workspace.Profile == WorkspaceProfileWindowsWorkcell {
+		workspace.WindowsDevRoot = r.roots.WindowsDev
+	}
+	return workspace
 }
 
 func scanWorkspace(scanner interface{ Scan(...any) error }) (Workspace, error) {
@@ -205,25 +224,7 @@ func ensureWorkspaceAuthorizationRevision(db *sql.DB) error {
 }
 
 func ValidateRegisteredWorkspace(path string) (string, error) {
-	path = filepath.Clean(strings.TrimSpace(path))
-	if !filepath.IsAbs(path) || path == string(os.PathSeparator) || isWindowsMount(path) {
-		return "", errors.New("workspace path is unsafe")
-	}
-	if err := rejectSymlinkPath(path); err != nil {
-		return "", err
-	}
-	info, err := os.Lstat(path)
-	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o022 != 0 {
-		return "", errors.New("workspace path is unavailable")
-	}
-	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil || filepath.Clean(resolved) != path {
-		return "", errors.New("workspace path is unsafe")
-	}
-	if err := requireCurrentOwner(info); err != nil {
-		return "", err
-	}
-	return path, nil
+	return validateRegisteredWorkspace(path)
 }
 
 func newWorkspaceID() (string, error) {

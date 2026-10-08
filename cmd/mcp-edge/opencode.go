@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -93,6 +94,9 @@ func openCodeFailureCode(err error) string {
 		{"opencode terminated unexpectedly (permission_other)", "opencode_permission_other"},
 		{"opencode terminated unexpectedly (config)", "opencode_config"},
 		{"opencode terminated unexpectedly (model)", "opencode_model"},
+		{"opencode terminated unexpectedly (not_found_ripgrep)", "opencode_not_found_ripgrep"},
+		{"opencode terminated unexpectedly (not_found_workspace)", "opencode_not_found_workspace"},
+		{"opencode terminated unexpectedly (not_found_shell)", "opencode_not_found_shell"},
 		{"opencode terminated unexpectedly (not_found)", "opencode_not_found"},
 		{"opencode terminated unexpectedly (provider)", "opencode_provider"},
 		{"opencode terminated unexpectedly (provider_auth)", "opencode_provider_auth"},
@@ -131,11 +135,24 @@ func openCodeFailureCode(err error) string {
 }
 
 func runOpenCodeRelay(args []string, stderr io.Writer) error {
-	fs := flag.NewFlagSet("opencode", flag.ContinueOnError)
+	return runHarnessRelay("opencode", args, stderr)
+}
+
+func runCodexRelay(args []string, stderr io.Writer) error {
+	return runHarnessRelay("codex", args, stderr)
+}
+
+func runHarnessRelay(harness string, args []string, stderr io.Writer) error {
+	if harness != "opencode" && harness != "codex" {
+		return errors.New("runtime harness is invalid")
+	}
+	fs := flag.NewFlagSet(harness, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	state := fs.String("state", defaultStateRoot(), "private Edge state root")
 	socketRoot := fs.String("socket-root", "", "private local Unix-socket root")
 	opencodePath := fs.String("opencode", "", "absolute path to pinned OpenCode 1.18.1")
+	codexPath := fs.String("codex", "", "absolute path to pinned stock Codex")
+	codexPinPath := fs.String("codex-pin", "", "absolute path to the signed Codex pin manifest")
 	driverPath := fs.String("driver", "", "absolute path to the isolated model-turn-driver")
 	providerPath := fs.String("provider", "", "absolute path to the local external-driver provider")
 	bubblewrapPath := fs.String("bubblewrap", "", "absolute path to the Bubblewrap sandbox executable")
@@ -145,18 +162,27 @@ func runOpenCodeRelay(args []string, stderr io.Writer) error {
 	poll := fs.Duration("poll", 5*time.Second, "delay after an empty long-poll or safe failure")
 	heartbeat := fs.Duration("heartbeat", 5*time.Second, "runtime heartbeat interval")
 	outputLimit := fs.Int64("output-limit", 1<<20, "maximum transient bytes per OpenCode output stream")
+	processLimit := fs.Int("project-process-limit", 256, "maximum concurrent durable project processes")
+	processLogLimit := fs.Int64("project-process-log-limit", 64<<20, "maximum persisted bytes per project process output stream")
+	runtimePollers := fs.Int("model-runtime-pollers", 4, "maximum concurrent model runtime leases (1-4)")
 	once := fs.Bool("once", false, "process at most one runtime lease")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() != 0 {
-		return errors.New("opencode relay does not accept positional arguments")
+		return fmt.Errorf("%s relay does not accept positional arguments", harness)
 	}
 	if os.Geteuid() == 0 {
-		return errors.New("OpenCode relay refuses to run as root")
+		return fmt.Errorf("%s relay refuses to run as root", harness)
 	}
 	if *wait < time.Second || *wait > 180*time.Second || *poll < time.Second || *poll > time.Minute || *heartbeat < time.Second || *heartbeat > 30*time.Second {
 		return errors.New("OpenCode relay timing is outside the safe bounds")
+	}
+	if *processLimit < 1 || *processLimit > 4096 || *processLogLimit < 1 || *processLogLimit > 1<<30 {
+		return errors.New("project process emergency limits are outside the safe bounds")
+	}
+	if *runtimePollers < 1 || *runtimePollers > 4 {
+		return errors.New("model runtime poller limit is outside the safe bounds")
 	}
 	if strings.TrimSpace(*bubblewrapPath) == "" {
 		resolved, err := exec.LookPath("bwrap")
@@ -169,7 +195,13 @@ func runOpenCodeRelay(args []string, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	for name, value := range map[string]string{"opencode": *opencodePath, "driver": *driverPath, "provider": *providerPath, "bubblewrap": *bubblewrapPath, "integrity": *integrityPath} {
+	paths := map[string]string{"bubblewrap": *bubblewrapPath}
+	if harness == "codex" {
+		paths["codex"], paths["codex-pin"] = *codexPath, *codexPinPath
+	} else {
+		paths["opencode"], paths["driver"], paths["provider"], paths["integrity"] = *opencodePath, *driverPath, *providerPath, *integrityPath
+	}
+	for name, value := range paths {
 		if !filepath.IsAbs(filepath.Clean(value)) {
 			return fmt.Errorf("%s path must be absolute", name)
 		}
@@ -189,16 +221,27 @@ func runOpenCodeRelay(args []string, stderr io.Writer) error {
 		return err
 	}
 	defer journal.Close()
-	launcher, err := edgeclient.NewOpenCodeLauncher(edgeclient.OpenCodeLauncherConfig{
-		StateRoot: *state, SocketRoot: *socketRoot, OpenCodePath: *opencodePath, DriverPath: *driverPath, ProviderPath: *providerPath,
-		BubblewrapPath: *bubblewrapPath, IntegrityPath: *integrityPath, StopPath: filepath.Join(*state, "STOP"), OutputLimit: *outputLimit,
-		Heartbeat: *heartbeat, Workspaces: registry, Journal: journal,
-	})
+	var launcher *edgeclient.OpenCodeLauncher
+	if harness == "codex" {
+		launcher, err = edgeclient.NewCodexLauncher(edgeclient.CodexLauncherConfig{
+			StateRoot: *state, SocketRoot: *socketRoot, CodexPath: *codexPath, CodexPinPath: *codexPinPath,
+			BubblewrapPath: *bubblewrapPath, StopPath: filepath.Join(*state, "STOP"), OutputLimit: *outputLimit,
+			Heartbeat: *heartbeat, Workspaces: registry, Journal: journal,
+		})
+	} else {
+		launcher, err = edgeclient.NewOpenCodeLauncher(edgeclient.OpenCodeLauncherConfig{
+			StateRoot: *state, SocketRoot: *socketRoot, OpenCodePath: *opencodePath, DriverPath: *driverPath, ProviderPath: *providerPath,
+			BubblewrapPath: *bubblewrapPath, IntegrityPath: *integrityPath, StopPath: filepath.Join(*state, "STOP"), OutputLimit: *outputLimit,
+			Heartbeat: *heartbeat, Workspaces: registry, Journal: journal,
+		})
+	}
 	if err != nil {
 		return err
 	}
-	if err := configureOpenCodeRelayE2E(launcher); err != nil {
-		return err
+	if harness == "opencode" {
+		if err := configureOpenCodeRelayE2E(launcher); err != nil {
+			return err
+		}
 	}
 	transport, err := edgeclient.NewTransport(*state, nil)
 	if err != nil {
@@ -206,46 +249,68 @@ func runOpenCodeRelay(args []string, stderr io.Writer) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	go runControlOperationLoop(ctx, *state, transport, stderr)
+	go runControlOperationLoop(ctx, *state, transport, *processLimit, *processLogLimit, stderr)
 	go runAutopilotSupervisor(ctx, *state, *bundleRoot, transport, stderr)
-	for {
+	var registrationMu sync.Mutex
+	pollRuntime := func(ctx context.Context) (bool, error) {
+		registrationMu.Lock()
 		workspaces, registryErr := registry.List()
 		if registryErr == nil {
 			registryErr = transport.RegisterWorkspaces(ctx, workspaces)
 		}
+		registrationMu.Unlock()
 		if registryErr != nil {
-			if *once {
-				return registryErr
+			if ctx.Err() == nil {
+				fmt.Fprintf(stderr, "mcp-edge: %s runtime failed safely runtime= state= failure=%s\n", harness, openCodeFailureCode(registryErr))
 			}
-			fmt.Fprintf(stderr, "mcp-edge: OpenCode runtime failed safely runtime= state= failure=%s\n", openCodeFailureCode(registryErr))
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-time.After(*poll):
-			}
-			continue
+			return false, registryErr
 		}
 		worked, result, runErr := launcher.RunNext(ctx, *wait)
 		if result.LeaseRetryCategory != "" {
 			fmt.Fprintf(stderr, "mcp-edge: model runtime lease retry category=%s\n", result.LeaseRetryCategory)
 		}
-		if errors.Is(ctx.Err(), context.Canceled) || errors.Is(runErr, edgeclient.ErrKillSwitch) {
-			return nil
+		if runErr != nil && ctx.Err() == nil && !errors.Is(runErr, edgeclient.ErrKillSwitch) {
+			fmt.Fprintf(stderr, "mcp-edge: %s runtime failed safely runtime=%s state=%s failure=%s\n", harness, result.RuntimeID, result.State, openCodeFailureCode(runErr))
 		}
-		if runErr != nil {
-			fmt.Fprintf(stderr, "mcp-edge: OpenCode runtime failed safely runtime=%s state=%s failure=%s\n", result.RuntimeID, result.State, openCodeFailureCode(runErr))
-		}
-		if *once {
-			return runErr
-		}
-		delay := *poll
-		if worked && runErr == nil {
-			delay = time.Second
-		}
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-time.After(delay):
-		}
+		return worked, runErr
 	}
+	if *once {
+		_, err := pollRuntime(ctx)
+		if errors.Is(ctx.Err(), context.Canceled) || errors.Is(err, edgeclient.ErrKillSwitch) {
+			return nil
+		}
+		return err
+	}
+	runModelRuntimePollers(ctx, *runtimePollers, *poll, pollRuntime)
+	return nil
+}
+
+func runModelRuntimePollers(ctx context.Context, limit int, poll time.Duration, run func(context.Context) (bool, error)) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var workers sync.WaitGroup
+	for range limit {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for ctx.Err() == nil {
+				worked, runErr := run(ctx)
+				if errors.Is(runErr, edgeclient.ErrKillSwitch) {
+					cancel()
+					return
+				}
+				delay := poll
+				if worked && runErr == nil {
+					delay = time.Second
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(delay):
+				}
+			}
+		}()
+	}
+	<-ctx.Done()
+	workers.Wait()
 }

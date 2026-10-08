@@ -75,7 +75,7 @@ func TestProjectRegistryPersistsAliasAndResolvesWithoutOpaqueOutput(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolution.Project.Alias != "ekoparty-trip-agent" || resolution.TargetAlias != "parrot" || resolution.Workspace.ID != workspace.ID {
+	if resolution.Project.Alias != "ekoparty-trip-agent" || resolution.TargetAlias != "parrot" || resolution.Workspace.ID != workspace.ID || resolution.CheckoutState != ProjectCheckoutReady {
 		t.Fatalf("resolution=%+v", resolution)
 	}
 	status := resolution.SafeStatus()
@@ -139,9 +139,10 @@ func TestProjectResolutionRevalidatesProfileTargetAndCheckout(t *testing.T) {
 	for _, test := range []struct {
 		name      string
 		state     ProjectCheckoutState
+		wantState ProjectCheckoutState
 		wantError ProjectErrorCode
 	}{
-		{name: "dirty", state: ProjectCheckoutDirty, wantError: ProjectErrorCheckoutDirty},
+		{name: "dirty", state: ProjectCheckoutDirty, wantState: ProjectCheckoutDirty},
 		{name: "remote mismatch", state: ProjectCheckoutRemoteMismatch, wantError: ProjectErrorRepositoryMismatch},
 		{name: "unsafe", state: ProjectCheckoutUnsafe, wantError: ProjectErrorCheckoutUnsafe},
 	} {
@@ -162,8 +163,15 @@ func TestProjectResolutionRevalidatesProfileTargetAndCheckout(t *testing.T) {
 				t.Fatal(err)
 			}
 			registry.inspector = fixedProjectInspector{state: test.state}
-			if _, err := registry.Resolve(context.Background(), "project", "parrot"); !projectErrorIs(err, test.wantError) {
-				t.Fatalf("resolve err=%v", err)
+			resolution, err := registry.Resolve(context.Background(), "project", "parrot")
+			if test.wantError != "" {
+				if !projectErrorIs(err, test.wantError) {
+					t.Fatalf("resolve err=%v", err)
+				}
+			} else if err != nil || resolution.CheckoutState != test.wantState || resolution.SafeStatus().State != string(test.wantState) {
+				t.Fatalf("resolution=%+v err=%v", resolution, err)
+			} else if resolution.CheckoutDiagnostic == nil || resolution.CheckoutDiagnostic.Reason != "normal_workspace_changes" {
+				t.Fatalf("dirty checkout diagnostic=%+v", resolution.CheckoutDiagnostic)
 			}
 			if _, err := registry.Resolve(context.Background(), "project", "other"); !projectErrorIs(err, ProjectErrorTargetNotFound) {
 				t.Fatalf("target err=%v", err)
@@ -223,6 +231,9 @@ func newProjectRegistryFixture(t *testing.T, profile WorkspaceProfile) (string, 
 		if err := os.MkdirAll(path, 0o700); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if err := os.Mkdir(filepath.Join(workspacePath, ".git"), 0o700); err != nil {
+		t.Fatal(err)
 	}
 	registry, err := OpenWorkspaceRegistryWithRoots(state, WorkspaceRoots{Dev: devRoot, HTBLinux: htbRoot})
 	if err != nil {

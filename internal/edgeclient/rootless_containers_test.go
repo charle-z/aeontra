@@ -75,7 +75,7 @@ func TestCleanupRootlessContainerResourcesUsesExactRuntimeLabel(t *testing.T) {
 	runner := &fakeContainerRunner{}
 	endpoint := &RootlessContainerEndpoint{Engine: "docker", SocketPath: "/run/user/1000/docker.sock", Executable: "/usr/bin/docker"}
 	const runtimeID = "mr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	if err := CleanupRootlessContainerResources(context.Background(), endpoint, runtimeID, openCodeDefaultToolPath, runner); err != nil {
+	if err := cleanupRootlessContainerResources(context.Background(), endpoint, runtimeID, openCodeDefaultToolPath, runner, testRootlessContainerEnvironment); err != nil {
 		t.Fatal(err)
 	}
 	if len(runner.commands) != 6 {
@@ -96,7 +96,7 @@ func TestCleanupRootlessContainerResourcesRemovesPodmanPods(t *testing.T) {
 	runner := &fakeContainerRunner{}
 	endpoint := &RootlessContainerEndpoint{Engine: "podman", SocketPath: "/run/user/1000/podman/podman.sock", Executable: "/usr/bin/podman"}
 	const runtimeID = "mr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	if err := CleanupRootlessContainerResources(context.Background(), endpoint, runtimeID, openCodeDefaultToolPath, runner); err != nil {
+	if err := cleanupRootlessContainerResources(context.Background(), endpoint, runtimeID, openCodeDefaultToolPath, runner, testRootlessContainerEnvironment); err != nil {
 		t.Fatal(err)
 	}
 	if len(runner.commands) != 8 {
@@ -117,7 +117,7 @@ func TestCleanupRootlessContainerResourcesRemovesPodmanPods(t *testing.T) {
 func TestCleanupRootlessContainerResourcesRejectsUnsafeEngineOutput(t *testing.T) {
 	runner := &unsafeContainerRunner{}
 	endpoint := &RootlessContainerEndpoint{Engine: "podman", SocketPath: "/run/user/1000/podman/podman.sock", Executable: "/usr/bin/podman"}
-	if err := CleanupRootlessContainerResources(context.Background(), endpoint, "mr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", openCodeDefaultToolPath, runner); err == nil {
+	if err := cleanupRootlessContainerResources(context.Background(), endpoint, "mr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", openCodeDefaultToolPath, runner, testRootlessContainerEnvironment); err == nil {
 		t.Fatal("unsafe resource id accepted")
 	}
 }

@@ -102,3 +102,10 @@ func TestParseServeOptionsRequiresRoot(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 }
+
+func TestParseServeOptionsRejectsUnknownMode(t *testing.T) {
+	_, err := parseServeOptions([]string{"--root", t.TempDir(), "--mode", "alow"}, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "unknown mode") {
+		t.Fatalf("parseServeOptions(mode=alow) = %v, want unknown mode error", err)
+	}
+}

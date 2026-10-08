@@ -4,15 +4,29 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/edge"
 	"github.com/charle-z/mcp-devbox/internal/edgeclient"
 )
+
+func TestBundleUnitWaitHonorsCancelledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	started := time.Now()
+	if waitBundleUnitInactive(ctx, "mcp-devbox-edge-repair.service", time.Minute) {
+		t.Fatal("cancelled bundle wait reported inactive")
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("cancelled bundle wait took %s", elapsed)
+	}
+}
 
 func TestBundleOperationReceiptIsDurableExclusiveAndValidated(t *testing.T) {
 	stateRoot := t.TempDir()
@@ -82,13 +96,45 @@ func TestInstalledModelProviderAcceptsOnlyClosedLoopbackConfiguration(t *testing
 
 type projectSnapshotRunner struct {
 	outputs map[string]string
+	fail    map[string]error
 	calls   []string
 }
+
+type projectGitTestExitError int
+
+func (e projectGitTestExitError) Error() string { return "Git exited without a matching ref" }
+func (e projectGitTestExitError) ExitCode() int { return int(e) }
 
 func (runner *projectSnapshotRunner) Run(_ context.Context, dir string, args []string, _ edgeclient.GitHubCredential) (string, error) {
 	key := strings.Join(args, " ")
 	runner.calls = append(runner.calls, dir+"|"+key)
+	if err := runner.fail[key]; err != nil {
+		return "", err
+	}
 	return runner.outputs[key], nil
+}
+
+func TestCollectProjectSnapshotReportsUnbornCheckout(t *testing.T) {
+	resolved := edgeclient.ProjectResolution{
+		Project:     edgeclient.Project{Alias: "project", Owner: "charle-z", Repository: "repo"},
+		TargetAlias: "parrot",
+		Workspace: edgeclient.Workspace{
+			ID: "ws_0123456789abcdef0123456789abcdef", Path: "/work/project",
+			Profile: edgeclient.WorkspaceProfileLinuxWorkcell, Mode: edgeclient.WorkspaceModeDev,
+		},
+	}
+	runner := &projectSnapshotRunner{outputs: map[string]string{
+		"branch --show-current":                          "main\n",
+		"symbolic-ref --quiet --short HEAD":              "main\n",
+		"status --porcelain=v1 --untracked-files=normal": "?? README.md\n",
+	}, fail: map[string]error{
+		"rev-parse --verify HEAD":                   errors.New("exit status 128"),
+		"show-ref --verify --quiet refs/heads/main": projectGitTestExitError(1),
+	}}
+	result, code := collectProjectSnapshot(context.Background(), resolved, runner, edgeclient.GitHubCredential{})
+	if code != "" || result.SnapshotBranch != "main" || result.SnapshotHead != "" || !result.SnapshotUnborn || result.SnapshotClean || result.ProjectState != "dirty" {
+		t.Fatalf("unborn snapshot branch=%q head=%q unborn=%t clean=%t state=%q code=%q", result.SnapshotBranch, result.SnapshotHead, result.SnapshotUnborn, result.SnapshotClean, result.ProjectState, code)
+	}
 }
 
 func TestCollectProjectSnapshotUsesOnlyFixedReadOnlyGitCommands(t *testing.T) {
@@ -101,9 +147,9 @@ func TestCollectProjectSnapshotUsesOnlyFixedReadOnlyGitCommands(t *testing.T) {
 		},
 	}
 	runner := &projectSnapshotRunner{outputs: map[string]string{
-		"rev-parse --verify HEAD":                     "0123456789abcdef0123456789abcdef01234567\n",
-		"branch --show-current":                       "main\n",
-		"status --porcelain=v1 --untracked-files=all": "",
+		"rev-parse --verify HEAD":                        "0123456789abcdef0123456789abcdef01234567\n",
+		"branch --show-current":                          "main\n",
+		"status --porcelain=v1 --untracked-files=normal": "?? .mcp-devbox/runtime/\n",
 	}}
 	result, code := collectProjectSnapshot(context.Background(), resolved, runner, edgeclient.GitHubCredential{})
 	if code != "" || result.SnapshotHead != "0123456789abcdef0123456789abcdef01234567" ||
@@ -113,14 +159,14 @@ func TestCollectProjectSnapshotUsesOnlyFixedReadOnlyGitCommands(t *testing.T) {
 	expected := []string{
 		resolved.Workspace.Path + "|rev-parse --verify HEAD",
 		resolved.Workspace.Path + "|branch --show-current",
-		resolved.Workspace.Path + "|status --porcelain=v1 --untracked-files=all",
+		resolved.Workspace.Path + "|status --porcelain=v1 --untracked-files=normal",
 	}
 	if strings.Join(runner.calls, "\n") != strings.Join(expected, "\n") {
 		t.Fatalf("calls=%v", runner.calls)
 	}
 }
 
-func TestCollectProjectSnapshotFailsClosedForDirtyOrWrongWorkspace(t *testing.T) {
+func TestCollectProjectSnapshotReportsDirtyAndFailsClosedForWrongWorkspace(t *testing.T) {
 	resolved := edgeclient.ProjectResolution{
 		Project:     edgeclient.Project{Alias: "project", Owner: "charle-z", Repository: "repo"},
 		TargetAlias: "parrot",
@@ -130,12 +176,12 @@ func TestCollectProjectSnapshotFailsClosedForDirtyOrWrongWorkspace(t *testing.T)
 		},
 	}
 	runner := &projectSnapshotRunner{outputs: map[string]string{
-		"rev-parse --verify HEAD":                     "0123456789abcdef0123456789abcdef01234567",
-		"branch --show-current":                       "main",
-		"status --porcelain=v1 --untracked-files=all": " M changed.go\n",
+		"rev-parse --verify HEAD":                        "0123456789abcdef0123456789abcdef01234567",
+		"branch --show-current":                          "main",
+		"status --porcelain=v1 --untracked-files=normal": " M changed.go\n",
 	}}
 	result, code := collectProjectSnapshot(context.Background(), resolved, runner, edgeclient.GitHubCredential{})
-	if code != "project_checkout_dirty" || !reflect.DeepEqual(result, edge.OperationResult{}) {
+	if code != "" || result.SnapshotClean || result.ProjectState != "dirty" || result.SnapshotBranch != "main" || result.SnapshotHead == "" {
 		t.Fatalf("result=%+v code=%q", result, code)
 	}
 	resolved.Workspace.Mode = edgeclient.WorkspaceModeHTBLinux

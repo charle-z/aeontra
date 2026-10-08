@@ -86,7 +86,7 @@ func (s *RepositoryCapability) NotesRead(name string) (string, error) {
 		sp.Finish(audit.Deny, name, []string{target}, err)
 		return "", err
 	}
-	content, err := readContained(target)
+	content, err := readContained(s.root, target)
 	if err != nil {
 		sp.Finish(audit.Error, name, []string{target}, err)
 		return "", err

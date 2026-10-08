@@ -94,27 +94,30 @@ func (p *Provider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid authorization request: "+err.Error(), http.StatusBadRequest)
 			return
 		}
-		if p.store.passphraseThrottled() {
+		if p.store.passphraseThrottled(params.clientID) {
 			renderLoginStatus(w, params, "Too many attempts. Authorization is temporarily locked.", http.StatusTooManyRequests)
 			return
 		}
 		// Constant-time passphrase check; the passphrase is never logged.
 		if subtle.ConstantTimeCompare([]byte(r.PostForm.Get("passphrase")), []byte(p.passphrase)) != 1 {
-			p.store.recordPassphraseFailure()
+			p.store.recordPassphraseFailure(params.clientID)
 			renderLoginStatus(w, params, "Incorrect passphrase.", http.StatusUnauthorized)
 			return
 		}
-		p.store.resetPassphraseFailures()
+		p.store.resetPassphraseFailures(params.clientID)
 
 		code := randToken()
-		p.store.putCode(code, authCode{
+		if err := p.store.putCode(code, authCode{
 			clientID:      params.clientID,
 			redirectURI:   params.redirectURI,
 			codeChallenge: params.codeChallenge,
 			scope:         params.scope,
 			resource:      params.resource,
 			expiresAt:     time.Now().Add(authCodeTTL),
-		})
+		}); err != nil {
+			http.Error(w, "authorization storage is temporarily unavailable", http.StatusServiceUnavailable)
+			return
+		}
 		redirectWithCode(w, r, params, code)
 	default:
 		w.Header().Set("Allow", "GET, POST")

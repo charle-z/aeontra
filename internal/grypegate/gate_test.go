@@ -82,6 +82,17 @@ func TestEvaluatePassesWhenNoFindingMeetsMinimum(t *testing.T) {
 	}
 }
 
+func TestEvaluateFailsClosedForCanonicalUnknownSeverity(t *testing.T) {
+	report := `{"matches":[{"vulnerability":{"id":"CVE-UNKNOWN","severity":"Unknown","fix":{"versions":[]}},"artifact":{"name":"pkg","version":"1","type":"apk","locations":[]}}]}`
+	findings, err := Evaluate(strings.NewReader(report), SeverityHigh)
+	if !errors.Is(err, ErrVulnerabilitiesFound) {
+		t.Fatalf("error = %v, want ErrVulnerabilitiesFound", err)
+	}
+	if len(findings) != 1 || findings[0].Severity != SeverityUnknown {
+		t.Fatalf("findings = %#v", findings)
+	}
+}
+
 func TestEvaluateRejectsMalformedOrUnknownSeverity(t *testing.T) {
 	for name, report := range map[string]string{
 		"malformed":        `{`,
@@ -99,6 +110,7 @@ func TestEvaluateRejectsMalformedOrUnknownSeverity(t *testing.T) {
 
 func TestParseSeverity(t *testing.T) {
 	for input, want := range map[string]Severity{
+		"unknown":    SeverityUnknown,
 		"negligible": SeverityNegligible,
 		"low":        SeverityLow,
 		"medium":     SeverityMedium,
@@ -111,8 +123,8 @@ func TestParseSeverity(t *testing.T) {
 			t.Errorf("ParseSeverity(%q) = %v, %v; want %v", input, got, err, want)
 		}
 	}
-	if _, err := ParseSeverity("unknown"); !errors.Is(err, ErrInvalidSeverity) {
-		t.Fatalf("unknown severity error = %v", err)
+	if _, err := ParseSeverity("extreme"); !errors.Is(err, ErrInvalidSeverity) {
+		t.Fatalf("invalid severity error = %v", err)
 	}
 }
 

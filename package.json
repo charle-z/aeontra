@@ -3,6 +3,7 @@
   "private": true,
   "packageManager": "pnpm@10.13.1",
   "scripts": {
+    "licenses:check": "corepack pnpm licenses list --json | node scripts/check-node-licenses.mjs",
     "check": "corepack pnpm --dir web/console check",
     "test": "corepack pnpm --dir web/console test && node --test integrations/opencode/provider/provider.test.mjs",
     "build": "corepack pnpm --dir web/console build",

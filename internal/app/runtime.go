@@ -2,15 +2,18 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/audit"
 	brainpkg "github.com/charle-z/mcp-devbox/internal/brain"
+	"github.com/charle-z/mcp-devbox/internal/buildinfo"
 	"github.com/charle-z/mcp-devbox/internal/config"
 	"github.com/charle-z/mcp-devbox/internal/edge"
 	"github.com/charle-z/mcp-devbox/internal/mcpserver"
@@ -21,6 +24,7 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/taskjournal"
 	"github.com/charle-z/mcp-devbox/internal/telemetry"
 	"github.com/charle-z/mcp-devbox/internal/tools"
+	"github.com/charle-z/mcp-devbox/internal/workqueue"
 )
 
 type appRuntime struct {
@@ -38,13 +42,17 @@ type appRuntime struct {
 	ModelTurns  *modelturn.Store
 	Edge        *edge.Store
 	Sessions    *mcpserver.HTTPSessionStore
+	WorkQueue   *workqueue.Store
 }
 
 func (r *appRuntime) Close() error {
 	if r == nil {
 		return nil
 	}
-	var serviceErr, auditErr, observabilityErr, telemetryErr, journalErr, resultErr, modelTurnErr, edgeErr, sessionErr error
+	var serviceErr, auditErr, observabilityErr, telemetryErr, journalErr, resultErr, modelTurnErr, edgeErr, sessionErr, workQueueErr error
+	if r.Server != nil {
+		r.Server.StopProjectTaskCoordinator()
+	}
 	if r.Service != nil {
 		serviceErr = r.Service.BrainCapability.Close()
 	}
@@ -72,13 +80,20 @@ func (r *appRuntime) Close() error {
 	if r.Sessions != nil {
 		sessionErr = r.Sessions.Close()
 	}
-	if serviceErr != nil || auditErr != nil || observabilityErr != nil || telemetryErr != nil || journalErr != nil || resultErr != nil || modelTurnErr != nil || edgeErr != nil || sessionErr != nil {
+	if r.WorkQueue != nil {
+		workQueueErr = r.WorkQueue.Close()
+	}
+	if serviceErr != nil || auditErr != nil || observabilityErr != nil || telemetryErr != nil || journalErr != nil || resultErr != nil || modelTurnErr != nil || edgeErr != nil || sessionErr != nil || workQueueErr != nil {
 		return errors.New("runtime close failed")
 	}
 	return nil
 }
 
 func buildRuntime(opts serveOptions) (*appRuntime, error) {
+	developmentConfig, err := loadDevelopmentRunnerConfig()
+	if err != nil {
+		return nil, err
+	}
 	pol, err := policy.NewPolicy(opts.Config)
 	if err != nil {
 		return nil, err
@@ -86,11 +101,27 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 	primary := pol.Roots()[0]
 	stateRoot := opts.StateRoot
 	if stateRoot == "" {
-		stateRoot = filepath.Join(primary, ".agent-memory", "state")
+		stateRoot, err = defaultRuntimeStateRoot(primary)
+		if err != nil {
+			return nil, err
+		}
+	}
+	stateRoot = resolveRuntimePath(stateRoot)
+	if err := validateRuntimeStateRoot(stateRoot, pol.Roots()); err != nil {
+		return nil, err
 	}
 	auditPath := opts.AuditPath
 	if auditPath == "" {
 		auditPath = filepath.Join(stateRoot, "logs", "audit.jsonl")
+	}
+	if !filepath.IsAbs(auditPath) {
+		return nil, errors.New("audit path must be absolute")
+	}
+	auditPath = resolveRuntimePath(auditPath)
+	for _, root := range pol.Roots() {
+		if pathsOverlap(auditPath, root) {
+			return nil, errors.New("audit path must not overlap repository roots")
+		}
 	}
 	logger, err := audit.Open(auditPath)
 	if err != nil {
@@ -100,6 +131,15 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 	if err != nil {
 		_ = logger.Close()
 		return nil, err
+	}
+	if observabilityConfig.Mode == observability.ModeFile || observabilityConfig.Mode == observability.ModeBoth {
+		observabilityConfig.Path = resolveRuntimePath(observabilityConfig.Path)
+		for _, root := range pol.Roots() {
+			if pathsOverlap(observabilityConfig.Path, root) {
+				_ = logger.Close()
+				return nil, errors.New("observability path must not overlap repository roots")
+			}
+		}
 	}
 	observer, err := observability.Open(observabilityConfig, os.Stderr)
 	if err != nil {
@@ -136,8 +176,28 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		return nil, fmt.Errorf("opening result store: %w", err)
 	}
 	service = service.WithResultStore(results)
-	modelTurns, err := modelturn.OpenStore(modelturn.StoreConfig{Root: filepath.Join(stateRoot, "model-turns")})
+	workQueue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(stateRoot, "workqueue"), ControllerID: "mcp-devbox-control-plane"})
 	if err != nil {
+		_ = results.Close()
+		_ = service.BrainCapability.Close()
+		_ = metrics.Close()
+		_ = observer.Close()
+		_ = logger.Close()
+		return nil, fmt.Errorf("opening durable work queue: %w", err)
+	}
+	activeGoalRefs, err := workQueue.ActiveTaskGoalRefs()
+	if err != nil {
+		_ = workQueue.Close()
+		_ = results.Close()
+		_ = service.BrainCapability.Close()
+		_ = metrics.Close()
+		_ = observer.Close()
+		_ = logger.Close()
+		return nil, fmt.Errorf("reading active task goal references: %w", err)
+	}
+	modelTurns, err := modelturn.OpenStore(modelturn.StoreConfig{Root: filepath.Join(stateRoot, "model-turns"), DeferTaskGoalCleanup: true})
+	if err != nil {
+		_ = workQueue.Close()
 		_ = results.Close()
 		_ = service.BrainCapability.Close()
 		_ = metrics.Close()
@@ -145,8 +205,19 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		_ = logger.Close()
 		return nil, fmt.Errorf("opening model turn store: %w", err)
 	}
+	if err := restoreActiveTaskGoalPins(workQueue, modelTurns, activeGoalRefs); err != nil {
+		_ = workQueue.Close()
+		_ = modelTurns.Close()
+		_ = results.Close()
+		_ = service.BrainCapability.Close()
+		_ = metrics.Close()
+		_ = observer.Close()
+		_ = logger.Close()
+		return nil, fmt.Errorf("restoring active task goal references: %w", err)
+	}
 	edgeStore, err := edge.Open(edge.Config{Root: filepath.Join(stateRoot, "edge")})
 	if err != nil {
+		_ = workQueue.Close()
 		_ = modelTurns.Close()
 		_ = results.Close()
 		_ = service.BrainCapability.Close()
@@ -157,6 +228,7 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 	}
 	sessions, err := mcpserver.OpenHTTPSessionStore(filepath.Join(stateRoot, "mcp-sessions"))
 	if err != nil {
+		_ = workQueue.Close()
 		_ = edgeStore.Close()
 		_ = modelTurns.Close()
 		_ = results.Close()
@@ -167,12 +239,27 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		return nil, fmt.Errorf("opening MCP session store: %w", err)
 	}
 
-	return &appRuntime{
+	server := mcpserver.NewWithObserver(service, observer).WithTaskJournal(journal).WithTelemetry(metrics).WithModelTurnStore(modelTurns).WithEdgeStore(edgeStore).WithWorkQueue(workQueue).WithConsoleStorageRoots(stateRoot, auditPath).WithHTTPSessionStore(sessions)
+	catalog, err := server.CatalogInfo()
+	if err != nil || edgeStore.SetExpectedOperationCompatibility(buildinfo.EdgeBundleProtocolVersion, catalog.Hash) != nil {
+		_ = sessions.Close()
+		_ = workQueue.Close()
+		_ = edgeStore.Close()
+		_ = modelTurns.Close()
+		_ = results.Close()
+		_ = service.BrainCapability.Close()
+		_ = metrics.Close()
+		_ = observer.Close()
+		_ = logger.Close()
+		return nil, errors.New("configuring edge operation compatibility")
+	}
+
+	runtime := &appRuntime{
 		Policy:      pol,
 		Logger:      logger,
 		Observer:    observer,
 		Service:     service,
-		Server:      mcpserver.NewWithObserver(service, observer).WithTaskJournal(journal).WithTelemetry(metrics).WithModelTurnStore(modelTurns).WithEdgeStore(edgeStore).WithConsoleStorageRoots(stateRoot, auditPath).WithHTTPSessionStore(sessions),
+		Server:      server,
 		Journal:     journal,
 		PrimaryRoot: primary,
 		AuditPath:   auditPath,
@@ -182,7 +269,103 @@ func buildRuntime(opts serveOptions) (*appRuntime, error) {
 		ModelTurns:  modelTurns,
 		Edge:        edgeStore,
 		Sessions:    sessions,
-	}, nil
+		WorkQueue:   workQueue,
+	}
+	if developmentConfig != nil {
+		runner, err := service.SourceCapability.NewDevelopmentRunner(*developmentConfig, workQueue)
+		if err != nil {
+			_ = runtime.Close()
+			return nil, err
+		}
+		server.WithDevelopmentRunner(runner)
+	}
+	return runtime, nil
+}
+
+func restoreActiveTaskGoalPins(queue *workqueue.Store, turns *modelturn.Store, refs []workqueue.ActiveTaskGoalRef) error {
+	validByDigest := make(map[string]*modelturn.TaskGoalOwner)
+	for _, ref := range refs {
+		ownerDigest := modelturn.IdempotencyDigest(ref.IdempotencyKey)
+		goalRef := modelturn.TaskGoalReference{BodyRef: ref.BodyRef, ContentDigest: ref.ContentDigest}
+		if err := turns.PinTaskGoalReferences(context.Background(), ownerDigest, []modelturn.TaskGoalReference{goalRef}); err != nil {
+			if !errors.Is(err, modelturn.ErrRequestRefConflict) {
+				return err
+			}
+			task, found, lookupErr := queue.TaskByIdempotencyKey(ref.IdempotencyKey)
+			if lookupErr != nil {
+				return lookupErr
+			}
+			if !found {
+				continue
+			}
+			for _, worker := range task.Workers {
+				if worker.GoalRef != ref.BodyRef || worker.GoalHash != ref.ContentDigest || (worker.State != workqueue.StateQueued && worker.State != workqueue.StateBlocked) || worker.RuntimeID != "" {
+					continue
+				}
+				if _, err := queue.FailUnstartedTaskWorker(task.ID, worker.Ordinal); err != nil {
+					return err
+				}
+				break
+			}
+			continue
+		}
+		owner := validByDigest[ownerDigest]
+		if owner == nil {
+			owner = &modelturn.TaskGoalOwner{OwnerDigest: ownerDigest}
+			validByDigest[ownerDigest] = owner
+		}
+		owner.References = append(owner.References, goalRef)
+	}
+	owners := make([]modelturn.TaskGoalOwner, 0, len(validByDigest))
+	for _, owner := range validByDigest {
+		owners = append(owners, *owner)
+	}
+	developmentOwners, err := queue.DevelopmentGoalOwners()
+	if err != nil {
+		return err
+	}
+	for _, owner := range developmentOwners {
+		if err := turns.PinTaskGoalReferences(context.Background(), owner.OwnerDigest, owner.References); err != nil {
+			if !errors.Is(err, modelturn.ErrRequestRefConflict) {
+				return err
+			}
+			// An unavailable body blocks only its owning request. Keep the
+			// captured operation/process metadata so status and cancellation
+			// can reconcile effects without authorizing a replacement command.
+			continue
+		}
+		owners = append(owners, owner)
+	}
+	if err := turns.ReconcileTaskGoalPins(context.Background(), owners, 0); err != nil {
+		return err
+	}
+	return turns.Cleanup(context.Background())
+}
+
+func defaultRuntimeStateRoot(primary string) (string, error) {
+	base, err := os.UserConfigDir()
+	if err != nil || !filepath.IsAbs(base) {
+		return "", fmt.Errorf("resolving private default state root: configure %s explicitly", stateRootEnv)
+	}
+	digest := sha256.Sum256([]byte(filepath.Clean(primary)))
+	vendor := "aeontra"
+	if runtime.GOOS == "windows" {
+		vendor = "Aeontra"
+	}
+	return filepath.Join(base, vendor, "mcp-devbox", "state", fmt.Sprintf("%x", digest[:8])), nil
+}
+
+func validateRuntimeStateRoot(stateRoot string, repositoryRoots []string) error {
+	cleaned := filepath.Clean(stateRoot)
+	if !filepath.IsAbs(cleaned) || filepath.Dir(cleaned) == cleaned {
+		return errors.New("state root must be an absolute non-root path")
+	}
+	for _, root := range repositoryRoots {
+		if pathsOverlap(stateRoot, root) {
+			return errors.New("state root must not overlap repository roots")
+		}
+	}
+	return nil
 }
 
 func buildTaskJournal(root string) (*taskjournal.Journal, error) {
@@ -197,10 +380,20 @@ func buildTaskJournal(root string) (*taskjournal.Journal, error) {
 }
 
 func buildToolService(cfg config.Config, pol *policy.Policy, logger *audit.Logger, primary, brainRoot, stateRoot string) (*tools.Service, error) {
+	assetLibrary, err := buildAssetLibrary(pol.Roots())
+	if err != nil {
+		return nil, err
+	}
+	maintainerProfile, err := loadMaintainerProfile()
+	if err != nil {
+		return nil, err
+	}
 	service := tools.NewService(pol, logger, primary).
 		WithTestCommand(cfg.TestCommand).
 		WithSandboxRunner(buildSandboxRunner(cfg, primary)).
-		WithValidationRunner(buildValidationRunnerFromEnv())
+		WithValidationRunner(buildValidationRunnerFromEnv()).
+		WithAssetLibrary(assetLibrary).
+		WithMaintainerProfile(maintainerProfile)
 
 	privileged, err := loadPrivilegedConfig()
 	if err != nil {
@@ -211,7 +404,7 @@ func buildToolService(cfg config.Config, pol *policy.Policy, logger *audit.Logge
 		service = service.WithCoolify(coolify)
 	}
 	if github := buildGitHubClientFromEnv(); github != nil {
-		service = service.WithGitHub(github)
+		service = service.WithGitHub(github.WithOSSToken(os.Getenv(githubOSSTokenEnv)))
 	}
 	brainStore, err := buildBrainStore(brainRoot, pol.Roots(), filepath.Join(stateRoot, "brain", "console-node.key"))
 	if err != nil {
@@ -221,6 +414,16 @@ func buildToolService(cfg config.Config, pol *policy.Policy, logger *audit.Logge
 		service = service.WithBrainStore(brainStore)
 	}
 	return service, nil
+}
+
+func loadMaintainerProfile() (string, error) {
+	profile := strings.TrimSpace(os.Getenv(maintainerProfileEnv))
+	switch profile {
+	case "", tools.MaintainerProfileCharleZProduction:
+		return profile, nil
+	default:
+		return "", fmt.Errorf("%s has an unsupported value", maintainerProfileEnv)
+	}
 }
 
 func buildBrainStore(root string, repositoryRoots []string, consoleIdentityPath string) (*brainpkg.Store, error) {
@@ -264,6 +467,27 @@ func pathsOverlap(left, right string) bool {
 	return pathContains(left, right) || pathContains(right, left)
 }
 
+// resolveRuntimePath follows symlinks on the longest existing prefix and then
+// rejoins any not-yet-created suffix. Private runtime paths are validated and
+// opened using this canonical location so a symlink or junction cannot redirect
+// state or audit data into a repository after the lexical overlap check.
+func resolveRuntimePath(path string) string {
+	path = filepath.Clean(path)
+	remainder := ""
+	current := path
+	for {
+		if resolved, err := filepath.EvalSymlinks(current); err == nil {
+			return filepath.Clean(filepath.Join(resolved, remainder))
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return path
+		}
+		remainder = filepath.Join(filepath.Base(current), remainder)
+		current = parent
+	}
+}
+
 func pathContains(root, candidate string) bool {
 	relative, err := filepath.Rel(root, candidate)
 	if err != nil {
@@ -274,14 +498,21 @@ func pathContains(root, candidate string) bool {
 
 func buildSandboxRunner(cfg config.Config, primary string) tools.SandboxRunner {
 	runner := tools.NewSandboxRunner(cfg.SandboxBackend)
-	if cfg.SandboxBackend != "docker" {
+	if cfg.SandboxBackend != "private-rootless" {
 		return runner
 	}
-	image := strings.TrimSpace(os.Getenv(sandboxImageEnv))
-	if image == "" {
-		image = "golang:1.26-alpine"
+	image := strings.ToLower(strings.TrimSpace(os.Getenv(sandboxImageEnv)))
+	separator := strings.LastIndex(image, "@")
+	if separator < 0 {
+		return runner
 	}
-	return tools.NewDockerSandboxRunner(tools.DockerSandboxConfig{Image: image, Root: primary})
+	return tools.NewPrivateSandboxRunner(tools.PrivateSandboxConfig{
+		URL:           os.Getenv(sandboxRunnerURLEnv),
+		Token:         os.Getenv(sandboxRunnerTokenEnv),
+		WorkspaceID:   os.Getenv(sandboxWorkspaceIDEnv),
+		WorkspaceRoot: primary,
+		ImageDigest:   image[separator+1:],
+	})
 }
 
 func buildValidationRunnerFromEnv() tools.ValidationRunner {

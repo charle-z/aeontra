@@ -9,7 +9,7 @@ import (
 func clearTransportEnv(t *testing.T) {
 	t.Helper()
 	for _, name := range []string{
-		tokenEnv, publicURLEnv, oauthPassphraseEnv, oauthClientStorePathEnv, oauthRefreshStorePathEnv, stateRootEnv,
+		tokenEnv, publicURLEnv, oauthPassphraseEnv, oauthClientStorePathEnv, oauthAccessStorePathEnv, oauthRefreshStorePathEnv, stateRootEnv,
 	} {
 		t.Setenv(name, "")
 	}
@@ -92,9 +92,12 @@ func TestResolveTransportPreservesOAuthContract(t *testing.T) {
 func TestResolveOAuthStorePathsDefaultsToConfiguredStateRoot(t *testing.T) {
 	clearTransportEnv(t)
 	root := filepath.Join(t.TempDir(), "state")
-	client, refresh := resolveOAuthStorePaths(root)
+	client, access, refresh := resolveOAuthStorePaths(root)
 	if want := filepath.Join(root, "oauth-clients.json"); client != want {
 		t.Fatalf("client store = %q, want %q", client, want)
+	}
+	if want := filepath.Join(root, "oauth-access.json"); access != want {
+		t.Fatalf("access store = %q, want %q", access, want)
 	}
 	if want := filepath.Join(root, "oauth-refresh.json"); refresh != want {
 		t.Fatalf("refresh store = %q, want %q", refresh, want)
@@ -105,19 +108,21 @@ func TestResolveOAuthStorePathsPreservesExplicitOverrides(t *testing.T) {
 	clearTransportEnv(t)
 	root := filepath.Join(t.TempDir(), "state")
 	explicitClient := filepath.Join(t.TempDir(), "clients.json")
+	explicitAccess := filepath.Join(t.TempDir(), "access.json")
 	explicitRefresh := filepath.Join(t.TempDir(), "refresh.json")
 	t.Setenv(oauthClientStorePathEnv, explicitClient)
+	t.Setenv(oauthAccessStorePathEnv, explicitAccess)
 	t.Setenv(oauthRefreshStorePathEnv, explicitRefresh)
-	client, refresh := resolveOAuthStorePaths(root)
-	if client != explicitClient || refresh != explicitRefresh {
-		t.Fatalf("stores = (%q, %q), want (%q, %q)", client, refresh, explicitClient, explicitRefresh)
+	client, access, refresh := resolveOAuthStorePaths(root)
+	if client != explicitClient || access != explicitAccess || refresh != explicitRefresh {
+		t.Fatalf("stores = (%q, %q, %q), want (%q, %q, %q)", client, access, refresh, explicitClient, explicitAccess, explicitRefresh)
 	}
 }
 
 func TestResolveOAuthStorePathsKeepsLocalMemoryOnlyWithoutStateRoot(t *testing.T) {
 	clearTransportEnv(t)
-	client, refresh := resolveOAuthStorePaths("")
-	if client != "" || refresh != "" {
-		t.Fatalf("memory-only stores = (%q, %q), want empty", client, refresh)
+	client, access, refresh := resolveOAuthStorePaths("")
+	if client != "" || access != "" || refresh != "" {
+		t.Fatalf("memory-only stores = (%q, %q, %q), want empty", client, access, refresh)
 	}
 }

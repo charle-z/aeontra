@@ -14,6 +14,10 @@ import (
 const githubEvidenceMaxPages = 100
 
 var errGitHubRequiredChecksUnavailable = errors.New("GitHub required status checks unavailable")
+var errGitHubRequiredChecksFeatureUnavailable = errors.New("GitHub required status checks feature unavailable")
+
+const githubRequiredChecksFeatureUnavailableMessage = "Upgrade to GitHub Pro or make this repository public to enable this feature."
+const githubRequiredChecksDocumentationURL = "https://docs.github.com/rest/branches/branch-protection#get-status-checks-protection"
 
 type githubActionsRun struct {
 	ID         int64  `json:"id"`
@@ -318,6 +322,10 @@ func (c *GitHubClient) githubActionsJobs(ctx context.Context, repo string, runID
 
 func (c *GitHubClient) requireGitHubEvidence(ctx context.Context, repo, base string, present map[string]struct{}, summary *githubCheckSummary) error {
 	required, err := c.githubRequiredStatusChecks(ctx, repo, base)
+	if errors.Is(err, errGitHubRequiredChecksFeatureUnavailable) {
+		summary.Lines = append(summary.Lines, "required_checks: feature_unavailable")
+		return nil
+	}
 	if errors.Is(err, errGitHubRequiredChecksUnavailable) {
 		summary.EvidenceComplete = false
 		summary.Lines = append(summary.Lines, "required_checks: unavailable")
@@ -349,6 +357,14 @@ func (c *GitHubClient) githubRequiredStatusChecks(ctx context.Context, repo, bas
 		return nil, nil
 	}
 	if status == http.StatusForbidden {
+		var response struct {
+			Message          string `json:"message"`
+			DocumentationURL string `json:"documentation_url"`
+			Status           string `json:"status"`
+		}
+		if json.Unmarshal([]byte(body), &response) == nil && response.Message == githubRequiredChecksFeatureUnavailableMessage && response.DocumentationURL == githubRequiredChecksDocumentationURL && response.Status == "403" {
+			return nil, errGitHubRequiredChecksFeatureUnavailable
+		}
 		return nil, errGitHubRequiredChecksUnavailable
 	}
 	if status < 200 || status >= 300 {

@@ -39,16 +39,26 @@ func (s *Server) addModelTurnTools() {
 		Annotations: writeHints,
 	}, s.handleModelRuntimeStart)
 
+	runtimeStartSchema := closedObject(map[string]any{
+		"device_id":       stringSchema("opaque active Edge device id", `^ed_[a-f0-9]{32}$`, 35),
+		"workspace_id":    stringSchema("opaque workspace id resolved only by the Edge registry", `^ws_[a-f0-9]{32}$`, 35),
+		"goal":            map[string]any{"type": "string", "minLength": 1, "maxLength": modelturn.MaxGoalBodyBytes},
+		"timeout_seconds": map[string]any{"type": "integer", "minimum": 1, "maximum": int(modelturn.MaxTurnTTL / time.Second)},
+		"idempotency_key": stringSchema("caller-generated idempotency key", `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`, maxOpenCodeIdempotencyBytes),
+	}, []string{"device_id", "workspace_id", "goal", "timeout_seconds", "idempotency_key"})
+
 	s.addDirectTool(toolDef{
 		Name:        "opencode_runtime_start",
-		Description: "Request one pinned OpenCode runtime on a paired Edge device using an opaque local workspace and bounded goal.",
-		InputSchema: closedObject(map[string]any{
-			"device_id":       stringSchema("opaque active Edge device id", `^ed_[a-f0-9]{32}$`, 35),
-			"workspace_id":    stringSchema("opaque workspace id resolved only by the Edge registry", `^ws_[a-f0-9]{32}$`, 35),
-			"goal":            map[string]any{"type": "string", "minLength": 1, "maxLength": modelturn.MaxGoalBodyBytes},
-			"timeout_seconds": map[string]any{"type": "integer", "minimum": 1, "maximum": int(modelturn.MaxTurnTTL / time.Second)},
-			"idempotency_key": stringSchema("caller-generated idempotency key", `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`, maxOpenCodeIdempotencyBytes),
-		}, []string{"device_id", "workspace_id", "goal", "timeout_seconds", "idempotency_key"}),
+		Description: "Compatibility name for starting the active signed model harness on a paired Edge; current releases use pinned stock Codex and a rolled-back release may use OpenCode.",
+		InputSchema: runtimeStartSchema,
+		Version:     "1",
+		Annotations: idempotentWriteHints,
+	}, s.handleOpenCodeRuntimeStart)
+
+	s.addDirectTool(toolDef{
+		Name:        "codex_runtime_start",
+		Description: "Request one pinned stock Codex runtime on a paired Edge device using an opaque local workspace and bounded goal.",
+		InputSchema: runtimeStartSchema,
 		Version:     "1",
 		Annotations: idempotentWriteHints,
 	}, s.handleOpenCodeRuntimeStart)
@@ -78,13 +88,28 @@ func (s *Server) addModelTurnTools() {
 		Annotations: readHints,
 	}, s.handleModelTurnNext)
 
+	s.addSessionTool(toolDef{
+		Name:        "model_turn_next_any",
+		Description: "Wait up to 180 seconds for the oldest pending turn across one to four known runtimes, without serial waits. A terminal runtime is returned only when no pending turn exists. No turn is consumed.",
+		InputSchema: closedObject(map[string]any{
+			"runtimes": map[string]any{"type": "array", "minItems": 1, "maxItems": 4, "items": closedObject(map[string]any{
+				"runtime_id":     stringSchema("opaque model runtime id", `^mr_[a-f0-9]{32}$`, 35),
+				"after_sequence": map[string]any{"type": "integer", "minimum": 0},
+			}, []string{"runtime_id"})},
+			"wait_seconds": map[string]any{"type": "integer", "minimum": 0, "maximum": 180},
+		}, []string{"runtimes"}),
+		Version:     "1",
+		Annotations: readHints,
+	}, s.handleModelTurnNextAny)
+
 	s.addDirectTool(toolDef{
 		Name:        "model_turn_respond",
-		Description: "Submit exactly one bounded response for an offered model turn after sequence, digest, and tool-id validation.",
+		Description: "Submit one bounded response after identity validation. Explicit task_state is preferred; legacy clients may omit it and the server infers it from finish_reason. Active must include an offered tool call, blocked must use error or cancelled, and complete must use stop without declaring pending work.",
 		InputSchema: modelTurnRespondSchema(),
-		Version:     "1",
+		Version:     "3",
 		Annotations: writeHints,
 	}, s.handleModelTurnRespond)
+	s.addModelRuntimeControlTool(writeHints)
 
 	s.addDirectTool(toolDef{
 		Name:        "model_runtime_cancel",
@@ -141,11 +166,14 @@ func modelTurnRespondSchema() map[string]any {
 		"usage":         usage,
 	}, []string{"finish_reason"})
 	return closedObject(map[string]any{
-		"runtime_id":        stringSchema("opaque model runtime id", `^mr_[a-f0-9]{32}$`, 35),
-		"turn_id":           stringSchema("opaque model turn id", `^mt_[a-f0-9]{32}$`, 35),
-		"expected_sequence": map[string]any{"type": "integer", "minimum": 1},
-		"request_digest":    stringSchema("canonical request SHA-256 digest", `^sha256:[a-f0-9]{64}$`, 71),
-		"response":          response,
+		"runtime_id":         stringSchema("opaque model runtime id", `^mr_[a-f0-9]{32}$`, 35),
+		"controller_id":      stringSchema("optional claimed controller identity; required for controlled runtimes", `^mc_[a-f0-9]{32}$`, 35),
+		"control_generation": map[string]any{"type": "integer", "minimum": 1, "maximum": 1000000000},
+		"turn_id":            stringSchema("opaque model turn id", `^mt_[a-f0-9]{32}$`, 35),
+		"expected_sequence":  map[string]any{"type": "integer", "minimum": 1},
+		"request_digest":     stringSchema("canonical request SHA-256 digest", `^sha256:[a-f0-9]{64}$`, 71),
+		"task_state":         map[string]any{"type": "string", "enum": []string{modelturn.TaskStateActive, modelturn.TaskStateBlocked, modelturn.TaskStateComplete}},
+		"response":           response,
 	}, []string{"runtime_id", "turn_id", "expected_sequence", "request_digest", "response"})
 }
 
@@ -157,6 +185,14 @@ type modelTurnNextParams struct {
 	RuntimeID     string `json:"runtime_id"`
 	AfterSequence uint64 `json:"after_sequence,omitempty"`
 	WaitSeconds   int    `json:"wait_seconds,omitempty"`
+}
+
+type modelTurnNextAnyParams struct {
+	Runtimes []struct {
+		RuntimeID     string `json:"runtime_id"`
+		AfterSequence uint64 `json:"after_sequence,omitempty"`
+	} `json:"runtimes"`
+	WaitSeconds int `json:"wait_seconds,omitempty"`
 }
 
 type modelToolCall struct {
@@ -179,11 +215,14 @@ type boundedModelResponse struct {
 }
 
 type modelTurnRespondParams struct {
-	RuntimeID        string               `json:"runtime_id"`
-	TurnID           modelturn.TurnID     `json:"turn_id"`
-	ExpectedSequence uint64               `json:"expected_sequence"`
-	RequestDigest    string               `json:"request_digest"`
-	Response         boundedModelResponse `json:"response"`
+	ControllerID      string               `json:"controller_id,omitempty"`
+	ControlGeneration uint64               `json:"control_generation,omitempty"`
+	RuntimeID         string               `json:"runtime_id"`
+	TurnID            modelturn.TurnID     `json:"turn_id"`
+	ExpectedSequence  uint64               `json:"expected_sequence"`
+	RequestDigest     string               `json:"request_digest"`
+	TaskState         string               `json:"task_state"`
+	Response          boundedModelResponse `json:"response"`
 }
 
 func (s *Server) handleModelRuntimeStart(arguments json.RawMessage) (string, error) {
@@ -248,6 +287,56 @@ func (s *Server) handleModelTurnNext(arguments json.RawMessage, sessionKey strin
 	return marshalModelTurnNext(params.RuntimeID, offer, pending, runtime, err)
 }
 
+func (s *Server) handleModelTurnNextAny(arguments json.RawMessage, sessionKey string) (string, error) {
+	if s.modelTurns == nil {
+		return "", errModelTurnStoreUnavailable
+	}
+	var params modelTurnNextAnyParams
+	if err := decodeClosed(arguments, &params); err != nil {
+		return "", err
+	}
+	if len(params.Runtimes) == 0 || len(params.Runtimes) > 4 || params.WaitSeconds < 0 || params.WaitSeconds > 180 {
+		return "", modelturn.ErrInvalidRequest
+	}
+	cursors := make([]modelturn.RuntimeCursor, len(params.Runtimes))
+	ids := make([]string, len(params.Runtimes))
+	for index, runtime := range params.Runtimes {
+		cursors[index] = modelturn.RuntimeCursor{RuntimeID: runtime.RuntimeID, AfterSequence: runtime.AfterSequence}
+		ids[index] = runtime.RuntimeID
+	}
+	if params.WaitSeconds == 0 {
+		result, found, err := s.modelTurns.PollAnyAfter(context.Background(), cursors)
+		return marshalModelTurnNextAny(result, found, err)
+	}
+	if !s.beginModelWaitMany(sessionKey, ids) {
+		return "", modelturn.ErrTurnConflict
+	}
+	defer s.endModelWaitMany(sessionKey, ids)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(params.WaitSeconds)*time.Second)
+	defer cancel()
+	result, err := s.modelTurns.WaitNextAnyAfter(ctx, cursors)
+	if errors.Is(err, context.DeadlineExceeded) {
+		return marshalToolValue(map[string]any{"pending": false, "status": "no_change"}, nil)
+	}
+	return marshalModelTurnNextAny(result, err == nil, err)
+}
+
+func marshalModelTurnNextAny(result modelturn.AnyTurnResult, found bool, err error) (string, error) {
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		return marshalToolValue(map[string]any{"pending": false, "status": "no_change"}, nil)
+	}
+	if result.Pending {
+		return marshalToolValue(map[string]any{"pending": true, "status": "turn", "cursor_index": result.CursorIndex, "turn": result.Offer}, nil)
+	}
+	return marshalToolValue(map[string]any{
+		"pending": false, "status": modelTurnResultStatus(result.Runtime), "cursor_index": result.CursorIndex,
+		"runtime_id": result.Runtime.RuntimeID, "last_sequence": result.Runtime.LastSequence,
+	}, nil)
+}
+
 func marshalModelTurnNext(runtimeID string, offer modelturn.Offer, pending bool, runtime modelturn.Runtime, err error) (string, error) {
 	if err != nil {
 		return "", err
@@ -255,6 +344,15 @@ func marshalModelTurnNext(runtimeID string, offer modelturn.Offer, pending bool,
 	if pending {
 		return marshalToolValue(map[string]any{"pending": true, "status": "turn", "turn": offer}, nil)
 	}
+	return marshalToolValue(map[string]any{
+		"runtime_id":    runtimeID,
+		"pending":       false,
+		"status":        modelTurnResultStatus(runtime),
+		"last_sequence": runtime.LastSequence,
+	}, nil)
+}
+
+func modelTurnResultStatus(runtime modelturn.Runtime) string {
 	status := "no_change"
 	if runtime.Status == modelturn.RuntimeCompleted || runtime.Status == modelturn.RuntimeCancelled || runtime.Status == modelturn.RuntimeFailed {
 		status = string(runtime.Status)
@@ -264,29 +362,36 @@ func marshalModelTurnNext(runtimeID string, offer modelturn.Offer, pending bool,
 			status = string(runtime.ActiveTurnStatus)
 		}
 	}
-	return marshalToolValue(map[string]any{
-		"runtime_id":    runtimeID,
-		"pending":       false,
-		"status":        status,
-		"last_sequence": runtime.LastSequence,
-	}, nil)
+	return status
 }
 
 func (s *Server) beginModelWait(sessionKey, runtimeID string) bool {
-	key := sessionKey + "\x00" + runtimeID
+	return s.beginModelWaitMany(sessionKey, []string{runtimeID})
+}
+
+func (s *Server) beginModelWaitMany(sessionKey string, runtimeIDs []string) bool {
 	s.modelWaitMu.Lock()
 	defer s.modelWaitMu.Unlock()
-	if _, exists := s.modelWaits[key]; exists {
-		return false
+	for _, runtimeID := range runtimeIDs {
+		if _, exists := s.modelWaits[sessionKey+"\x00"+runtimeID]; exists {
+			return false
+		}
 	}
-	s.modelWaits[key] = struct{}{}
+	for _, runtimeID := range runtimeIDs {
+		s.modelWaits[sessionKey+"\x00"+runtimeID] = struct{}{}
+	}
 	return true
 }
 
 func (s *Server) endModelWait(sessionKey, runtimeID string) {
-	key := sessionKey + "\x00" + runtimeID
+	s.endModelWaitMany(sessionKey, []string{runtimeID})
+}
+
+func (s *Server) endModelWaitMany(sessionKey string, runtimeIDs []string) {
 	s.modelWaitMu.Lock()
-	delete(s.modelWaits, key)
+	for _, runtimeID := range runtimeIDs {
+		delete(s.modelWaits, sessionKey+"\x00"+runtimeID)
+	}
 	s.modelWaitMu.Unlock()
 }
 
@@ -309,6 +414,13 @@ func (s *Server) handleModelTurnRespond(arguments json.RawMessage) (string, erro
 	default:
 		return "", modelturn.ErrInvalidRequest
 	}
+	taskState := params.TaskState
+	if taskState == "" {
+		taskState = modelturn.CompletionStateForFinishReason(params.Response.FinishReason)
+	}
+	if err := modelturn.ValidateCompletionState(taskState, params.Response.FinishReason, params.Response.Text, len(params.Response.ToolCalls)); err != nil {
+		return "", err
+	}
 	used := make([]string, 0, len(params.Response.ToolCalls))
 	seenCalls := make(map[string]struct{}, len(params.Response.ToolCalls))
 	for _, call := range params.Response.ToolCalls {
@@ -328,11 +440,15 @@ func (s *Server) handleModelTurnRespond(arguments json.RawMessage) (string, erro
 	if params.Response.FinishReason == "tool_calls" && len(params.Response.ToolCalls) == 0 {
 		return "", modelturn.ErrInvalidRequest
 	}
+	// task_state is admission metadata for the public MCP call. Keep the
+	// durable provider payload compatible with signed Edge releases that
+	// strictly decode the original bounded response shape.
 	payload, err := json.Marshal(params.Response)
 	if err != nil {
 		return "", err
 	}
 	record, err := s.modelTurns.Respond(context.Background(), modelturn.ResponseSubmission{
+		ControllerID: params.ControllerID, ControlGeneration: params.ControlGeneration,
 		RuntimeID:        params.RuntimeID,
 		TurnID:           params.TurnID,
 		ExpectedSequence: params.ExpectedSequence,

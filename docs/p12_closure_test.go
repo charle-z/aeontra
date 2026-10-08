@@ -133,7 +133,7 @@ func TestP12TrustedLinuxWorkcellClosureIsSynchronized(t *testing.T) {
 		}
 	}
 
-	registry := read("../internal/edgeclient/workspaces.go")
+	registry := read("../internal/edgeclient/workspaces.go") + read("../internal/edgeclient/workspace_owner_linux.go")
 	for _, required := range []string{"isWindowsMount(path)", "rejectSymlinkPath(path)", "requireCurrentOwner(info)"} {
 		if !strings.Contains(registry, required) {
 			t.Errorf("workspace registry guard missing %q", required)
@@ -172,7 +172,7 @@ func TestP12TrustedLinuxWorkcellClosureIsSynchronized(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if runtime.ToolCount != 114 || runtime.CatalogHash != "sha256:327a5ac4830172c9c64545c9b7d121487c773aed255f7c64e732606b491eaf99" {
+	if runtime.ToolCount != 193 || runtime.CatalogHash != "sha256:9a5fda515e712a8db0b78f0f9ca6240e6f4b9e6bb72f798ecd805334a480b868" {
 		t.Fatalf("current additive catalog identity = %d %s", runtime.ToolCount, runtime.CatalogHash)
 	}
 }

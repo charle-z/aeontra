@@ -20,8 +20,8 @@ func TestP15EdgeWorkflowParsesAndPackageFixtureHasValidBash(t *testing.T) {
 	if !strings.Contains(runScript, `\${1:-}`) {
 		t.Fatal("systemctl fixture expands its positional argument while being created")
 	}
-	ownedConfigParent := `install -d -o charles -g charles -m 0700 /home/charles/.config`
-	ownedLegacyState := `install -d -o charles -g charles -m 0700 /home/charles/.config/mcp-devbox-edge`
+	ownedConfigParent := `install -d -o edgeci -g edgeci -m 0700 /srv/edgeci/.config`
+	ownedLegacyState := `install -d -o edgeci -g edgeci -m 0700 /srv/edgeci/.config/mcp-devbox-edge`
 	if !strings.Contains(runScript, ownedConfigParent+"\n") || !strings.Contains(runScript, ownedLegacyState) || strings.Index(runScript, ownedConfigParent) >= strings.Index(runScript, ownedLegacyState) {
 		t.Fatal("package migration fixture must create the legacy state parent as the Edge user before the state directory")
 	}

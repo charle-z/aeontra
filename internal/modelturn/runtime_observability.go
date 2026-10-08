@@ -20,6 +20,8 @@ const (
 	RuntimePhaseStartedConfirmed       RuntimePhase = "started_confirmed"
 	RuntimePhaseDriverSocketReady      RuntimePhase = "driver_socket_ready"
 	RuntimePhaseOpenCodeProcessStarted RuntimePhase = "opencode_process_started"
+	RuntimePhaseModelAdapterReady      RuntimePhase = "model_adapter_ready"
+	RuntimePhaseCodexProcessStarted    RuntimePhase = "codex_process_started"
 	RuntimePhaseFirstTurnCreated       RuntimePhase = "first_model_turn_created"
 	RuntimePhaseToolExecutionStarted   RuntimePhase = "tool_execution_started"
 	RuntimePhaseTerminal               RuntimePhase = "terminal"
@@ -154,7 +156,7 @@ func nonNegativeMilliseconds(value time.Duration) int64 {
 
 func validRuntimePhase(phase RuntimePhase) bool {
 	switch phase {
-	case RuntimePhaseCreated, RuntimePhaseLeaseAssigned, RuntimePhaseLeaseRetry, RuntimePhaseLocalPreflightComplete, RuntimePhaseStartedConfirmed, RuntimePhaseDriverSocketReady, RuntimePhaseOpenCodeProcessStarted, RuntimePhaseFirstTurnCreated, RuntimePhaseToolExecutionStarted, RuntimePhaseTerminal:
+	case RuntimePhaseCreated, RuntimePhaseLeaseAssigned, RuntimePhaseLeaseRetry, RuntimePhaseLocalPreflightComplete, RuntimePhaseStartedConfirmed, RuntimePhaseDriverSocketReady, RuntimePhaseOpenCodeProcessStarted, RuntimePhaseModelAdapterReady, RuntimePhaseCodexProcessStarted, RuntimePhaseFirstTurnCreated, RuntimePhaseToolExecutionStarted, RuntimePhaseTerminal:
 		return true
 	default:
 		return false
@@ -177,7 +179,7 @@ func validRuntimePhaseCategory(phase RuntimePhase, category RuntimeRetryCategory
 }
 
 func EdgeReportableRuntimePhase(phase RuntimePhase) bool {
-	return phase == RuntimePhaseLocalPreflightComplete || phase == RuntimePhaseDriverSocketReady || phase == RuntimePhaseOpenCodeProcessStarted || phase == RuntimePhaseLeaseRetry
+	return phase == RuntimePhaseLocalPreflightComplete || phase == RuntimePhaseDriverSocketReady || phase == RuntimePhaseOpenCodeProcessStarted || phase == RuntimePhaseModelAdapterReady || phase == RuntimePhaseCodexProcessStarted || phase == RuntimePhaseLeaseRetry
 }
 
 func RuntimeAcceptsEdgePhase(runtime Runtime, phase RuntimePhase) bool {
@@ -208,6 +210,10 @@ func RuntimeAcceptsEdgePhase(runtime Runtime, phase RuntimePhase) bool {
 		return runtime.State == RuntimeStateAwaitingModel && hasPhase(RuntimePhaseStartedConfirmed)
 	case RuntimePhaseOpenCodeProcessStarted:
 		return runtime.State == RuntimeStateAwaitingModel && hasPhase(RuntimePhaseDriverSocketReady)
+	case RuntimePhaseModelAdapterReady:
+		return runtime.State == RuntimeStateAwaitingModel && hasPhase(RuntimePhaseStartedConfirmed)
+	case RuntimePhaseCodexProcessStarted:
+		return runtime.State == RuntimeStateAwaitingModel && hasPhase(RuntimePhaseModelAdapterReady)
 	default:
 		return false
 	}

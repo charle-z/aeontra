@@ -3,7 +3,6 @@
 package builder
 
 import (
-	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -15,7 +14,7 @@ func TestVPSCalibrationIsClosedBoundedAndRollbackCapable(t *testing.T) {
 		"#!/bin/bash",
 		"set -Eeuo pipefail",
 		"umask 077",
-		"readonly SOURCE_URL=https://github.com/charle-z/mcp-devbox.git",
+		"readonly SOURCE_URL=https://github.com/charle-z/aeontra.git",
 		"readonly HEALTH_URL=https://mcp-devbox-charlez.duckdns.org/healthz",
 		"readonly DEFAULT_QUOTA=65",
 		"readonly BUILD_TIMEOUT=30m",
@@ -99,12 +98,13 @@ func TestVPSCalibrationKeepsEvidenceSeparateFromBuilderWritableState(t *testing.
 			t.Fatalf("calibrator lost evidence/work separation %q", required)
 		}
 	}
-	info, err := os.Stat("calibrate-vps.sh")
+	output, err := exec.Command("git", "ls-files", "--stage", "--", "calibrate-vps.sh").Output()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o755 {
-		t.Fatalf("calibrator mode=%#o want=0755", info.Mode().Perm())
+	fields := strings.Fields(string(output))
+	if len(fields) == 0 || fields[0] != "100755" {
+		t.Fatalf("calibrator index mode=%q want=100755", strings.TrimSpace(string(output)))
 	}
 }
 

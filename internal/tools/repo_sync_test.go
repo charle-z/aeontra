@@ -60,7 +60,7 @@ func TestRepoFetchIsNarrowAndApprovalGated(t *testing.T) {
 }
 
 func TestRepoFastForwardPlanRejectsReplayExpiryAndChangedState(t *testing.T) {
-	svc, root := initFastForwardRepo(t, config.ModeAsk)
+	svc, root := initFastForwardRepo(t, config.ModeAllow)
 	preview, err := svc.RepoFastForwardPreview(root)
 	if err != nil {
 		t.Fatal(err)
@@ -68,10 +68,6 @@ func TestRepoFastForwardPlanRejectsReplayExpiryAndChangedState(t *testing.T) {
 	planID := field(preview, "plan_id")
 	if planID == "" || !strings.Contains(preview, "git merge --ff-only origin/main") {
 		t.Fatalf("bad preview:\n%s", preview)
-	}
-	out, err := svc.RepoFastForward(planID, false)
-	if err != nil || !strings.Contains(out, "APPROVAL REQUIRED") {
-		t.Fatalf("ask approval missing: out=%q err=%v", out, err)
 	}
 	if _, err := svc.RepoFastForward(planID, true); err != nil {
 		t.Fatal(err)
@@ -103,6 +99,27 @@ func TestRepoFastForwardPlanRejectsReplayExpiryAndChangedState(t *testing.T) {
 	svc.plans.mu.Unlock()
 	if _, err := svc.RepoFastForward(expired, true); err == nil || !strings.Contains(err.Error(), "expired") {
 		t.Fatalf("expired plan must fail: %v", err)
+	}
+}
+
+func TestRepoFastForwardRequiresAllowModeAndPrivateSandbox(t *testing.T) {
+	svc, root := initFastForwardRepo(t, config.ModeAsk)
+	preview, err := svc.RepoFastForwardPreview(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.RepoFastForward(field(preview, "plan_id"), true); err == nil {
+		t.Fatal("ask mode allowed contained Git mutation")
+	}
+
+	svc, root = initFastForwardRepo(t, config.ModeAllow)
+	svc.GitCapability.configureSandbox(disabledSandboxRunner{})
+	preview, err = svc.RepoFastForwardPreview(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.RepoFastForward(field(preview, "plan_id"), true); err == nil || !strings.Contains(err.Error(), "private L3") {
+		t.Fatalf("uncontained fast-forward error = %v", err)
 	}
 }
 
@@ -172,6 +189,7 @@ func TestRepoFastForwardRejectsChangedHeadAndTarget(t *testing.T) {
 func initFastForwardRepo(t *testing.T, mode config.Mode) (*Service, string) {
 	t.Helper()
 	svc, root := initRepo(t, mode)
+	svc.WithSandboxRunner(execTestSandbox{})
 	configIdentity(t, root)
 	write(t, root, "base.txt", "base\n")
 	gitCmd(t, root, "add", "base.txt")

@@ -120,6 +120,7 @@ func TestGitDiff_WorksInSelectedRepoUnderWorkspace(t *testing.T) {
 
 func TestGitCommit_CommitsSelectedRepoUnderWorkspace(t *testing.T) {
 	svc, root := newTestService(t, config.ModeAllow)
+	svc.WithSandboxRunner(execTestSandbox{})
 	repo := filepath.Join(root, "demo")
 	if err := os.MkdirAll(repo, 0o755); err != nil {
 		t.Fatal(err)
@@ -136,6 +137,20 @@ func TestGitCommit_CommitsSelectedRepoUnderWorkspace(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "a.go")); !os.IsNotExist(err) {
 		t.Fatalf("commit should not create or stage files relative to root, stat err=%v", err)
+	}
+}
+
+func TestGitCommitRequiresAllowModeAndPrivateSandbox(t *testing.T) {
+	for _, mode := range []config.Mode{config.ModeReadOnly, config.ModeAsk} {
+		svc, _ := newTestService(t, mode)
+		svc.WithSandboxRunner(&fakeSandbox{available: true})
+		if _, err := svc.GitCommit("fix: no host mutation", true); err == nil {
+			t.Fatalf("mode %s allowed git_commit", mode)
+		}
+	}
+	svc, _ := newTestService(t, config.ModeAllow)
+	if _, err := svc.GitCommit("fix: no host mutation", true); err == nil || !strings.Contains(err.Error(), "private L3") {
+		t.Fatalf("uncontained git_commit error = %v", err)
 	}
 }
 

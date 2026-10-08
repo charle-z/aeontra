@@ -172,13 +172,38 @@ func validateJob(workflowName, jobName string, job *yaml.Node, pullRequestFacing
 }
 
 func validProtectedReleasePermission(workflowName string, pullRequestFacing bool, job, permissions *yaml.Node) bool {
-	if workflowName != "edge-release.yml" || pullRequestFacing || permissions.Kind != yaml.MappingNode || len(permissions.Content) != 2 {
+	if pullRequestFacing || permissions.Kind != yaml.MappingNode {
 		return false
 	}
 	environment := mappingValue(job, "environment")
-	return environment != nil && environment.Kind == yaml.ScalarNode && environment.Value == "edge-release" &&
-		strings.ToLower(strings.TrimSpace(permissions.Content[0].Value)) == "contents" &&
-		strings.ToLower(strings.TrimSpace(permissions.Content[1].Value)) == "write"
+	if environment == nil || environment.Kind != yaml.ScalarNode {
+		return false
+	}
+	switch workflowName {
+	case "edge-release.yml":
+		return environment.Value == "edge-release" && exactPermissions(permissions, map[string]string{"contents": "write"})
+	case "sandbox-image-release.yml":
+		return environment.Value == "sandbox-image-release" && exactPermissions(permissions, map[string]string{
+			"contents": "read",
+			"packages": "write",
+		})
+	default:
+		return false
+	}
+}
+
+func exactPermissions(node *yaml.Node, expected map[string]string) bool {
+	if node == nil || node.Kind != yaml.MappingNode || len(node.Content) != len(expected)*2 {
+		return false
+	}
+	for i := 0; i < len(node.Content); i += 2 {
+		permission := strings.ToLower(strings.TrimSpace(node.Content[i].Value))
+		value := strings.ToLower(strings.TrimSpace(node.Content[i+1].Value))
+		if expected[permission] != value {
+			return false
+		}
+	}
+	return true
 }
 
 func walkJob(node *yaml.Node, pullRequestFacing bool, scope string) error {
@@ -211,13 +236,22 @@ func walkJob(node *yaml.Node, pullRequestFacing bool, scope string) error {
 }
 
 func validateActionVersion(value, scope string) error {
+	value = strings.TrimSpace(value)
+	if strings.HasPrefix(value, "./") {
+		return nil
+	}
 	separator := strings.LastIndex(value, "@")
 	if separator <= 0 || separator == len(value)-1 {
 		return fmt.Errorf("%w: %s action %q has no explicit ref", ErrMutableVersion, scope, value)
 	}
 	ref := strings.ToLower(strings.TrimSpace(value[separator+1:]))
-	if ref == "main" || ref == "master" || ref == "latest" {
+	if len(ref) != 40 {
 		return fmt.Errorf("%w: %s action %q", ErrMutableVersion, scope, value)
+	}
+	for _, character := range ref {
+		if (character < '0' || character > '9') && (character < 'a' || character > 'f') {
+			return fmt.Errorf("%w: %s action %q", ErrMutableVersion, scope, value)
+		}
 	}
 	return nil
 }

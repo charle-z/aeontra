@@ -31,7 +31,7 @@ mcp-edge onboard --server https://mcp-devbox-charlez.duckdns.org
 
 The pairing code is read from standard input and is never accepted as an argument.
 Onboarding verifies the installed signed bundle, runs the Bubblewrap/systemd/rootless/
-Node/Go/OpenCode/provider/driver preflight, pairs without replacing an existing
+Node/Go/signed-harness/provider/driver preflight, pairs without replacing an existing
 identity, and waits for the systemd path unit to start and health-check the Edge. It
 prints one safe final result containing only the device ID and valid/active states.
 
@@ -49,6 +49,7 @@ links:
 - `/usr/local/libexec/mcp-devbox/mcp-autopilot-worker`;
 - `/usr/local/libexec/mcp-devbox/mcp-bundle-updater`;
 - `/usr/local/libexec/mcp-devbox/node` (the reviewed Node 24.18.0 runtime);
+- `/opt/mcp-devbox/current/codex/codex` and `codex/pin.json` in manifest-v4 releases;
 - `/opt/mcp-devbox/opencode-provider`;
 - `/opt/mcp-devbox/opencode-1.18.1`.
 
@@ -90,9 +91,9 @@ renames the release into place, swaps `current`, installs only the packaged Edge
 restarts only the configured Edge service, checks health and restores the previous
 signed release on failure. Rollback accepts only the prior locally known signed bundle.
 Repair restores exact compatibility links/modes/unit/service from a valid signed
-release or fetches `stable` when the active bundle is incomplete. Cleanup always keeps
-current, previous and at least one additional signed release, and removes only older
-signed P15 directories after 30 days.
+release or fetches `stable` when the active bundle is incomplete. After a successful
+update, cleanup keeps only current and previous and removes every other trusted signed
+release directory. It leaves untrusted or malformed directories unchanged.
 
 The unprivileged Edge can request only three fixed root-owned units through a generated
 polkit rule: official stable update, previous signed rollback, and official repair.
@@ -113,8 +114,18 @@ commands, scripts, targets, credentials or flags.
 `edge-release` environment supplies the base64-encoded raw Ed25519 bundle key and the
 base64-encoded Debian GPG signing identity. The workflow checks out exact `main`, derives
 the public key without disclosing private material, stages all pinned components, runs
-the P15 tests/vet/build gates, generates an SPDX SBOM, publishes one immutable GitHub
-release, and updates only the separately signed `stable` channel documents.
+the Edge tests/vet/build gates, generates an SPDX SBOM, publishes one immutable GitHub
+release, and updates only the separately signed `stable` channel documents. Historical
+bridge releases use `p15.x.y`; public Aeontra releases use
+`vMAJOR.MINOR.PATCH`. See [`edge-bundles.md`](edge-bundles.md) for the ordered migration.
+
+For an Edge still on manifest v3, dispatch and install one `bridge-v3` release first so
+the installed updater learns version 4 while the active service remains OpenCode. After
+verifying that bridge, dispatch and install one `codex-v4` release to add the hashed
+Codex binary/pin and activate Codex. An Edge already on manifest v4 must keep
+`codex-v4` for its compatibility bridge; sending it `bridge-v3` would remove the Codex
+layout and is rejected by the updater. Skipping the compatibility bridge causes an old
+updater to reject the new release-name format before installation.
 
 `.github/workflows/p15-edge.yml` uses ephemeral release identities on pull requests. It
 builds the Debian package twice and compares bytes, exercises a clean isolated package

@@ -1,22 +1,32 @@
-# MCP Devbox
+# Aeontra
 
-[![Hosted on CubePath](https://img.shields.io/badge/Hosted%20on-CubePath-00C853?style=for-the-badge&logo=cloud&logoColor=white)](https://cubepath.com)
-
-MCP Devbox is secure by default, but it does not claim to eliminate every operational
-risk. It gives AI clients useful hands for software work without handing them an
-unrestricted machine.
+Aeontra exposes scoped, auditable software-development operations to AI clients through
+MCP. Administrators define repository roots, command policy, credentials and execution
+profiles at startup.
 
 It combines repository-scoped tools, immutable startup policy, explicit approval for
 risky actions, secret redaction, audit, durable state, optional GitHub/Coolify adapters,
-and a signed Linux Edge architecture. The model reasons; MCP Devbox constrains and
-executes.
+and a signed Linux Edge architecture. The Go module, executable, protocol, services,
+environment variables and state paths retain the `mcp-devbox` and `mcp-edge`
+compatibility names.
+See [`docs/brand-compatibility.md`](docs/brand-compatibility.md) before renaming an
+identifier.
 
-## What MCP Devbox is
+The shortest evaluation path is a local read-only server against a disposable
+repository. Follow the [public alpha guide](docs/public-alpha.md) for the install,
+client configuration, first acceptance, and feedback form.
 
-MCP Devbox is a Go MCP server for inspecting, changing, validating, publishing, and
+## What Aeontra is
+
+Aeontra is a Go MCP server for inspecting, changing, validating, publishing, and
 deploying software through narrow tools. It is designed for ChatGPT and other MCP
 clients, but the security boundary lives in the server rather than in a prompt or a
 specific model provider.
+
+Supported integrations are client-initiated: ChatGPT or another authorized MCP client
+invokes Aeontra through the documented MCP transport. Aeontra does not automate a
+client UI or call undocumented ChatGPT endpoints. It does not import consumer session
+cookies or tokens.
 
 The public control plane exposes only the registered MCP contract. Local and Edge
 components can add private capabilities without turning the public server into a
@@ -25,10 +35,10 @@ generic proxy.
 ## The problem it solves
 
 General filesystem-and-terminal agents are convenient but give untrusted model output
-too much ambient authority. MCP Devbox replaces that ambient authority with explicit
+too much ambient authority. Aeontra replaces that ambient authority with explicit
 contracts:
 
-- repository roots form a filesystem and command jail;
+- repository roots confine MCP file operations and command working directories;
 - secret paths are denied and returned content is redacted;
 - commands are argv-only and allowlisted unless a real isolated profile owns broader
   execution;
@@ -40,25 +50,32 @@ contracts:
 This reduces authority. It does not make model-generated actions inherently safe.
 Operators still own configuration, review, credentials, deployment, and recovery.
 
-## Public demo and production status
+## Maintainer-operated demo
 
-The public landing and MCP endpoint are served from:
+The source includes a public product site at `GET /`; the project domain is
+[`aeontra.com`](https://aeontra.com/). Its recommended deployment uses the isolated
+`aeontra-site` executable and `Dockerfile.site`, which expose no MCP, OAuth, console,
+repository, deployment, Edge, or secret authority. A control-plane deployment may
+serve the same assets while preserving authenticated `/console` and credential-gated
+`/mcp` route ownership. See [`docs/landing/public-site.md`](docs/landing/public-site.md).
+When the assets are served by that control plane, `/console` remains authenticated and
+`/mcp` remains credential-gated.
+
+The maintainer's existing MCP connector remains available during the domain migration:
 
 ```text
-https://mcp-devbox-charlez.duckdns.org/
 https://mcp-devbox-charlez.duckdns.org/mcp
 ```
 
-The public presentation landing is presentation-only. It does not grant repository,
-deployment, Edge, or secret authority. `/console` remains authenticated and `/mcp`
-remains credential-gated. See
-[`docs/landing/public-showcase.md`](docs/landing/public-showcase.md).
-
-The production control plane and authenticated console are hosted on **CubePath** and
-deployed through Coolify.
+This deployment is evidence that the architecture can run remotely; its host, domain,
+accounts, and application identifiers are not project defaults or contributor
+requirements. Aeontra can run locally over stdio without Coolify or the maintainer's
+infrastructure. A separate native Windows Edge package is documented in
+[`docs/install-edge-windows.md`](docs/install-edge-windows.md); its source, signed
+release, installed service, and real-device acceptance remain separate identities.
 
 Do not copy a commit, release, tool count, or catalog hash from this README. Read the
-live deployment identity from [`/version`](https://mcp-devbox-charlez.duckdns.org/version)
+live deployment identity from its `/version` route
 or call `system_runtime_info`. The canonical public tool contract is
 [`docs/tools.md`](docs/tools.md). Historical release evidence remains under
 [`docs/baselines/`](docs/baselines/).
@@ -69,7 +86,7 @@ or call `system_runtime_info`. The canonical public tool contract is
 MCP client
    │  stdio or authenticated HTTPS
    ▼
-MCP Devbox control plane
+Aeontra control plane (`mcp-devbox` compatibility executable)
    ├─ immutable policy: roots, mode, allowlists, secrets
    ├─ direct read/status operations under policy + audit
    ├─ preview → single-use plan → approval → revalidation → narrow effect
@@ -107,8 +124,11 @@ preview
 → audit
 ```
 
-A preview is not approval. Approval is not a bypass. Plans expire, are single-use, and
-fail if the relevant repository, branch, application, target, or configuration changed.
+A preview is not approval. Plans expire, are single-use, and fail if the relevant
+repository, branch, application, target, or configuration changed. Repository code
+execution is stricter: `run_command`, `run_tests`, and `sandbox_exec` require an
+attested private L3 executor and administrator-selected `allow` mode. `ask` mode does
+not grant mutable-code execution.
 
 ## Main capabilities
 
@@ -116,14 +136,25 @@ fail if the relevant repository, branch, application, target, or configuration c
   patch, create new files, and keep agent-agnostic project memory.
 - **Validation:** run one configured test command, allowlisted argv, a contained L3
   sandbox when available, or fixed profiles through a private validation runner.
-- **Git and GitHub:** status, diff, commit, safe fetch/fast-forward, owner-bound repository
-  operations, exact-head PR/check diagnostics, planned publication, and green-gated merge.
-- **Coolify:** bounded status/log reads and planned application creation or deployment
-  under configured server, project, application, domain, and repository boundaries.
+- **Git and GitHub:** status, diff, commit, safe fetch/fast-forward, exact same-name
+  no-force publication from a registered Edge checkout, owner-bound repository
+  operations, exact-head PR/check diagnostics, planned publication, green-gated merge,
+  and a private direct-Edge broker built on fixed official `gh` operations.
+- **Coolify:** bounded status/log reads, planned application creation or deployment,
+  and reviewed HTTPS-domain promotion under configured server, project, application,
+  domain, and repository boundaries.
 - **Brain:** persistent Markdown truth with owner-curated and agent-working trust levels,
   local Git history, and a disposable search index.
 - **Control plane and Edge:** durable opaque coordination with signed releases and local
   private workspace contracts on Linux/Parrot/WSL.
+- **Development environments:** each registered workspace separates its source checkout
+  from private toolchain runtime, package caches and managed artifacts. Normal dirty
+  development state remains inspectable; only a real identity, ownership, containment
+  or mount-boundary violation blocks the workspace.
+- **Durable parallel tasks:** one to four bounded GPT Web/Codex workers can run on
+  distinct exact-base Edge worktrees with server-owned leases, monotonically increasing
+  fences, independent runtimes, restart reconciliation and clean-only explicit cleanup.
+- **Browser harness:** arbitrary Playwright, Puppeteer, Selenium, WebDriver or custom automation in any authorized persistent development toolbox, with installable browser engines, general HTTP/HTTPS and localhost access, durable profiles, managed downloads/artifacts, cancellation and resource limits.
 - **Large results:** bounded redacted output can be persisted and continued through an
   opaque `result_ref` instead of flooding one MCP response.
 
@@ -131,10 +162,10 @@ See [`docs/tools.md`](docs/tools.md) for the complete current catalog and exact 
 
 ## What it cannot do
 
-MCP Devbox deliberately does not provide:
+Aeontra does not provide:
 
 - a free host shell;
-- automatic self-approval;
+- repository-code execution in read-only or ask mode;
 - force push, arbitrary refspecs, mirror publication, or caller-selected Git credentials;
 - unrestricted secret reads or an MCP tool that approves secret grants;
 - unrestricted access to the host filesystem or every repository on a machine;
@@ -142,7 +173,7 @@ MCP Devbox deliberately does not provide:
 - an arbitrary control-plane-to-Edge command, URL, path, credential, or proxy channel;
 - universal network isolation for every execution profile.
 
-The trusted Linux workcell intentionally shares the host network. It must not be
+The trusted Linux workcell shares the host network. It must not be
 described as equivalent to the networkless Edge sandbox or as universal containment.
 
 ## Supported architectures
@@ -168,16 +199,44 @@ Configuration and security differ by profile. Read
 [`docs/configuration.md`](docs/configuration.md) and
 [`docs/security.md`](docs/security.md) before deployment.
 
+### Native Windows Edge
+
+The native Windows package uses an SCM service under a virtual account, private
+ACL-protected state, immutable signed release directories, and a signed updater.
+It provides a trusted host-shared Windows workcell. It is not interchangeable with
+the networkless Linux Edge sandbox, and it does not claim Linux toolbox, browser
+harness, or HTB acceptance on Windows. See
+[`docs/install-edge-windows.md`](docs/install-edge-windows.md).
+
 ## Local quick start
 
 Requirements: Go 1.26 and an absolute repository path.
 
 ```bash
-git clone https://github.com/charle-z/mcp-devbox.git
-cd mcp-devbox
+go install github.com/charle-z/mcp-devbox/cmd/mcp-devbox@latest
+mcp-devbox serve --root /absolute/path/to/repository --mode read-only
+```
+
+Use a disposable repository for the first run. The complete guided path, MCP client
+configuration, success checks, and feedback boundary are in
+[`docs/public-alpha.md`](docs/public-alpha.md).
+
+To validate the current source instead of installing the latest tag:
+
+```bash
+git clone https://github.com/charle-z/aeontra.git
+cd aeontra
 go test ./... -count=1
 go build -o ./bin/mcp-devbox ./cmd/mcp-devbox
 ./bin/mcp-devbox serve --root /absolute/path/to/repository --mode read-only
+```
+
+The release-independent clean-install acceptance builds a fresh binary, starts the
+read-only stdio transport against a disposable repository, validates MCP initialization,
+and checks that audit state is created without private infrastructure:
+
+```bash
+./scripts/verify-clean-install.sh
 ```
 
 For reviewed local changes:
@@ -235,9 +294,9 @@ local-human grants, patch-first writes, command allowlists, exact plans, state
 revalidation, non-root containers, private persistent state, signed Edge releases, and
 closed public schemas.
 
-MCP Devbox is secure by default, but it does not claim to eliminate every operational
-risk. Known limitations and profile-specific trust boundaries are part of the product
-contract, not fine print.
+The documented controls limit authority and record consequential effects. They do not
+guarantee correct model output, safe dependencies or a secure host. Known limitations
+and profile-specific trust boundaries are part of the product contract.
 
 ## Verification
 
@@ -262,6 +321,15 @@ Start with [`docs/documentation-map.md`](docs/documentation-map.md). Canonical r
 - [`docs/configuration.md`](docs/configuration.md): complete configuration reference;
 - [`docs/security.md`](docs/security.md): technical security architecture;
 - [`SECURITY.md`](SECURITY.md): vulnerability reporting and disclosure;
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): development workflow, gates, and contribution provenance;
+- [`SUPPORT.md`](SUPPORT.md): best-effort support scope and useful diagnostics;
+- [`GOVERNANCE.md`](GOVERNANCE.md): decision process and maintainer roles;
+- [`docs/brand-compatibility.md`](docs/brand-compatibility.md): public brand and stable
+  compatibility identifiers;
+- [`docs/dependency-licenses.md`](docs/dependency-licenses.md): dependency license and
+  distribution-notice policy;
+- [`CHANGELOG.md`](CHANGELOG.md): user-visible release changes;
+- [`docs/versioning.md`](docs/versioning.md): release identity, SemVer and retention;
 - [`docs/tools.md`](docs/tools.md): public tool catalog;
 - `/version` and `system_runtime_info`: live build/catalog identity;
 - [`docs/baselines/`](docs/baselines/): dated historical evidence.
@@ -271,8 +339,14 @@ creating competing configuration or security references.
 
 ## License and vulnerability reporting
 
-No open-source `LICENSE` file is currently published. Treat the repository as all
-rights reserved unless the owner states otherwise.
+Aeontra is licensed under the
+[Apache License, Version 2.0](LICENSE). See [`NOTICE`](NOTICE) for project attribution,
+[`docs/provenance.md`](docs/provenance.md) for the historical identity boundary, and
+[`docs/dependency-licenses.md`](docs/dependency-licenses.md) for third-party and
+artifact-specific obligations.
 
 Report vulnerabilities privately using [`SECURITY.md`](SECURITY.md). Do not publish
 secrets, exploit details, or unpatched vulnerabilities in a public issue.
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) before proposing code and
+[`SUPPORT.md`](SUPPORT.md) before opening a support request.

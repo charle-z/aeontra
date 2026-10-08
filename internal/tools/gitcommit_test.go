@@ -16,6 +16,7 @@ func configIdentity(t testing.TB, root string) {
 
 func TestGitCommit_AllowCommits(t *testing.T) {
 	svc, root := initRepo(t, config.ModeAllow)
+	svc.WithSandboxRunner(execTestSandbox{})
 	configIdentity(t, root)
 	write(t, root, "a.go", "package a\n")
 	if _, err := svc.GitCommit("feat: add a", false); err != nil {
@@ -32,6 +33,29 @@ func TestGitCommit_AllowCommits(t *testing.T) {
 	}
 }
 
+func TestGitCommitAndStatusWorkWithoutRemote(t *testing.T) {
+	svc, root := initRepo(t, config.ModeAllow)
+	svc.WithSandboxRunner(execTestSandbox{})
+	configIdentity(t, root)
+	write(t, root, "local.txt", "local only\n")
+
+	if remotes := strings.TrimSpace(gitCmd(t, root, "remote")); remotes != "" {
+		t.Fatalf("fixture unexpectedly has a remote: %q", remotes)
+	}
+	if _, err := svc.GitCommit("feat: start local project", false); err != nil {
+		t.Fatalf("commit without remote: %v", err)
+	}
+	status, err := svc.RepoStatus("")
+	if err != nil {
+		t.Fatalf("status without remote: %v", err)
+	}
+	for _, required := range []string{"upstream: \n", "ahead: 0\n", "behind: 0\n", "clean: true\n"} {
+		if !strings.Contains(status, required) {
+			t.Fatalf("local-only status missing %q:\n%s", required, status)
+		}
+	}
+}
+
 func TestGitCommit_ReadOnlyDenied(t *testing.T) {
 	svc, root := initRepo(t, config.ModeReadOnly)
 	configIdentity(t, root)
@@ -41,23 +65,21 @@ func TestGitCommit_ReadOnlyDenied(t *testing.T) {
 	}
 }
 
-func TestGitCommit_AskRequiresApproval(t *testing.T) {
+func TestGitCommit_AskModeFailsClosed(t *testing.T) {
 	svc, root := initRepo(t, config.ModeAsk)
+	sandbox := &fakeSandbox{available: true}
+	svc.WithSandboxRunner(sandbox)
 	configIdentity(t, root)
 	write(t, root, "a.go", "package a\n")
-	msg, err := svc.GitCommit("msg", false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(msg, "APPROVAL REQUIRED") {
-		t.Errorf("ask mode should require approval: %q", msg)
+	if _, err := svc.GitCommit("msg", true); err == nil {
+		t.Fatal("ask mode must not execute repository code")
 	}
 	// Nothing committed yet.
 	if out := gitCmd(t, root, "status", "--porcelain"); strings.TrimSpace(out) == "" {
 		t.Error("nothing should be committed before approval")
 	}
-	if _, err := svc.GitCommit("msg", true); err != nil {
-		t.Fatalf("approved commit failed: %v", err)
+	if sandbox.runs != 0 {
+		t.Fatal("ask mode reached the sandbox")
 	}
 }
 

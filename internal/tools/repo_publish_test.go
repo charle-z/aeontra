@@ -66,8 +66,8 @@ func TestRepoPublishSuccessfulInitialAndNormalPush(t *testing.T) {
 		wantPush   string
 		wantExists string
 	}{
-		{"initial", "", "", "push -u origin main", "remote_branch_exists: false"},
-		{"normal", strings.Repeat("b", 40), "0 1", "push origin main", "remote_branch_exists: true"},
+		{"initial", "", "", "push --porcelain https://github.com/acme/demo.git " + strings.Repeat("a", 40) + ":refs/heads/main", "remote_branch_exists: false"},
+		{"normal", strings.Repeat("b", 40), "0 1", "push --porcelain https://github.com/acme/demo.git " + strings.Repeat("a", 40) + ":refs/heads/main", "remote_branch_exists: true"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := &publishFixture{head: strings.Repeat("a", 40), branch: "main", remoteURL: "https://github.com/acme/demo.git", remoteSHA: tc.remoteSHA, counts: tc.counts, pushOutput: "pushed"}

@@ -17,7 +17,10 @@ import (
 	"time"
 )
 
-const statusDescriptionPrefix = "mcp-front-door-coordinator:v1 "
+const (
+	statusDescriptionPrefix      = "mcp-front-door-coordinator:v1 "
+	coolifyDeploymentWaitTimeout = 20 * time.Minute
+)
 
 var (
 	commitPattern   = regexp.MustCompile("^[a-f0-9]{40}$")
@@ -331,21 +334,24 @@ func (c *Client) ProbeFront(ctx context.Context, origin string) error {
 }
 
 func (c *Client) PublishStatus(ctx context.Context, status Status) error {
-	data, err := json.Marshal(status)
+	description, err := encodePublishedStatus(status)
 	if err != nil {
 		return err
 	}
-	if len(data) > 4096 {
-		return errors.New("front-door coordinator status is too large")
-	}
-	return c.patch(ctx, c.config.CoordinatorAppID, map[string]any{"description": statusDescriptionPrefix + string(data)})
+	return c.patch(ctx, c.config.CoordinatorAppID, map[string]any{"description": description})
 }
 
 func DecodePublishedStatus(description string) (Status, bool, error) {
 	description = strings.TrimSpace(description)
+	if strings.HasPrefix(description, compactStatusDescriptionPrefix) {
+		status, err := decodeCompactPublishedStatus(strings.TrimPrefix(description, compactStatusDescriptionPrefix))
+		return status, true, err
+	}
 	if !strings.HasPrefix(description, statusDescriptionPrefix) {
 		return Status{}, false, nil
 	}
+	// The v1 shape remains readable for existing coordinator descriptions. New
+	// publications always use the compact v2 envelope.
 	var status Status
 	if err := json.Unmarshal([]byte(strings.TrimPrefix(description, statusDescriptionPrefix)), &status); err != nil {
 		return Status{}, true, err
@@ -420,7 +426,7 @@ func (c *Client) setEnvironment(ctx context.Context, appID string, vars map[stri
 func (c *Client) deployAndWait(ctx context.Context, appID string) (string, error) {
 	var raw json.RawMessage
 	path := "/api/v1/deploy?" + url.Values{"uuid": {appID}, "force": {"false"}}.Encode()
-	if err := c.requestJSON(ctx, http.MethodGet, path, nil, &raw); err != nil {
+	if err := c.requestJSON(ctx, http.MethodPost, path, nil, &raw); err != nil {
 		return "", err
 	}
 	response := decodeDeploymentResponse(raw)
@@ -428,7 +434,7 @@ func (c *Client) deployAndWait(ctx context.Context, appID string) (string, error
 	if deploymentID == "" {
 		return "", errors.New("coolify deployment returned no id")
 	}
-	deadline := time.Now().Add(5 * time.Minute)
+	deadline := time.Now().Add(coolifyDeploymentWaitTimeout)
 	for time.Now().Before(deadline) {
 		var current deployment
 		if err := c.requestJSON(ctx, http.MethodGet, "/api/v1/deployments/"+url.PathEscape(deploymentID), nil, &current); err != nil {
@@ -448,6 +454,35 @@ func (c *Client) deployAndWait(ctx context.Context, appID string) (string, error
 		c.sleep(2 * time.Second)
 	}
 	return deploymentID, errors.New("coolify deployment did not reach terminal state")
+}
+
+func (c *Client) stopAndWait(ctx context.Context, appID string) error {
+	if err := c.requestJSON(ctx, http.MethodPost, "/api/v1/applications/"+url.PathEscape(appID)+"/stop", nil, nil); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(2 * time.Minute)
+	for time.Now().Before(deadline) {
+		var application struct {
+			Status string `json:"status"`
+		}
+		if err := c.requestJSON(ctx, http.MethodGet, "/api/v1/applications/"+url.PathEscape(appID), nil, &application); err != nil {
+			return err
+		}
+		status := strings.TrimSpace(application.Status)
+		if status == "stopped" || status == "exited" || strings.HasPrefix(status, "exited:") {
+			return nil
+		}
+		if status == "" || (!strings.HasPrefix(status, "running:") && status != "running" && status != "stopping") {
+			return errors.New("managed application returned an invalid stop state")
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		c.sleep(2 * time.Second)
+	}
+	return errors.New("managed application did not stop before deployment")
 }
 
 func (c *Client) requestJSON(ctx context.Context, method, path string, payload any, result any) error {
@@ -602,7 +637,15 @@ func decodeDeploymentResponse(raw []byte) deployment {
 		Deployments    []deployment `json:"deployments"`
 	}
 	if json.Unmarshal(raw, &direct) != nil {
-		return deployment{}
+		var deployments []deployment
+		if json.Unmarshal(raw, &deployments) != nil || len(deployments) == 0 {
+			return deployment{}
+		}
+		item := deployments[0]
+		if item.DeploymentUUID == "" {
+			item.DeploymentUUID = item.UUID
+		}
+		return item
 	}
 	if direct.DeploymentUUID == "" {
 		direct.DeploymentUUID = direct.UUID
@@ -627,7 +670,7 @@ func managedRepositoryMatches(raw string) bool {
 	raw = strings.TrimPrefix(raw, "http://github.com/")
 	raw = strings.TrimPrefix(raw, "ssh://git@github.com/")
 	raw = strings.TrimPrefix(raw, "git@github.com:")
-	return raw == strings.ToLower(ManagedRepository)
+	return raw == strings.ToLower(ManagedRepository) || raw == strings.ToLower(ManagedCompatibilityRepository)
 }
 
 func (c *Client) frontBackendURL(ctx context.Context) (string, error) {

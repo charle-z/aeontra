@@ -158,6 +158,8 @@ func TestStep17EdgeInstallDocsSeparateCurrentProcedureFromHistoricalCandidates(t
 		"installed Edge",
 		"separate evidence",
 		"validation pending",
+		"https://mcp.example.com",
+		"not an installation default",
 	} {
 		if !strings.Contains(p16, required) {
 			t.Errorf("P16 install document missing %q", required)
@@ -172,6 +174,9 @@ func TestStep17EdgeInstallDocsSeparateCurrentProcedureFromHistoricalCandidates(t
 		if strings.Contains(p15+"\n"+p16, forbidden) {
 			t.Errorf("Edge install docs retain stale candidate wording %q", forbidden)
 		}
+	}
+	if strings.Contains(p16, "mcp-devbox-charlez.duckdns.org") {
+		t.Error("canonical P16 install document contains the maintainer demo domain")
 	}
 }
 

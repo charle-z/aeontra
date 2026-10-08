@@ -46,5 +46,31 @@ func (r *ProjectRegistry) Status(ctx context.Context, rawAlias, rawTarget string
 		return resolution.SafeStatus(), nil
 	}
 	status.Reason = ProjectErrorCodeOf(err)
+	status.State = projectStatusStateForError(status.Reason)
+	var projectFailure *ProjectError
+	if errors.As(err, &projectFailure) && projectFailure.Diagnostic != nil {
+		status.Diagnostic = cloneProjectCheckoutDiagnosticValue(projectFailure.Diagnostic)
+	}
 	return status, nil
+}
+
+func projectStatusStateForError(code ProjectErrorCode) string {
+	switch code {
+	case ProjectErrorProjectNotFound:
+		return "absent"
+	case ProjectErrorCheckoutDirty:
+		return string(ProjectCheckoutDirty)
+	case ProjectErrorRepositoryMismatch, ProjectErrorCheckoutIdentityMismatch:
+		return string(ProjectCheckoutIdentityMismatch)
+	case ProjectErrorCheckoutTimeout, ProjectErrorDiscoveryTimeout:
+		return string(ProjectCheckoutTimeout)
+	case ProjectErrorCheckoutCorrupt:
+		return string(ProjectCheckoutCorrupt)
+	case ProjectErrorCheckoutUnsafe, ProjectErrorCheckoutUnsafeBoundary:
+		return string(ProjectCheckoutUnsafeBoundary)
+	case ProjectErrorCheckoutUnavailable, ProjectErrorWorkspaceMissing, ProjectErrorTargetNotFound:
+		return string(ProjectCheckoutUnavailable)
+	default:
+		return "blocked"
+	}
 }

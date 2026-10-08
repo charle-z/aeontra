@@ -78,15 +78,19 @@ func planManagedFrontDoorCatalogTransition(entries []coolifyEnvironmentVariable,
 
 func authenticatedManagedCatalog(entry coolifyEnvironmentVariable, token string) (string, error) {
 	value := strings.TrimSpace(entry.Value)
-	if value != entry.Value || !frontDoorCatalogPattern.MatchString(value) {
+	if entry.Value != "" && value != entry.Value {
 		return "", errors.New("catalog hash is malformed")
 	}
 	if !entry.IsLiteral || !entry.IsRuntime || entry.IsBuildtime {
 		return "", errors.New("environment metadata is outside the managed contract")
 	}
-	resolved, err := frontdoorcoordinator.ManagedEnvironmentValue(entry.Comment, token, entry.Key, value)
-	if err != nil || resolved != value {
+	candidates := []string(nil)
+	if value != "" {
+		candidates = []string{value}
+	}
+	resolved, err := frontdoorcoordinator.ManagedEnvironmentValue(entry.Comment, token, entry.Key, candidates...)
+	if err != nil || !frontDoorCatalogPattern.MatchString(resolved) || (value != "" && resolved != value) {
 		return "", errors.New("environment authentication failed")
 	}
-	return value, nil
+	return resolved, nil
 }

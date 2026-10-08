@@ -88,7 +88,9 @@ MCP_FRONT_DOOR_TRANSITION_CATALOG_HASH=sha256:<different-64-lowercase-hex>
 The transition variable is not a free-form compatibility escape hatch. The managed
 workflow authenticates the existing primary value, seals both exact hashes into its
 single-use plan, rejects a third value and removes the old hash on the next reviewed
-reconciliation after the new primary is live.
+reconciliation after the new primary is live. If Coolify masks a runtime value as
+`null`, reconciliation recovers only these non-secret catalog hashes from their
+authenticated public managed comments; missing or invalid signatures still fail closed.
 
 Optional variables:
 
@@ -122,7 +124,10 @@ MCP Devbox exposes three narrow operations for the first independent deployment:
 
 1. `platform_front_door_create_preview` validates the temporary public origin, fixed
    backend origin, exact protocol and catalog hash, then binds the current commit of
-   `front-door-stable` into an expiring single-use plan.
+   `front-door-stable` into an expiring single-use plan. Its safe preview prints the
+   authenticated primary hash, optional authenticated transition hash, whether a
+   transition removal is pending, and whether catalog state changes; approval never
+   relies on an implicit single-hash summary.
 2. `platform_front_door_create` creates or reconciles exactly one application named
    `mcp-devbox-front-door-managed`, upserts the managed non-secret compatibility
    variables, and deploys only when the pinned commit and catalog state are already
@@ -194,6 +199,28 @@ The coordinator contract is exposed through five closed operations:
    healthy finished deployments, exact branch commits and the complete managed worker
    environment, then returns a dispatch, observe or noop disposition for cutover or
    rollback. The same identity is fixed in the single-use plan and revalidated at execute.
+
+Application health comes from each Coolify application record, but deployment state and
+commit identity do not. Current Coolify versions may expose `deployment_status=null` and
+`git_commit_sha=HEAD` on an otherwise healthy application. The gate therefore queries the
+application deployment history, selects one unambiguous latest deployment by timestamp,
+requires terminal `finished`, and seals its exact commit into the preview. Backend and
+front-door deployments must equal the current approved branch commits. The coordinator
+may run an earlier reviewed `main` commit, but that commit must remain an ancestor of the
+current `main`; a divergent, active, failed, ambiguous or malformed deployment fails closed.
+The coordinator ancestry check uses GitHub's compare endpoint with one commit per page and a
+dedicated 8 MiB response cap because compare responses may include file metadata far larger
+than a branch-ref response. Other GitHub ref and merge operations retain their 64 KiB cap,
+and an oversized or malformed compare response still fails closed.
+If the optional paginated deployment request returns a successful but empty body, the gate
+performs exactly one compatibility read of the same official endpoint without pagination.
+A second empty response, non-success status, malformed non-empty JSON or an oversized record
+set still fails closed; no application or transition is modified by either read.
+The primary request asks Coolify for only the two newest deployments because the upstream
+model orders them by `created_at` descending; two records are sufficient to identify the
+latest entry and detect a timestamp tie. Deployment history uses a dedicated 32 MiB response
+cap with explicit overflow detection rather than the generic 1 MiB response reader. Large
+upstream `logs` fields are ignored by the bounded decoder and are never returned or logged.
 4. platform_front_door_transition may only set that closed target, bind the consumed
    single-use plan ID as the durable request ID and trigger one normal deployment of
    the coordinator. It does not patch facade or backend domains.
@@ -221,6 +248,14 @@ verifies the expected origin before advancing. A restart resumes from the journa
 the externally visible topology. Unknown topology, conflicting active targets, missing
 storage, duplicate application identity or an exhausted finite phase budget fail closed.
 
+An active `queued`, `running` or `compensating` request in the persistent journal is
+authoritative across container replacement, even when the managed environment has already
+been reconciled back to `idle`. A replacement worker restores that exact request ID and target
+from the journal; it never substitutes a new request. The worker reports ready first and waits
+75 seconds before resuming, so Coolify can complete the coordinator rollout before the worker
+publishes status or mutates the managed topology. Cancellation during that gate performs no
+transition work.
+
 A non-interruption failure changes the durable state to `compensating` and drives the
 opposite fixed target: failed cutover restores the direct-backend topology; failed
 rollback restores the stable-front-door topology. Compensation derives every next phase
@@ -232,6 +267,17 @@ it is never reported as a successful cutover or rollback.
 Published status is retried with a finite budget. If publication or the local journal
 remains unavailable, the worker exits non-zero instead of remaining healthy with a
 stalled transition, so the platform can surface or restart it from the durable journal.
+
+The persistent volume remains the complete authoritative journal. Coolify's application
+description carries only a versioned compact observation envelope capped at 255 ASCII bytes:
+revision, request ID, target, recovery target, state, phase, deployment ID, one reason from the
+fixed transition dictionary and update time. Live domains and facade upstream are read directly
+from the managed applications instead of being duplicated in that envelope. New workers publish
+`mcp-fdc:v2`; readers retain strict compatibility with the previous `v1` JSON description.
+Unknown fields, reason codes, identifiers, trailing data or oversized envelopes fail closed.
+Publication failures preserve only an enumerated safe cause such as request build, private
+gateway transport, response read, HTTP or decode failure; no response body, token or URL is
+reported.
 
 The backend-facing dispatch remains safe if GPT Web temporarily loses the MCP namespace:
 the independent worker continues from its durable journal. The same request ID resumes

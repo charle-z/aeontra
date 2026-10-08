@@ -5,11 +5,13 @@ an ephemeral execution lease created for one explicit continuation request. Remo
 or finishing a runtime does not remove the workspace, its local contract, its
 checkpoint, or its evidence.
 
-This is the primary interactive mode for ChatGPT web. While the chat remains active,
-ChatGPT drives each Edge request with `model_turn_next` and `model_turn_respond`.
-OpenCode is only the pinned local execution harness in this path; it is not the model
-and does not require model credits or an API key. The P15 loopback autopilot provider
-is optional and is used only when execution must continue without an active chat.
+This is the primary interactive mode for an authorized MCP client such as ChatGPT.
+While the client conversation remains active, the client drives each Edge request with
+`model_turn_next` and `model_turn_respond`. OpenCode is only the pinned local execution
+harness in this path; it is not the model or model provider and receives no OpenAI or
+ChatGPT credential or browser state. The P15 loopback autopilot provider is optional
+and is used only when execution must continue without an active client conversation.
+No daemon drives the client UI or creates a replacement conversation automatically.
 
 ## Public MCP contract
 
@@ -85,12 +87,17 @@ machine metadata, VPN interface, credential handles, evidence, instructions, or
 checkpoint. The control plane accepts a continuation only when the workspace resolves
 to an active paired device and the profile/mode combination is recognized.
 
-The Edge remains the source of truth. At runtime it reads:
+The Edge remains the source of truth. Inside the sandbox, the runtime reads the private
+control mount:
 
 ```text
-.mcp-devbox/instructions.md
-.mcp-devbox/current-state.md
+/workspace/.mcp-devbox/instructions.md
+/workspace/.mcp-devbox/current-state.md
 ```
+
+These files are stored under the Edge's per-workspace runtime root rather than in the
+source checkout. A legacy source-side `.mcp-devbox` directory is retained only for
+backward compatibility and is not used for new workcell control state.
 
 For `htb-linux`, the local workspace registry and contract continue to enforce the
 immutable target, VPN preflight, target-locked broker, checkpoint redaction,
@@ -113,6 +120,34 @@ actions authorized by the local contract; raw credential material remains local.
    `model_turn_respond` until the runtime reaches a terminal state or the user stops.
 6. The Edge executes the local trusted contract and its structured tools.
 ```
+
+## Model-turn completion gate
+
+Every current `model_turn_respond` caller should declare one closed `task_state`:
+
+- `active` is valid only with `finish_reason=tool_calls` and at least one tool id
+  offered by the current request. Progress text may accompany the call, but cannot
+  replace the next executable action.
+- `blocked` is valid only with `finish_reason=error` or `cancelled` and no tool calls.
+- `complete` is valid only with `finish_reason=stop`, no tool calls and no
+  sentence-leading declaration of pending work such as `Now I will...`,
+  `The next step is...`, `Ahora voy a...` or `Queda por comprobar...`.
+
+`finish_reason=length` is incomplete and is rejected. A rejected response does not
+consume the durable turn, so the active MCP client can submit a corrected response.
+For compatibility with clients that cached the earlier tool schema, an omitted
+`task_state` is inferred from `finish_reason`: `tool_calls` maps to `active`, `stop`
+maps to `complete`, and `error`/`cancelled` map to `blocked`. The inferred state crosses
+the same validation gate; omission does not bypass pending-action or tool-id checks.
+The same validation runs again in the stock Codex loopback adapter before a durable
+response becomes a Responses API event. `task_state` is MCP admission metadata and is
+not added to the strict durable provider payload, preserving compatibility with signed
+Edge releases that implement the prior payload shape.
+
+This gate applies to managed Codex/model-turn runtimes. MCP Devbox cannot intercept a
+direct ChatGPT client response that closes without calling an MCP tool. Durable tasks,
+workspaces and checkpoints remain the recovery boundary for that client-controlled
+case.
 
 `lab init` prepares and registers the persistent local workspace. It is not repeated
 for every runtime. `workspace_runtime_continue` is for later ephemeral executions.

@@ -9,25 +9,50 @@ import (
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/config"
+	"github.com/charle-z/mcp-devbox/internal/modelturn"
 	"github.com/charle-z/mcp-devbox/internal/observability"
+	"github.com/charle-z/mcp-devbox/internal/workqueue"
 )
 
 func clearRuntimeEnv(t *testing.T) {
 	t.Helper()
 	for _, name := range []string{
 		tokenEnv, publicURLEnv, oauthPassphraseEnv, brainRootEnv, stateRootEnv,
-		oauthClientStorePathEnv, oauthRefreshStorePathEnv,
+		oauthClientStorePathEnv, oauthAccessStorePathEnv, oauthRefreshStorePathEnv,
 		observabilityModeEnv, observabilityPathEnv, observabilityMaxBytesEnv,
 		sandboxImageEnv,
+		sandboxRunnerURLEnv, sandboxRunnerTokenEnv, sandboxWorkspaceIDEnv,
 		validationRunnerURLEnv, validationRunnerTokenEnv,
 		privilegedTasksEnv, privilegedServicesEnv, privilegedTimeoutEnv,
-		githubTokenEnv, githubOwnerEnv, githubOwnerTypeEnv, githubDefaultVisibilityEnv,
+		maintainerProfileEnv, assetLibraryEnv,
+		developmentRunnerProfileEnv, developmentRunnerRepositoryEnv, developmentRunnerWorkflowRefEnv,
+		developmentRunnerWorkflowSHAEnv, developmentRunnerGenerationEnv, developmentRunnerCalibrationEnv,
+		githubTokenEnv, githubOSSTokenEnv, githubOwnerEnv, githubOwnerTypeEnv, githubDefaultVisibilityEnv,
 		coolifyURLEnv, coolifyAPITokenEnv, coolifyAllowedAppsEnv, coolifyServerUUIDEnv,
 		coolifyProjectUUIDEnv, coolifyEnvironmentNameEnv, coolifyEnvironmentUUIDEnv,
 		coolifyAllowedDomainsEnv, coolifyGitHubAppUUIDEnv, coolifyDestinationUUIDEnv,
 		coolifyAllowedMountsEnv,
 	} {
 		t.Setenv(name, "")
+	}
+}
+
+func TestLoadMaintainerProfileIsExplicitAndClosed(t *testing.T) {
+	clearRuntimeEnv(t)
+	profile, err := loadMaintainerProfile()
+	if err != nil || profile != "" {
+		t.Fatalf("default profile=%q err=%v", profile, err)
+	}
+
+	t.Setenv(maintainerProfileEnv, "charle-z-production")
+	profile, err = loadMaintainerProfile()
+	if err != nil || profile != "charle-z-production" {
+		t.Fatalf("configured profile=%q err=%v", profile, err)
+	}
+
+	t.Setenv(maintainerProfileEnv, "unexpected")
+	if _, err := loadMaintainerProfile(); err == nil || !strings.Contains(err.Error(), maintainerProfileEnv) {
+		t.Fatalf("unsupported profile error=%v", err)
 	}
 }
 
@@ -59,6 +84,9 @@ func TestLoadPrivilegedConfigRejectsInvalidTimeout(t *testing.T) {
 
 func TestOptionalRuntimeClientsUseExistingEnvironmentNames(t *testing.T) {
 	clearRuntimeEnv(t)
+	if githubOSSTokenEnv != "GH_TOKEN" {
+		t.Fatalf("public OSS GitHub env = %q, want GH_TOKEN", githubOSSTokenEnv)
+	}
 	if buildGitHubClientFromEnv() != nil {
 		t.Fatal("GitHub client should be disabled without GITHUB_TOKEN")
 	}
@@ -103,15 +131,21 @@ func TestBuildSandboxRunnerPreservesBackendPosture(t *testing.T) {
 
 	t.Setenv(sandboxImageEnv, "golang:1.26-alpine")
 	docker := buildSandboxRunner(config.Config{SandboxBackend: "docker"}, root).Status(context.Background())
-	if !docker.Available || docker.Backend != "docker" || docker.DefaultEgress != "none" || docker.FreeTerminal {
+	if docker.Available || docker.Backend != "docker" || docker.FreeTerminal {
 		t.Fatalf("docker sandbox status = %#v", docker)
+	}
+
+	private := buildSandboxRunner(config.Config{SandboxBackend: "private-rootless"}, root).Status(context.Background())
+	if private.Available || private.FreeTerminal || private.Backend != "private-rootless" {
+		t.Fatalf("incompletely configured private sandbox status = %#v", private)
 	}
 }
 
 func TestBuildRuntimeComposesPolicyAuditServiceAndServer(t *testing.T) {
 	clearRuntimeEnv(t)
 	root := t.TempDir()
-	auditPath := filepath.Join(root, "logs", "audit.jsonl")
+	state := filepath.Join(t.TempDir(), "state")
+	auditPath := filepath.Join(state, "logs", "audit.jsonl")
 	cfg, err := config.New(config.Config{
 		Roots:           []string{root},
 		Mode:            config.ModeReadOnly,
@@ -123,7 +157,7 @@ func TestBuildRuntimeComposesPolicyAuditServiceAndServer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	runtime, err := buildRuntime(serveOptions{Config: cfg, AuditPath: auditPath})
+	runtime, err := buildRuntime(serveOptions{Config: cfg, StateRoot: state, AuditPath: auditPath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,6 +174,134 @@ func TestBuildRuntimeComposesPolicyAuditServiceAndServer(t *testing.T) {
 	}
 	if status := runtime.Service.SandboxStatus(); !strings.Contains(status, "backend: none") {
 		t.Fatalf("sandbox status = %q", status)
+	}
+}
+
+func TestRestoreActiveTaskGoalPinsPrecedesCleanupAndQuarantinesLostQueuedGoal(t *testing.T) {
+	now := time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)
+	modelRoot := filepath.Join(t.TempDir(), "model-turns")
+	queue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(t.TempDir(), "queue"), ControllerID: "app-goal-recovery"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = queue.Close() })
+	turns, err := modelturn.OpenStore(modelturn.StoreConfig{Root: modelRoot, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	goalContent := []byte("legacy task goal that remains private")
+	goal, err := turns.StageRuntimeGoal(context.Background(), goalContent, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validTask, _, err := queue.CreateTask(workqueue.TaskSpec{
+		IdempotencyKey: "legacy-valid-task-0001", Project: "project", Target: "parrot", BaseCommit: strings.Repeat("a", 40),
+		GoalHash: goal.ContentDigest, WorkerGoalHashes: []string{goal.ContentDigest}, WorkerGoalRefs: []string{goal.BodyRef},
+		Pool: "edge.parrot.runtime", Profile: "codex.worker", WorkerCount: 1, ExecutionTimeoutSeconds: 600,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	missingDigest := "sha256:" + strings.Repeat("1", 64)
+	missingTask, _, err := queue.CreateTask(workqueue.TaskSpec{
+		IdempotencyKey: "legacy-missing-task-0001", Project: "project", Target: "parrot", BaseCommit: strings.Repeat("b", 40),
+		GoalHash: missingDigest, WorkerGoalHashes: []string{missingDigest}, WorkerGoalRefs: []string{"mb_11111111111111111111111111111111"},
+		Pool: "edge.parrot.runtime", Profile: "codex.worker", WorkerCount: 1, ExecutionTimeoutSeconds: 600,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := turns.Close(); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(2 * time.Hour)
+	turns, err = modelturn.OpenStore(modelturn.StoreConfig{Root: modelRoot, Now: func() time.Time { return now }, DeferTaskGoalCleanup: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = turns.Close() })
+	active, err := queue.ActiveTaskGoalRefs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := restoreActiveTaskGoalPins(queue, turns, active); err != nil {
+		t.Fatalf("startup goal reconciliation rejected one irrecoverable task globally: %v", err)
+	}
+	runtime, _, err := turns.StartBoundRuntime(context.Background(), modelturn.BoundRuntimeRequest{
+		DeviceID: "ed_11111111111111111111111111111111", WorkspaceID: "ws_11111111111111111111111111111111",
+		Controller: modelturn.ControllerRemoteEdge, GoalSummary: modelturn.GoalSummary(goalContent), GoalRef: goal.BodyRef,
+		GoalDigest: goal.ContentDigest, IdempotencyKeyDigest: modelturn.IdempotencyDigest("legacy-task-worker"),
+		TTL: modelturn.RemoteRuntimeStartupTTL, ExecutionTTL: 10 * time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("valid expired legacy goal was not pinned before cleanup: %v", err)
+	}
+	body, digest, err := turns.RuntimeGoal(context.Background(), runtime.RuntimeID, runtime.DeviceID)
+	if err != nil || digest != goal.ContentDigest || string(body) != string(goalContent) {
+		t.Fatalf("restored goal=%q digest=%q err=%v", body, digest, err)
+	}
+	failed, found, err := queue.Task(missingTask.ID)
+	if err != nil || !found || failed.State != workqueue.TaskFailed || failed.Workers[0].Reason != workqueue.ReasonTaskGoalUnavailable || failed.Workers[0].Summary != workqueue.TaskGoalUnavailableSummary {
+		t.Fatalf("missing-goal task=%+v found=%v err=%v", failed, found, err)
+	}
+	activeAfterRestore, err := queue.ActiveTaskGoalRefs()
+	if err != nil || len(activeAfterRestore) != 1 || activeAfterRestore[0].IdempotencyKey != "legacy-valid-task-0001" {
+		t.Fatalf("active refs after per-task quarantine=%+v err=%v", activeAfterRestore, err)
+	}
+	retained, found, err := queue.Task(validTask.ID)
+	if err != nil || !found || retained.State != workqueue.TaskQueued {
+		t.Fatalf("valid legacy task=%+v found=%v err=%v", retained, found, err)
+	}
+}
+
+func TestRestoreDevelopmentGoalPinsPrecedesExpiredBodyCleanup(t *testing.T) {
+	now := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
+	root := filepath.Join(t.TempDir(), "model-turns")
+	queue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(t.TempDir(), "queue"), ControllerID: "development-body-recovery"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queue.Close()
+	turns, err := modelturn.OpenStore(modelturn.StoreConfig{Root: root, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := []byte("private command body survives a backend restart")
+	goal, err := turns.StageRuntimeGoal(context.Background(), content, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := modelturn.IdempotencyDigest("development-body-request")
+	request := workqueue.DevelopmentRequest{ID: "dr_" + strings.Repeat("a", 32), Revision: 1, KeyDigest: owner, Alias: "project", Target: "parrot", DeviceID: "ed_" + strings.Repeat("b", 32), BodyRef: goal.BodyRef, BodyDigest: goal.ContentDigest, State: workqueue.DevelopmentRequestPreparing}
+	if _, _, err := queue.SaveDevelopmentRequest(request); err != nil {
+		t.Fatal(err)
+	}
+	missing := request
+	missing.ID = "dr_" + strings.Repeat("c", 32)
+	missing.KeyDigest = modelturn.IdempotencyDigest("missing-development-body")
+	missing.BodyRef = "mb_" + strings.Repeat("d", 32)
+	if _, _, err := queue.SaveDevelopmentRequest(missing); err != nil {
+		t.Fatal(err)
+	}
+	if err := turns.Close(); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(2 * time.Hour)
+	turns, err = modelturn.OpenStore(modelturn.StoreConfig{Root: root, Now: func() time.Time { return now }, DeferTaskGoalCleanup: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer turns.Close()
+	if err := restoreActiveTaskGoalPins(queue, turns, nil); err != nil {
+		t.Fatal(err)
+	}
+	body, err := turns.PinnedDevelopmentBody(context.Background(), owner, modelturn.TaskGoalReference{BodyRef: goal.BodyRef, ContentDigest: goal.ContentDigest})
+	if err != nil || string(body) != string(content) {
+		t.Fatalf("restart lost pinned development body: %q err=%v", body, err)
+	}
+	retained, found, err := queue.DevelopmentRequest(missing.ID)
+	if err != nil || !found || retained.State != workqueue.DevelopmentRequestPreparing {
+		t.Fatalf("missing body must retain durable effect metadata: %+v found=%v err=%v", retained, found, err)
 	}
 }
 
@@ -192,7 +354,7 @@ func TestBuildRuntimePersistsMetricsWhenJSONLIsOff(t *testing.T) {
 func TestBuildRuntimeOpensPrivateObservabilityFile(t *testing.T) {
 	clearRuntimeEnv(t)
 	root := t.TempDir()
-	path := filepath.Join(root, "private", "observability.jsonl")
+	path := filepath.Join(t.TempDir(), "private", "observability.jsonl")
 	cfg, err := config.New(config.Config{
 		Roots:           []string{root},
 		Mode:            config.ModeReadOnly,
@@ -225,5 +387,85 @@ func TestBuildRuntimeOpensPrivateObservabilityFile(t *testing.T) {
 	}
 	if !strings.Contains(string(data), `"event":"server_start"`) {
 		t.Fatalf("events = %s", data)
+	}
+}
+
+func TestBuildRuntimeRejectsPrivateStorageOverlap(t *testing.T) {
+	clearRuntimeEnv(t)
+	base := t.TempDir()
+	repository := filepath.Join(base, "repository")
+	if err := os.Mkdir(repository, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	safeState := filepath.Join(t.TempDir(), "state")
+	safeAudit := filepath.Join(t.TempDir(), "audit", "audit.jsonl")
+	cfg, err := config.New(config.Config{Roots: []string{repository}, Mode: config.ModeReadOnly, AllowedCommands: []string{"git"}, SandboxBackend: "none"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name string
+		opts serveOptions
+	}{
+		{name: "state inside repository", opts: serveOptions{Config: cfg, StateRoot: filepath.Join(repository, ".private"), AuditPath: safeAudit}},
+		{name: "state contains repository", opts: serveOptions{Config: cfg, StateRoot: base, AuditPath: safeAudit}},
+		{name: "relative audit", opts: serveOptions{Config: cfg, StateRoot: safeState, AuditPath: filepath.Join(".private", "audit.jsonl")}},
+		{name: "audit inside repository", opts: serveOptions{Config: cfg, StateRoot: safeState, AuditPath: filepath.Join(repository, ".private", "audit.jsonl")}},
+		{name: "audit contains repository", opts: serveOptions{Config: cfg, StateRoot: safeState, AuditPath: filepath.Join(base, "audit.jsonl")}},
+		{name: "observability inside repository", opts: serveOptions{Config: cfg, StateRoot: safeState, AuditPath: safeAudit, Observability: observability.Config{Mode: observability.ModeFile, Path: filepath.Join(repository, ".private", "observability.jsonl"), MaxBytes: observability.MinMaxBytes}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if runtime, err := buildRuntime(tt.opts); err == nil {
+				_ = runtime.Close()
+				t.Fatal("overlapping private storage should be rejected")
+			}
+		})
+	}
+}
+
+func TestBuildRuntimeRejectsSymlinkedPrivateStorageOverlap(t *testing.T) {
+	clearRuntimeEnv(t)
+	repository := t.TempDir()
+	outside := t.TempDir()
+	stateLink := filepath.Join(outside, "state-link")
+	auditLink := filepath.Join(outside, "audit-link")
+	if err := os.Symlink(repository, stateLink); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := os.Symlink(repository, auditLink); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	cfg, err := config.New(config.Config{Roots: []string{repository}, Mode: config.ModeReadOnly, AllowedCommands: []string{"git"}, SandboxBackend: "none"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	safeState := filepath.Join(t.TempDir(), "state")
+	safeAudit := filepath.Join(t.TempDir(), "audit", "audit.jsonl")
+	for _, tt := range []struct {
+		name string
+		opts serveOptions
+	}{
+		{name: "state symlink", opts: serveOptions{Config: cfg, StateRoot: filepath.Join(stateLink, "state"), AuditPath: safeAudit}},
+		{name: "audit symlink", opts: serveOptions{Config: cfg, StateRoot: safeState, AuditPath: filepath.Join(auditLink, "audit.jsonl")}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if runtime, err := buildRuntime(tt.opts); err == nil {
+				_ = runtime.Close()
+				t.Fatal("symlinked private storage overlap should be rejected")
+			}
+		})
+	}
+}
+
+func TestValidateRuntimeStateRootRejectsFilesystemRoot(t *testing.T) {
+	repository := t.TempDir()
+	volumeRoot := filepath.VolumeName(repository) + string(os.PathSeparator)
+	if volumeRoot == "" {
+		volumeRoot = string(os.PathSeparator)
+	}
+	if err := validateRuntimeStateRoot(volumeRoot, []string{repository}); err == nil {
+		t.Fatalf("filesystem root %q should be rejected", volumeRoot)
 	}
 }

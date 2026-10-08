@@ -10,8 +10,13 @@ func TestP16PackageWorkflowProvesRollbackAndIdempotentMigration(t *testing.T) {
 	for _, required := range []string{
 		"edge-state-fixture",
 		"fail-edge-service",
-		"cmp /fixtures/legacy-state/identity.json /home/charles/.config/mcp-devbox-edge/identity.json",
-		"cmp /fixtures/legacy-state/identity.json /home/charles/.local/state/mcp-edge/identity.json",
+		"useradd -m -d /srv/edgeci edgeci",
+		"cmp /fixtures/legacy-state/identity.json /srv/edgeci/.config/mcp-devbox-edge/identity.json",
+		"cmp /fixtures/legacy-state/identity.json /srv/edgeci/.local/state/mcp-edge/identity.json",
+		"WorkingDirectory=/srv/edgeci/.local/state/mcp-edge",
+		"mcp-devbox-edge.prerm upgrade",
+		"fail-disable",
+		"mcp-devbox-edge-onboard@edgeci.path",
 		".mcp-edge-state-migration-v1.json",
 	} {
 		if !strings.Contains(workflow, required) {

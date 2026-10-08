@@ -43,8 +43,30 @@ func TestPlanManagedFrontDoorCatalogTransitionRetiresOldCatalog(t *testing.T) {
 	}
 }
 
+func TestPlanManagedFrontDoorCatalogTransitionAuthenticatesMaskedRuntimeValues(t *testing.T) {
+	t.Parallel()
+	primary := managedCatalogEntry("primary", frontDoorExpectedCatalogKey, frontDoorNextCatalog)
+	transition := managedCatalogEntry("transition", frontDoorTransitionCatalogKey, frontDoorTestCatalog)
+	primary.Value = ""
+	transition.Value = ""
+
+	plan, err := planManagedFrontDoorCatalogTransition([]coolifyEnvironmentVariable{
+		primary,
+		transition,
+	}, "coolify-token", frontDoorNextCatalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Primary != frontDoorNextCatalog || plan.Transition != "" || plan.RemoveUUID != "transition" || !plan.Changed {
+		t.Fatalf("plan=%+v", plan)
+	}
+}
+
 func TestPlanManagedFrontDoorCatalogTransitionRejectsThirdOrUnmanagedCatalog(t *testing.T) {
 	t.Parallel()
+	maskedTampered := managedCatalogEntry("primary", frontDoorExpectedCatalogKey, frontDoorTestCatalog)
+	maskedTampered.Value = ""
+	maskedTampered.Comment += "tampered"
 	for _, entries := range [][]coolifyEnvironmentVariable{
 		{
 			managedCatalogEntry("primary", frontDoorExpectedCatalogKey, frontDoorTestCatalog),
@@ -57,6 +79,7 @@ func TestPlanManagedFrontDoorCatalogTransitionRejectsThirdOrUnmanagedCatalog(t *
 			managedCatalogEntry("one", frontDoorExpectedCatalogKey, frontDoorTestCatalog),
 			managedCatalogEntry("two", frontDoorExpectedCatalogKey, frontDoorTestCatalog),
 		},
+		{maskedTampered},
 	} {
 		if _, err := planManagedFrontDoorCatalogTransition(entries, "coolify-token", frontDoorNextCatalog); err == nil {
 			t.Fatalf("unsafe managed catalog state accepted: %#v", entries)

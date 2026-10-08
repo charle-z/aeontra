@@ -52,7 +52,7 @@ sudo apt-get install --yes bubblewrap ca-certificates git golang-go
 sudo useradd --create-home --shell /bin/bash mcpedge
 sudo install -d -o mcpedge -g mcpedge -m 0700 /var/lib/mcp-devbox-edge
 sudo install -d -o mcpedge -g mcpedge -m 0700 /srv/mcp-devbox-workspaces
-git clone https://github.com/charle-z/mcp-devbox.git /tmp/mcp-devbox-edge-src
+git clone https://github.com/charle-z/aeontra.git /tmp/mcp-devbox-edge-src
 cd /tmp/mcp-devbox-edge-src
 git checkout <REVIEWED_COMMIT>
 go test ./internal/edge ./internal/edgeclient ./cmd/mcp-edge

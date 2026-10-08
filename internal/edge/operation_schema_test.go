@@ -36,7 +36,8 @@ func TestOpenMigratesLegacyOperationLifecycleSchema(t *testing.T) {
 	defer store.Close()
 	columns, err := operationColumnNames(store)
 	if err != nil || !columns["cancel_requested"] || !columns["progress_json"] ||
-		!columns["lease_attempts"] || !columns["first_leased_at"] {
+		!columns["lease_attempts"] || !columns["first_leased_at"] || !columns["leased_at"] ||
+		!columns["running_at"] || !columns["finalizing_at"] {
 		t.Fatalf("columns=%v err=%v", columns, err)
 	}
 	var attempts int

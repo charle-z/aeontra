@@ -39,6 +39,7 @@ type openCodeRuntimeStartParams struct {
 }
 
 type runtimePublicView struct {
+	Control      *modelturn.RuntimeControl     `json:"control,omitempty"`
 	RuntimeID    string                        `json:"runtime_id"`
 	State        modelturn.RuntimeState        `json:"state"`
 	DeviceID     string                        `json:"device_id,omitempty"`
@@ -65,6 +66,7 @@ func (s *Server) WithEdgeStore(store edgeDeviceRegistry) *Server {
 
 func publicRuntime(runtime modelturn.Runtime) runtimePublicView {
 	return runtimePublicView{
+		Control:   runtime.Control,
 		RuntimeID: runtime.RuntimeID, State: runtime.State, DeviceID: runtime.DeviceID,
 		WorkspaceID: runtime.WorkspaceID, Controller: runtime.Controller,
 		LastSequence: runtime.LastSequence, UpdatedAt: runtime.UpdatedAt, ResultRef: runtime.ResultRef,

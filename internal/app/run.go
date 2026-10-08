@@ -51,11 +51,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 }
 
 func usage(output io.Writer) {
-	fmt.Fprint(output, `mcp-devbox `+buildinfo.Version+` — secure-by-default local MCP server
+	fmt.Fprint(output, `mcp-devbox `+buildinfo.Version+` — scoped local MCP server
 
 Usage:
   mcp-devbox serve --root <ABS_PATH> [--mode read-only|ask|allow] [flags]
-  mcp-devbox grant --admin http://127.0.0.1:<PORT> --admin-token <TOKEN> [--ttl 5m] [--raw --confirm-raw] <REQUEST_ID>
+  mcp-devbox grant --admin-file <ABS_PRIVATE_CHANNEL_FILE> [--ttl 5m] [--raw --confirm-raw] <REQUEST_ID>
   mcp-devbox edge pairing-create --state-root <ABS_PRIVATE_PATH> [--ttl 10m]
   mcp-devbox edge revoke --state-root <ABS_PRIVATE_PATH> --device <DEVICE_ID>
   mcp-devbox edge devices --state-root <ABS_PRIVATE_PATH>

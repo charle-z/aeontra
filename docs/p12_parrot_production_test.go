@@ -60,8 +60,8 @@ func TestP12ParrotProductionEvidenceAndOnboardingStaySynchronized(t *testing.T) 
 
 	readme := read("../README.md")
 	for _, expected := range []string{
-		"Hosted on CubePath",
-		"hosted on **CubePath**",
+		"Maintainer-operated demo",
+		"not project defaults",
 		"mcp-devbox-charlez.duckdns.org",
 		"/version",
 		"system_runtime_info",

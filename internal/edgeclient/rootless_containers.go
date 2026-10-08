@@ -35,9 +35,29 @@ type ContainerCommandRunner interface {
 
 type execContainerCommandRunner struct{}
 
+type rootlessCommandOutputLimitError struct{ exitCode int }
+
+func (err *rootlessCommandOutputLimitError) Error() string {
+	return "rootless container command output exceeded its limit"
+}
+
+func (err *rootlessCommandOutputLimitError) ExitCode() int { return err.exitCode }
+
 var containerResourceIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`)
 
 func DiscoverRootlessContainerEndpoint(uid int, toolPath string) (*RootlessContainerEndpoint, error) {
+	endpoints, err := DiscoverRootlessContainerEndpoints(uid, toolPath)
+	if err != nil || len(endpoints) == 0 {
+		return nil, err
+	}
+	return endpoints[0], nil
+}
+
+// DiscoverRootlessContainerEndpoints returns every validated user-owned rootless
+// engine endpoint in deterministic preference order. Callers that own durable
+// container state can use the complete set to recover that state if another
+// rootless engine appears later on the host.
+func DiscoverRootlessContainerEndpoints(uid int, toolPath string) ([]*RootlessContainerEndpoint, error) {
 	if uid < 1 {
 		return nil, errors.New("rootless container endpoint requires a non-root user")
 	}
@@ -56,6 +76,7 @@ func DiscoverRootlessContainerEndpoint(uid int, toolPath string) (*RootlessConta
 		{engine: "docker", executable: "docker", path: filepath.Join(runtimeRoot, "docker.sock")},
 		{engine: "podman", executable: "podman", path: filepath.Join(runtimeRoot, "podman", "podman.sock")},
 	}
+	endpoints := make([]*RootlessContainerEndpoint, 0, len(candidates))
 	for _, candidate := range candidates {
 		executable, ok := findSafeLinuxTool(candidate.executable, toolPath)
 		if !ok {
@@ -67,9 +88,9 @@ func DiscoverRootlessContainerEndpoint(uid int, toolPath string) (*RootlessConta
 			}
 			return nil, err
 		}
-		return &RootlessContainerEndpoint{Engine: candidate.engine, SocketPath: candidate.path, Executable: executable}, nil
+		endpoints = append(endpoints, &RootlessContainerEndpoint{Engine: candidate.engine, SocketPath: candidate.path, Executable: executable})
 	}
-	return nil, nil
+	return endpoints, nil
 }
 
 func validateRootlessContainerSocket(path, runtimeRoot string, uid int) error {
@@ -99,6 +120,10 @@ func validateRootlessContainerSocket(path, runtimeRoot string, uid int) error {
 }
 
 func CleanupRootlessContainerResources(ctx context.Context, endpoint *RootlessContainerEndpoint, runtimeID, toolPath string, runner ContainerCommandRunner) error {
+	return cleanupRootlessContainerResources(ctx, endpoint, runtimeID, toolPath, runner, rootlessContainerClientEnvironment)
+}
+
+func cleanupRootlessContainerResources(ctx context.Context, endpoint *RootlessContainerEndpoint, runtimeID, toolPath string, runner ContainerCommandRunner, environmentBuilder rootlessContainerEnvironmentBuilder) error {
 	if endpoint == nil {
 		return nil
 	}
@@ -111,8 +136,14 @@ func CleanupRootlessContainerResources(ctx context.Context, endpoint *RootlessCo
 	if runner == nil {
 		runner = execContainerCommandRunner{}
 	}
+	if environmentBuilder == nil {
+		environmentBuilder = rootlessContainerClientEnvironment
+	}
 	label := rootlessRuntimeLabelKey + "=" + runtimeID
-	environment := rootlessContainerClientEnvironment(endpoint, toolPath)
+	environment, err := environmentBuilder(endpoint, toolPath)
+	if err != nil {
+		return err
+	}
 	resources := []string{"container"}
 	if endpoint.Engine == "podman" {
 		resources = []string{"pod", "container"}
@@ -207,8 +238,30 @@ func (execContainerCommandRunner) Run(ctx context.Context, executable string, ar
 	}
 	command.WaitDelay = 5 * time.Second
 	err := command.Run()
-	if stdout.Len()+stderr.Len() > 64<<10 {
-		return nil, errors.New("rootless container command output exceeded its limit")
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
-	return stdout.Bytes(), err
+	output := stdout.Bytes()
+	if err != nil {
+		output = append(append([]byte(nil), output...), stderr.Bytes()...)
+	}
+	if stdout.Len()+stderr.Len() > 64<<10 {
+		exitCode := 0
+		if err != nil {
+			var exitErr *exec.ExitError
+			if !errors.As(err, &exitErr) {
+				return nil, err
+			}
+			exitCode = exitErr.ExitCode()
+			if len(output) > 64<<10 {
+				output = output[len(output)-(64<<10):]
+			}
+		} else {
+			if len(output) > 64<<10 {
+				output = output[:64<<10]
+			}
+		}
+		return output, &rootlessCommandOutputLimitError{exitCode: exitCode}
+	}
+	return output, err
 }

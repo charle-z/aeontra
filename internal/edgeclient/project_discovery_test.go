@@ -3,6 +3,7 @@ package edgeclient
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -90,6 +91,31 @@ func TestDiscoverProjectCheckoutReturnsCloneRequiredWhenNoMatchExists(t *testing
 	}
 	if _, err := os.Lstat(filepath.Join(roots.Dev, "repo")); !os.IsNotExist(err) {
 		t.Fatalf("discovery created canonical checkout: %v", err)
+	}
+}
+
+func TestDiscoverProjectCheckoutDefaultAllowsMoreThan128Entries(t *testing.T) {
+	roots := newProjectDiscoveryRoots(t)
+	const entryCount = 129
+	states := make(map[string]ProjectCheckoutState, entryCount)
+	for index := range entryCount {
+		path := filepath.Join(roots.Dev, fmt.Sprintf("entry-%03d", index))
+		if err := os.Mkdir(path, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		states[path] = ProjectCheckoutRemoteMismatch
+	}
+	candidate := filepath.Join(roots.Dev, "entry-128")
+	states[candidate] = ProjectCheckoutReady
+
+	decision, err := DiscoverProjectCheckout(context.Background(), ProjectDiscoveryConfig{
+		Roots: roots, Inspector: pathProjectInspector{states: states},
+	}, ProjectDiscoveryRequest{Alias: "project", Owner: "charle-z", Repository: "repo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.State != ProjectRecoveryAssociateExisting || decision.CandidatePath != candidate || decision.CandidateCount != 1 {
+		t.Fatalf("decision=%+v", decision)
 	}
 }
 

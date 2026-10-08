@@ -1,10 +1,10 @@
 # Technical security model
 
-MCP Devbox is **secure-by-default, not secure**. It narrows the authority exposed to an
-AI client through immutable startup configuration, closed schemas, repository jails,
-secret denial and redaction, explicit approval, single-use plans, revalidation, audit,
-and profile-specific isolation. These controls reduce risk; they do not prove that
-model-generated code or every permitted process is safe.
+MCP Devbox limits the authority exposed to an AI client through immutable startup
+configuration, closed schemas, repository jails, secret denial and redaction, explicit
+approval, single-use plans, revalidation, audit and profile-specific isolation. Its
+guarantees are the controls and boundaries documented here. They do not cover the
+correctness of generated code, every permitted dependency or a compromised host.
 
 The public reporting and disclosure policy is [`../SECURITY.md`](../SECURITY.md).
 Configuration requirements are canonical in
@@ -22,6 +22,25 @@ The system has several distinct authorities. They must not be collapsed into one
 | Trusted Linux workcell | One registered owner-controlled development workspace; optional rootless engine | Bubblewrap filesystem/process boundary plus explicit local contract; not equivalent to the networkless sandbox | `trusted_host_shared_network` | Only reviewed local authorities are brokered; host secrets and rootful Docker remain excluded |
 | Authorized target-locked workspace | Trusted workcell plus one locally registered private target, VPN interface, and authorization revision | Same workcell boundary plus closed target actions and session handles | Host-shared network; actions revalidate exact target and VPN route, not general egress filtering | Credential values and sensitive saved output remain local; the control plane receives opaque handles/metadata |
 | Development Edge Git broker | Owner-bound clone and planned publication for a registered `dev` workcell | Git transport runs outside the model namespace through a closed local broker | Only constructed owner-bound GitHub transport | Credential is stored in private `0600` Edge state, passed only to a fixed askpass child, and never enters workspace, argv, model schemas, or logs |
+| Public OSS GitHub broker | Public external issue/PR reads plus planned issue creation, fork, comment and cross-repository PR writes | Public control-plane schemas, fixed API routes, owner/upstream validation, expiring single-use plans and exact state revalidation | GitHub API for one named public upstream and the configured owner's fork | Reuses the server-side `GITHUB_TOKEN`; it never enters the Edge toolbox, repository, argv, tool schema, output or audit |
+| Direct Edge checkout Git | Registered project checkout and fixed `origin` only | Read status/fetch plus exact single-use fast-forward and same-name no-force publication plans; dirty, detached, non-fast-forward, stale or replayed state fails closed | Existing owner-bound GitHub transport only | Reuses the private askpass authority; public results omit credential, URL, path, argv and PID |
+| Direct Edge GitHub broker | Repository already bound to a registered development project | Only server-constructed official `gh api` argv execute outside the workcell; no arbitrary endpoint, header, command or caller repository is accepted | GitHub API for the exact owner/repository only | `GH_TOKEN` exists only in the bounded child process environment under a private HOME; results are parsed, bounded and token-redacted before safe capability metadata leaves the Edge |
+| Durable development command | One exact staged command, pinned source/environment and captured registered workspace | Existing workcell isolation, journal, queue fences and process identity; source changes invalidate acceptance, not observation or safe cancellation | Existing trusted workcell networking | Private command bytes stay in the pinned staged store; public status returns lifecycle and opaque identities |
+| Isolated development runner | Administrator-pinned public workflow and explicitly requested fixed command profile | Disposable hosted VM; separate workload UID, rootless engine and delegated bounded cgroups; kernel/CI gates repeated for each command | Network-enabled VM; public exact Git source only | Source broker token stays in the control plane; workload receives only ephemeral job-local cache/runtime authority, not production credentials |
+
+The isolated runner's workload group can read ordinary process metadata in its
+disposable VM because systemd/runc require it to identify the user bus. Controller
+arguments must contain no credentials. Separate UID ownership, private file modes
+and cross-UID ptrace restrictions protect controller environments, memory and files;
+mandatory probes verify those denials under both the workload UID and mapped namespace
+root. This exception does not change an Edge or production VPS procfs policy.
+
+MCP output redaction can change source-looking text, including ordinary code that names
+tokens or passwords. Command output is therefore not a byte-preserving publication
+channel. The registered checkout is the source of truth: normal publication pushes its
+Git objects and verifies the resulting remote commit. Recreating files or commits from
+redacted output can silently change a PR even when the rendered diff looks plausible.
+| Managed browser harness | Any authorized `dev` workcell and its persistent rootless toolbox, project workspace, installed browser/tooling rootfs, managed run trees and named persistent profiles | Arbitrary caller argv runs inside the existing workcell/toolbox boundary; no host terminal, Windows mount, host home, container-engine socket or external Edge state is added | General workcell networking: ordinary HTTP/HTTPS Internet, private development endpoints and localhost services are available. MCP Devbox does not impose a browser-domain/action/JavaScript allowlist | Caller code, cookies, authentication stores, downloads and artifacts stay on the Edge. Public tools return only opaque lifecycle, bounded redacted logs, relative artifact metadata and exact bounded chunks; argv, environment, PID, container identity, profile content and host paths remain private |
 
 Additional boundaries:
 
@@ -33,6 +52,33 @@ Additional boundaries:
 - GitHub, Coolify, OAuth, and the private validation runner are separate external trust
   domains with independently scoped credentials.
 - Source release, VPS deployment, and installed Edge state require separate evidence.
+
+GitHub authority is intentionally split. `project_github_status` describes the private
+Edge broker for a registered development project; source-hosting issue, fork, pull
+request and Actions operations use the server-side source broker. A workcell's
+`gh auth status` therefore does not determine either broker's configuration. Neither
+broker exposes its token to a workcell, repository, model, tool schema or public result.
+
+Durable development commands preserve the same project/workcell authority. Official
+Go/Rust bootstrap recipes write only the selected runtime/cache roots and require
+fresh independent capability inspection afterward. Unknown dispatch or cancellation
+acknowledgements remain reconciliation states; they do not authorize command replay
+or prove success. See [the development ADR](adr/0008-development-complete-capability-resolution.md)
+and [isolated-runner runbook](development-runner.md) for the exact acceptance and
+recovery contracts. The optional runner changes data location only through an explicit
+registered profile; it does not upload dirty or private source.
+
+Registered Linux development source evidence inventories only Git HEAD, index and
+non-ignored untracked paths. It accepts at most 32,768 unique paths, 2 MiB per Git
+pathname list, 4096 bytes per relative path or symlink text, and 64 MiB of cumulative
+regular-file content and link text. Leaf symlinks are hashed as length-delimited text
+through a pinned no-follow descriptor; their targets are never resolved or read.
+Source-root and parent-component symlinks, directories (including embedded repositories
+and gitlinks), special files, exchanged entries and truncated inventories fail closed.
+This fingerprint uses a separate domain from managed-worktree test evidence, whose
+regular-file-only hashing and 4096-path limit are unchanged. Neither fingerprint covers
+Git-ignored inputs or claims a hermetic source snapshot. An existing command binding is
+not rewritten when its source digest changes.
 
 ## Threat model
 
@@ -126,10 +172,78 @@ cannot change its target or arguments. If branch HEAD, upstream, remote, applica
 configuration, target, or another bound value changes, execution fails and a new preview
 is required.
 
+`run_command`, `run_tests`, `sandbox_exec`, `git_commit`, and `repo_fast_forward`
+execute repository-controlled bytes only inside the attested private L3 rootless
+executor. They fail closed when that executor is unavailable and never fall back to the
+daemon's host process runner. They are disabled in both read-only and ask mode; only an
+administrator-selected allow posture enables them. This avoids presenting an argv or
+Git-plan approval as authority over mutable workspace bytes.
+
 Examples include publication, merge, default-branch change, repository/application
 creation, deployment, notes, fixed privileged tasks, and managed validation-runner
 creation. There is no force push, mirror, tags, caller refspec, caller credential, free
 host command, arbitrary Coolify payload, or arbitrary Edge operation.
+
+## Development environment state and recovery
+
+The development Edge treats a registered workspace as mutable by design. Its project
+state is not inferred from `git status --porcelain` alone:
+
+```text
+registered  -> ready | dirty
+                     \-> unavailable | timeout | identity_mismatch | corrupt
+                     \-> unsafe_boundary
+```
+
+`dirty` means that the registered repository is still the same authorized workspace but
+contains normal source, generated or untracked changes. It is not a security violation.
+`identity_mismatch` means the durable workspace attestation no longer matches; `corrupt`
+means required repository metadata cannot be interpreted; `unsafe_boundary` means a
+containment, ownership, symlink or mount invariant failed. Environmental inspection
+failures are reported as `unavailable` or `timeout`. These states have separate stable
+error codes and bounded diagnostic reasons rather than sharing `project_checkout_unsafe`.
+Public diagnostics omit paths, raw Git output, credentials and internal identifiers.
+
+The registry is the first source for normal project resolution. Git inspection is used
+when current branch, commit or cleanliness is requested. Process observation and
+termination use the durable process binding captured at start and do not re-discover a
+project or require a clean tree. This prevents a slow Git status or ordinary build
+output from stranding an already-authorized process.
+
+The Edge keeps four roots per workspace:
+
+```text
+source     registered checkout
+runtime    private toolchain homes and mutable runtime state
+cache      private package/compiler caches
+artifacts  private generated evidence and managed files
+```
+
+Runtime, cache and artifact roots are under the administrator-controlled Edge state
+root, outside the source checkout. Only the exact roots are mounted into the selected
+workcell or rootless toolbox. Existing legacy `.mcp-devbox` data is not removed or
+silently adopted as authority.
+
+Project claims and toolbox records carry an owner-bound identity and generation. Stale
+claims can be identified and reconciled without scanning unrelated repositories. A
+toolbox can be restarted or reconciled only when its workspace, mount policy, rootless
+engine identity and ownership still validate; otherwise it fails closed and can be
+controlled-recreated without deleting the source workspace. Schema migrations are
+additive and reject unknown newer schemas.
+
+The Edge scheduler uses bounded shared capacity for independent project, Git inspection,
+process and toolbox operations. Signed bundle update, rollback and repair acquire an
+Edge-wide exclusive gate. A long build in one project therefore does not hold the
+execution gate for status in another project, while global maintenance cannot overlap
+ordinary work. Leases, fences and terminal journal writes remain durable; completion
+validation and the terminal write share one store lock to prevent cancellation or
+recovery races.
+
+Durable process rows persist project owner/repository, claim generation, profile, mode,
+workspace binding and the OS process identity captured at start. Status, signal, stop,
+stdin and cleanup validate that binding plus PID/start-time identity, preventing PID
+reuse and cross-project control without consulting mutable Git state. Legacy rows are
+migrated with conservative defaults and do not gain broader authority.
 
 ## Secret handling and grants
 
@@ -144,10 +258,16 @@ Defense is layered:
 5. Audit and observability exclude values and redact errors.
 
 When an authorized human needs a secret-path read, the normal tool returns an opaque
-access request. Approval occurs only through a loopback local admin channel whose random
-token is printed to the local operator. Grants are path-bound, short-lived, non-reusable,
-and redacted by default. Raw output requires an explicit local `--raw --confirm-raw`
-decision. No MCP tool can approve a grant.
+request. Approval occurs only through a loopback local admin channel whose ephemeral
+credentials live only in a private descriptor below the configured state root. State
+and audit paths must be disjoint from every repository root; `grant-admin` is also an
+unconditionally denied path segment. Local operator diagnostics print the private
+descriptor path, but never its bearer or loopback origin; none of those values enter MCP
+output or audit records. The requesting MCP client receives the opaque
+request ID, but it is not persisted in audit or observability logs. Read grants are exact-path,
+short-lived, and non-reusable. Read output is redacted by default, and raw output
+requires an explicit local `--raw --confirm-raw` decision. No MCP tool can approve a
+grant.
 
 Content scanning is heuristic. It reduces accidental leakage but cannot identify every
 possible secret format. Do not use a real secret as a test fixture.
@@ -160,7 +280,7 @@ bearer.
 OAuth is the preferred public connector path. The public URL and passphrase must be set
 together; half-configuration fails startup. With a durable state root, dynamic client
 registrations and rotating refresh grants persist under `/state`. Authorization codes
-and access tokens remain bounded and in-memory according to the OAuth implementation.
+and raw access tokens remain memory-only; only bounded SHA-256 access-grant digests may persist.
 
 The static bearer is a **header-only recovery** mechanism. It is accepted through
 `Authorization: Bearer`; query-string credentials are rejected even when the value is
@@ -192,7 +312,19 @@ freezes its repository, branch, commit, build, port, healthcheck, destination, r
 options and deployment identity. Execution sends only Coolify's `domains` field with
 conflict override disabled, dispatches no deployment, revalidates the frozen state, and
 restores the previous domain if post-write verification detects drift. An empty domain
-policy grants no domain authority.
+policy grants no domain authority. Coolify's `git_commit_sha=HEAD` compatibility value
+is never compared literally with a deployment SHA: MCP Devbox resolves only the
+configured owner's exact repository branch through GitHub, seals the result into the
+plan and resolves it again during execution. A moved branch, malformed repository or
+different owner fails closed without patching the application.
+
+Repository-maintainer operations are a separate opt-in boundary. Generic installations
+leave `MCP_DEVBOX_MAINTAINER_PROFILE` unset, so the fixed production backend, Front
+Door/coordinator, Brain deployment contract, and official Edge-release maintenance
+operations are registered for protocol compatibility but fail before reading private
+platform state or making an external request. The sole supported profile value enables
+the repository maintainer's reviewed constants; it does not make them caller-selectable
+and is not a template for a downstream operator's infrastructure.
 
 ## Edge trust and signed releases
 
@@ -208,6 +340,13 @@ component. The signing private key is not installed on the Edge.
 The package/updater stages and verifies the complete release, activates it atomically,
 checks the fixed service, and restores the previous signed release on failure. Public
 update tools select only the official stable channel or previous known signed release.
+
+Ordinary operation leases are gated by the installed bundle's operation protocol and
+require a well-formed stamped catalog identity. The catalog hash remains in skew
+diagnostics but does not gate leases: changing a public MCP tool must not disable an
+unchanged Edge operation contract. A protocol-mismatched or unstamped Edge can lease
+only bounded status/update/rollback/repair paths needed to recover. Incompatible
+operation changes require an explicit protocol bump and signed Edge release.
 They cannot supply a URL, archive, executable, service, hash, or script. Repair restores
 only official packaged components and fixed links/units.
 
@@ -223,17 +362,226 @@ daemon account. This is useful confinement but not OS isolation.
 
 ### L3 sandbox
 
-`sandbox_exec` is unavailable unless a configured backend provides the reviewed
-container boundary. The intended Docker profile has no network, read-only root,
-workspace-only write access, dropped capabilities, no new privileges, and resource
-limits. The public MCP container itself does not receive the Docker socket.
+`sandbox_exec` is unavailable unless the separate private runner attests its exact
+rootless Podman endpoint, pinned workcell image, fixed `network=none` profile and
+protocol version. The public MCP process receives only an authenticated HTTP client;
+it never receives Docker, Podman or BuildKit sockets and has no host-execution fallback.
+
+The public request is converted to an opaque workspace identifier, optional opaque
+workspace scope and relative working directory before it crosses the private boundary.
+The runner resolves its own administrator-owned workspace mapping, rejects secret-named
+workspace entries, and
+launches an ephemeral non-root container with a read-only rootfs, private PID and IPC
+namespaces, bounded temporary storage, dropped capabilities, no new privileges, and
+CPU, memory, process, timeout and combined-output limits. The image, mounts, engine
+socket and network namespace are never caller input. A durable digest-bound receipt
+prevents an ambiguous request from repeating an external effect after lost transport.
+
+The private runner may receive one validated user-scoped rootless Podman socket and
+uses a bounded HTTP client rather than packaging the container-engine CLI. That socket
+is never mounted into the workcell container. An unavailable endpoint, a
+rootful engine, an image mismatch, an overlapping state/workspace root or containment
+drift leaves `sandbox_status.available=false` and `free_terminal=false`.
+The reference deployment mounts the backend repository volume directly into the
+runner. It does not depend on a host bind that may be rebound after the runner starts,
+because an existing container can otherwise retain a stale private mount namespace
+while its health probe remains green.
+The public server resolves the runner only to loopback/private addresses and rejects
+redirects; the runner listener likewise rejects wildcard, public and mixed-DNS binds.
 
 ### Edge sandbox
 
-The ordinary Edge `sandbox` profile runs OpenCode inside mandatory networkless
+The ordinary Edge `sandbox` profile runs the active signed harness inside mandatory networkless
 Bubblewrap. Only the selected workspace and a private runtime area are writable. Edge
 identity, home, unrelated repositories, and private control sockets are excluded. There
 is no direct-execution fallback.
+
+The packaged Linux Edge service leaves `openat2` available for Bubblewrap's safe bind-source
+resolution. systemd's `RestrictSUIDSGID` filter blocks that syscall, so the Edge units set
+`RestrictSUIDSGID=no`. They still run as non-root users with `NoNewPrivileges=yes`, an empty
+capability bounding set, and their existing filesystem and namespace restrictions.
+
+The signed-source candidate for the optional Codex harness uses a private loopback Responses
+adapter backed by the same durable model-turn transport. It rejects non-loopback peers
+and hosts, rejects Authorization input, bounds and strictly decodes requests, strips
+Codex session/cache/reasoning metadata, and exposes only ordinary function tools to the
+external model. The launcher fixes the stock client's top-level `web_search` mode to
+`disabled`: an external web-search effect cannot cross the durable function-tool
+rendezvous with verifiable identity. Namespace multiagent declarations and disabled
+web-search declarations are accepted for stock-client compatibility but are not offered
+across the model-turn boundary. Internet access remains available through authorized
+workcell commands and the managed browser harness. Stock Codex executes with
+`danger-full-access` only inside the already
+constrained outer Bubblewrap workcell; it receives no host home, Windows mount,
+rootful container socket, Edge state root or model credential. Built-in Codex
+multiagent remains explicitly disabled. MCP Devbox instead binds each parallel writer
+to a managed exact-base Git worktree, registered workspace, durable job, lease and
+monotonically increasing fence. Workers have independent model runtimes and never share
+a writer checkout. Expired leases must reclaim the same worktree with a strictly newer
+fence before work resumes; stale claims, completion and cleanup fail closed. Terminal
+cleanup requires an exact fence and a clean tree, preserves each worker branch, and
+never guesses how commits should be integrated.
+Managed model responses also cross a completion gate before persistence and again at
+the loopback adapter. `active` requires a real offered tool call, `blocked` requires an
+explicit failure/cancellation, and `complete` requires a non-truncated stop response
+that does not declare pending work. Rejection leaves the durable turn unconsumed. This
+does not extend MCP authority into a direct client response that makes no tool call.
+Model-runtime completion is not semantic acceptance. Task status exposes these as
+separate states and revalidates bounded evidence from the exact managed worktree.
+Its compact handoff revision is an advisory snapshot identifier, not a bearer token,
+ownership transfer or authorization to replay an effect. A new chat must read current
+task status and reconcile changed state before acting. Pending-turn order and wait
+duration contain no prompt text and do not move a worker lease or writer fence.
+The multi-runtime turn wait uses the same opaque runtime IDs and response identity
+checks as the single-runtime wait. It returns one offered turn, does not consume it,
+and cannot extend a worker's workspace or tool authority.
+No source path or diff is returned. Missing Edge connectivity, an unknown runtime,
+base/head mismatch or absent evidence becomes `reconciliation_required`; it is never
+converted into success. The status view reports a bounded `reconciliation_reason`
+and last recorded runtime phase for diagnosis; neither authorizes retrying a
+completed effect or overrides the task's evidence and acceptance gates. An optional
+version-1 Git evidence contract records a durable receipt only for clean, committed
+Git evidence measured against the exact base and bound to the task, worker,
+worktree/workspace, branch, lease and fence. The receipt does not establish
+natural-language goal satisfaction or test success. Before cleanup, the exact live
+evidence is revalidated; after successful cleanup, the receipt and cleanup checkpoint
+preserve the verified Git evidence predicate, not semantic acceptance. Evidence-only
+task and worker acceptance remain pending. Missing or
+changed evidence remains reconciliation, not success. A separate opt-in test contract
+pins an operator-owned Edge profile by ID and digest at task creation. The client cannot
+supply its argv, environment, stdin or cwd. Its process runs asynchronously in the
+worker's registered worktree; a terminal known zero exit creates a receipt only when
+profile, base/HEAD, branch, workspace, lease/fence and selected content digest still
+match. A status read never stops the process, and explicit stop uses its captured
+process identity even when the checkout has changed. This digest covers Git-selected
+source files, not Git-ignored inputs or files outside the worktree, so the receipt is
+not a hermetic test proof or natural-language evaluation. Git and test contracts are
+mutually exclusive. An optional declared objective contract combines the pinned
+operator-owned test profile with explicit clean-tree and minimum-change criteria.
+An accepted receipt binds the task and worker goal hashes, immutable profile digest,
+exact test receipt and source criteria. It evaluates only that declared contract;
+the server cannot infer that a generic test suite proves arbitrary prose requirements.
+Live status revalidates the worktree and tests, and a source mismatch cannot be hidden
+by substituting the test's HEAD for the observed Git HEAD. Missing criteria never
+select weaker defaults. Zero-change and dirty-source objectives remain supported.
+No contract is inferred for old or contractless tasks, and no predicate grants
+authority beyond the existing worktree, preview, CI and merge contracts.
+An optional integration contract creates one responsible reviewer in a new worktree
+from an exact canonical base. It selects two to four committed, clean, succeeded
+workers from one same-project/same-target task. Source identities and receipt digests
+are captured by the server and revalidated before launch, replay and acceptance.
+Acceptance requires the selected exact commits to be ancestors of the integrator's
+tested clean HEAD. Missing ancestry evidence on an older Edge requires reconciliation.
+Active integration pins prevent managed cleanup of its sources. Conflict resolution,
+publication, CI and merge retain their existing separate controls.
+For a linked worktree, the outer Bubblewrap launcher projects that repository's validated
+common Git directory at one fixed internal mount and sets `GIT_DIR` to the exact
+server-owned worktree entry. This is writable repository-scoped Git authority required
+for status, index and branch commits. It does not mount the canonical working tree,
+sibling working-tree contents, Git credentials, host home or unrelated repositories.
+The `.git` pointer, common directory, ownership, modes, managed development root and
+absence of symlinks are revalidated before the sandbox starts; ordinary canonical
+checkouts receive no extra Git mount.
+The writable common Git directory is trusted repository-scoped metadata authority:
+it is not an adversarial isolation boundary between sibling refs. Integration preserves
+source worktrees through its lifecycle and detects drift; it cannot guarantee that a
+malicious worker with this existing Git authority is unable to change another ref.
+This source contract does not claim an installed Edge release; signed publication and
+real-device acceptance remain separate gates.
+
+### Optional model-response ownership
+
+A controller ID coordinates responses within the same authenticated single owner.
+It is not a secret or a new principal. Claim, prepare, ACK, transfer and release bind
+one current unexpired pending turn and a monotonically increasing generation inside
+the model-turn transaction. Prepared handoffs pause response admission; transfer
+fences the previous controller. A successor receives no new host, worktree or process
+authority. Pending effects require ordinary identity-based reconciliation, not replay.
+Legacy uncontrolled runtimes remain unchanged. Controlled responses also have a SQLite
+admission trigger so an old binary cannot submit an unfenced response.
+
+### Reviewed raster acquisition
+
+The administrator may load an immutable image manifest outside repository roots.
+MCP callers select only reviewed IDs and a new jailed destination, never URLs,
+credentials, network policy or a different library. Download accepts only fixed public
+HTTPS sources, resolves once and pins the validated numeric address while TLS verifies
+the original hostname. Private/special address sets, redirects, environment proxies,
+cookies, oversized responses and hash/MIME/raster mismatches are rejected.
+
+Preview/execute binds the library digest, root/parent identities and file absence.
+Descriptor-relative creation rejects symlinks and overwrites; the reopened file's
+identity and actual bytes are checked afterward. A failed write reports incomplete
+state instead of deleting uncertain content. This explicit new binary-file effect does
+not change patch-first editing of existing files. Operator license declarations and
+returned provenance are distribution evidence, not legal clearance.
+
+### Managed browser harness
+
+The browser capability is a general programming harness for every authorized development
+workcell. It is not a remote-debugging endpoint and it is not limited to a fixed set of
+click/type/select operations. `project_browser_harness_start` accepts an arbitrary argv
+array in the persistent rootless toolbox, so a project may run Playwright, Puppeteer,
+Selenium, WebDriver, browser CLIs, test runners, or custom automation in any installed
+language. JavaScript and normal browser APIs are available through that project code.
+The seven `project_browser_*` tools remain only a convenience wrapper for common Chromium
+actions.
+
+This general capability does not create a special integration with any website.
+Aeontra ships no ChatGPT-specific browser preset, UI driver, private-endpoint client or
+consumer-session import. Browser automation remains subject to the operator's authority
+and the rules of the target service.
+
+The harness reuses the existing toolbox boundary. The workspace is mounted at
+`/workspace`; package managers may install browsers, drivers, libraries and utilities in
+the persistent toolbox rootfs. The caller receives standard environment variables for a
+run directory, arbitrary artifacts, downloads and a named persistent profile. Uploads
+come from normal workspace files. Chromium, Firefox, WebKit or another engine may be used
+when the installed framework supports it. MCP Devbox adds no domain allowlist, browser
+action allowlist, JavaScript ban, download ban, upload ban or fixed-browser requirement.
+
+The workcell remains the security boundary:
+
+- Windows mounts and the general host home are not added;
+- rootful Docker sockets and unrelated Edge state remain excluded;
+- the toolbox may retain its already validated user-owned rootless engine socket, whose
+  authority and limitations are the same as for all other toolbox workloads;
+- caller argv is passed positionally to a fixed internal supervisor rather than
+  interpolated into generated shell text;
+- each run is bound to one project, target, toolbox and opaque `bh_...` identity;
+- process status and stop revalidate Linux PID/start ticks before signaling;
+- managed directories reject traversal, symlinks, foreign ownership and root escape.
+
+The toolbox controls CPU, memory and process limits. Each harness run additionally has a
+caller-selected timeout and combined managed run/profile storage ceiling. The supervisor
+records bounded state and private logs, terminates the owned process tree on timeout or
+storage exhaustion, and never infers cleanup from a chat ending. Completed/terminal run
+metadata survives Edge restart; reopening the manager revalidates the live process in the
+unchanged toolbox. An unexpected loss of process identity becomes `indeterminate` rather
+than replaying uncertain browser effects.
+
+Profiles and browser authentication data live under the ignored `.mcp-devbox/` workspace
+state with owner-only parent directories. Public MCP output never returns cookie stores,
+local/session storage, full profile trees, argv, environment, browser debugging addresses,
+container names or host paths. Stdout/stderr are bounded and redacted. Screenshots, PDFs,
+traces, videos, HARs, downloads and other files are enumerated only from relative
+`artifacts/` and `downloads/` paths and read in exact bounded base64 chunks.
+
+Full harness acceptance is host-specific because rootless container creation depends on
+the target user's delegated systemd/cgroup-v2 subtree. GitHub Actions must not create a
+root-owned transient unit, chown cgroup control files or pin a replacement engine merely
+to imitate that authority. It records the exact hosted-runner limitation and fails on any
+unexpected posture instead. Runtime acceptance is anchored to the owner-approved Edge
+execution at `c27053c56b6214e52862ead675b874670f322295` and may be carried forward only
+when the candidate changes no Edge, server, toolbox or browser-harness runtime code and a
+fresh real-browser smoke still passes on `parrot-trusted-linux`. Any runtime change
+requires a new exact E2E. The tested code receives no Edge identity or control-plane
+credential.
+
+The convenience Chromium session uses the authorized workcell's general HTTP/HTTPS
+network and permits downloads to its managed profile. It retains a narrower filesystem
+namespace for that convenience process, but it is not the programming boundary and does
+not replace the arbitrary toolbox harness.
 
 ### Trusted Linux workcell
 
@@ -241,6 +589,49 @@ The trusted workcell shares the host network by design and may receive one verif
 user-owned rootless Docker/Podman socket. It rejects rootful sockets and Windows mounts.
 Filesystem/process containment, runtime labels, cancellation, and cleanup still apply,
 but this profile is owner-trusted and is **not** universal target or egress isolation.
+The signed Linux v7 Codex harness mounts only its immutable Docker CLI and Buildx
+executables; those clients do not grant container authority by themselves. The socket
+is bound after the private runtime mount and only when the existing user-owned endpoint
+validation succeeds. For Docker, the workcell socket is a private runtime proxy to that
+rootless endpoint. Container-create bind sources under `/workspace` resolve to existing
+paths inside the registered workspace and use temporary opaque host aliases; traversal
+and symlinks outside that workspace are rejected. The aliases live in the Edge-owned
+socket root outside the directory mounted into the workcell, and are removed when the
+runtime ends. This translation does not narrow the other authority of a rootless Docker
+socket or make Docker a host isolation boundary.
+A rootful host socket, Docker Desktop filesystem tree, and other workspace state remain
+outside the namespace. Direct `project_exec` and the separate networkless L3 executor
+do not inherit this Codex runtime socket.
+
+### Native Windows Edge
+
+The Windows Edge is a separate trusted-host boundary. Its SCM service runs under the
+virtual account `NT SERVICE\AeontraEdge`, and the installer grants that identity only
+the private state/workspace permissions required by the configured service. Each root
+may use any ready fixed local drive, but must retain its managed `Aeontra` layout and
+remain disjoint and free of reparse points. Program files are immutable versioned
+releases; `service-config.json` and `active.json` are server-owned control records
+checked by the doctor. Updates and rollback use the signature- and digest-verifying
+updater, not a shell or a caller-selected executable.
+
+The installing operator has inherited read-and-execute access only on the Windows
+workspace root. This permits inspection without making the operator another workspace
+writer. Release and state roots remain private, and the workspace validator continues
+to reject write-capable principals other than the service, SYSTEM, and Administrators.
+
+Windows Job Objects and ACL/reparse-point checks constrain process and filesystem use,
+but they do not provide the networkless Linux sandbox. The native package currently
+does not claim the Linux rootless toolbox, browser harness, or HTB workflow on Windows.
+Project commands run under the Edge service identity and share the host network. This
+profile is therefore limited to repositories and commands trusted by the device owner;
+untrusted repository code belongs in the Linux networkless sandbox. Windows does not
+provide an atomic handle-bound current-directory launch through this runner, so the
+profile also does not claim protection against a same-identity process racing a
+workspace rename or junction replacement. Process-control requests still bind the
+exact durable PID and creation time to prevent stale or accidental cross-process use.
+Those capabilities require their own implementation and real-host acceptance. A
+source candidate or signed package is not evidence that a Windows service is deployed
+or accepted.
 
 ### Authorized target-locked workspace
 
@@ -294,6 +685,40 @@ Large results are redacted before persistence and represented at the MCP boundar
 opaque `result_ref` with bounded exact reads. The reference cannot address arbitrary
 filesystem paths.
 
+Trusted-workcell background processes reuse the foreground Bubblewrap launcher and its
+workspace/cwd/environment checks. Their private Edge journal binds an opaque public id
+to a local PID, process group and Linux start-time identity; only the private executor
+uses those OS identities. Output is split by stream, redacted before private persistence,
+bounded by administrator emergency limits and read incrementally. Stop signals only the
+revalidated owned process group. Public tools never return PID, argv, environment,
+workspace or log paths. Process state has no product TTL and cleanup is never inferred
+from the end of a chat turn.
+
+Durable process survival is explicit rather than accidental. Foreground Bubblewrap
+keeps parent-death termination; background Bubblewrap omits it, and the Edge unit uses
+`KillMode=process` so a service restart leaves reviewed per-process workers and their
+groups running. The worker, not the restarting control loop, owns the stdout/stderr
+pipes, redacts before writing and creates a private terminal receipt. On
+reopen, the private manager revalidates PID, start ticks, process group, current Unix
+owner and both no-follow private logs before treating a row as live. Reused or foreign
+identities are never signalled. Missing/unsafe logs are demonstrated state corruption;
+the still-owned group is killed fail-closed and the row becomes terminal. Public list
+and cleanup responses remain metadata-only and never disclose the private journal.
+
+Windows durable workers use the same opaque lifecycle with a PID plus kernel creation
+time. Graceful stop uses a private named pipe. Authorized terminate or kill may fall
+back to an exact process handle when that pipe is unavailable or a legacy wrapper
+acknowledges kill without exiting. The creation time is revalidated on that same handle
+before termination, and `interrupt` has no forced fallback. The worker-owned Job Object
+kills its contained descendants when the wrapper exits.
+
+The process journal also records the owner-bound repository, claim generation, selected
+profile and mode, and workspace binding captured at start. These fields are used for
+authorization after a project alias is released or reassociated; a later Git change
+does not invalidate status or stop for that already-authorized process. Records from
+older schema versions are migrated with empty legacy fields and remain subject to the
+older, stricter checks until a new binding is captured.
+
 Redaction is not a substitute for keeping secrets out of inputs and storage.
 
 ## Secure deployment checklist
@@ -319,15 +744,55 @@ Redaction is not a substitute for keeping secrets out of inputs and storage.
 - Secret content detection is heuristic.
 - The trusted Linux workcell shares host networking and can consume owner resources.
 - A rootless engine still grants broad authority within that user's namespace.
+- Persistent toolbox services expose only server-generated identities and lifecycle
+  state. Their private PID is always paired with Linux process start ticks before
+  status, TERM or KILL, and caller argv is passed positionally to a fixed internal
+  supervisor script rather than interpolated into shell text. Service commands are not
+  persisted for unattended replay after a container restart.
+- Persistent toolbox CPU, memory and process limits are closed integer inputs with
+  server-owned defaults and maxima. The applied values are stored in owner-only state
+  and revalidated against the live rootless container before use; limit drift is an
+  ownership failure, not an invitation to update the container implicitly.
+- A toolbox may receive only the user-owned rootless engine endpoint already validated
+  by the Edge. The internal socket path and endpoint variables are fixed; ownership
+  revalidation requires exactly the workspace and socket binds and rejects extra
+  mounts or environment drift. This authority can consume the user's rootless CPU,
+  memory, disk and network, so it remains confined to explicitly registered `dev`
+  workspaces and is never exposed by the public result.
 - Target-locking is a closed operational contract, not universal egress filtering.
 - Signed bundles prove artifact identity, not correctness of every dependency or host.
 - A compromised administrator, host kernel, reverse proxy, signing key, or external
   integration can defeat the corresponding boundary.
 - Resource limits reduce denial-of-service risk but cannot guarantee availability.
+- Edge operation capacity is deliberately bounded. Normal work can run concurrently,
+  but signed update, rollback and repair are exclusive; a full pool can still make a
+  request wait until its own deadline.
 - The model can damage data inside its selected writable workspace.
 - No formal verification or universal cross-platform OS sandbox is claimed.
 
 ## Security tests and evidence
+
+### Temporary container risk acceptance
+
+Container scans retain their original reports. A reviewed risk acceptance is a
+separate gate input, not a corrected or unaffected VEX statement. The current
+approval in `security/accepted-risks/http-cache-semantics-20261003.json` expires
+on 2026-10-17 at 13:24 UTC. It applies only to CVE-2026-93748 / GHSA-ch52-4w7c-c8xp,
+`http-cache-semantics` 4.2.0 at its exact bundled-npm path in the reviewed sandbox
+workcell. The gate verifies the scanned OCI configuration ID against the verified
+image ID and binds the approval to the workcell Dockerfile SHA-256.
+
+Accepted findings remain visible as warnings with their owner and expiry. Other
+advisories, package versions or locations, Critical/Unknown severity, an available
+fix, a changed image definition, missing image evidence, or expiry remain blocking.
+Approval windows cannot exceed 14 days. The workflow does not extend them or claim
+that the vulnerability has been repaired. Remove the approval when remediation is
+available; no automatic renewal is supported.
+
+The [daily security watch](runbooks/security-risk-watch.md) scans only its explicitly
+inventoried immutable image. An inventoried published candidate is not a deployed
+image, and same-source CI images do not prove the contents of a Coolify build.
+Production coverage requires an actual-image snapshot for every monitored component.
 
 Security behavior is protected by unit, adversarial, race, fuzz, integration, package,
 container, OAuth, documentation, and exact-head CI contracts. Important coverage

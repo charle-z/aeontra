@@ -15,20 +15,23 @@ type WorkspaceProfile string
 type WorkspaceMode string
 
 const (
-	WorkspaceProfileSandbox       WorkspaceProfile = "sandbox"
-	WorkspaceProfileLinuxWorkcell WorkspaceProfile = "linux-workcell"
+	WorkspaceProfileSandbox         WorkspaceProfile = "sandbox"
+	WorkspaceProfileLinuxWorkcell   WorkspaceProfile = "linux-workcell"
+	WorkspaceProfileWindowsWorkcell WorkspaceProfile = "windows-workcell"
 
 	WorkspaceModeDev      WorkspaceMode = "dev"
 	WorkspaceModeHTBLinux WorkspaceMode = "htb-linux"
 
-	LinuxWorkcellNetworkPosture = "trusted_host_shared_network"
+	LinuxWorkcellNetworkPosture   = "trusted_host_shared_network"
+	WindowsWorkcellNetworkPosture = "trusted_windows_host_shared_network"
 )
 
 const workspaceSelect = "SELECT w.workspace_id,w.path,w.created_at,w.updated_at,c.profile,c.mode,c.machine_name,c.target_ip,c.difficulty,c.os,c.vpn_interface,c.authorization_revision FROM workspaces w JOIN workspace_configs c ON c.workspace_id=w.workspace_id"
 
 type WorkspaceRoots struct {
-	Dev      string
-	HTBLinux string
+	Dev        string
+	HTBLinux   string
+	WindowsDev string
 }
 
 type WorkspaceConfiguration struct {
@@ -45,6 +48,9 @@ func OpenWorkspaceRegistryWithRoots(stateRoot string, roots WorkspaceRoots) (*Wo
 	if err != nil {
 		return nil, err
 	}
+	if err := validateWorkspaceStateSeparation(stateRoot, roots); err != nil {
+		return nil, err
+	}
 	registry, err := OpenWorkspaceRegistry(stateRoot)
 	if err != nil {
 		return nil, err
@@ -58,14 +64,37 @@ var (
 	vpnInterfacePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,31}$`)
 )
 
+type workspaceRegistrationStage uint8
+
+const (
+	workspaceRegistrationValidation workspaceRegistrationStage = iota + 1
+	workspaceRegistrationLookup
+	workspaceRegistrationIdentity
+	workspaceRegistrationWrite
+	workspaceRegistrationProfile
+)
+
+type workspaceRegistrationError struct {
+	stage workspaceRegistrationStage
+	err   error
+}
+
+func (e *workspaceRegistrationError) Error() string { return e.err.Error() }
+func (e *workspaceRegistrationError) Unwrap() error { return e.err }
+
+func workspaceRegistrationErr(stage workspaceRegistrationStage, err error) error {
+	return &workspaceRegistrationError{stage: stage, err: err}
+}
+
 func DefaultWorkspaceRoots() (WorkspaceRoots, error) {
 	home, err := os.UserHomeDir()
 	if err != nil || strings.TrimSpace(home) == "" || !filepath.IsAbs(home) {
 		return WorkspaceRoots{}, errors.New("local Linux home is unavailable")
 	}
 	return normalizeWorkspaceRoots(WorkspaceRoots{
-		Dev:      filepath.Join(home, "workspaces"),
-		HTBLinux: filepath.Join(home, "htb-machines"),
+		Dev:        filepath.Join(home, "workspaces"),
+		HTBLinux:   filepath.Join(home, "htb-machines"),
+		WindowsDev: defaultWindowsWorkspaceRoot(home),
 	})
 }
 
@@ -80,6 +109,12 @@ func defaultWorkspaceRoots() WorkspaceRoots {
 func normalizeWorkspaceRoots(roots WorkspaceRoots) (WorkspaceRoots, error) {
 	roots.Dev = filepath.Clean(strings.TrimSpace(roots.Dev))
 	roots.HTBLinux = filepath.Clean(strings.TrimSpace(roots.HTBLinux))
+	if strings.TrimSpace(roots.WindowsDev) != "" {
+		roots.WindowsDev = filepath.Clean(strings.TrimSpace(roots.WindowsDev))
+		if !filepath.IsAbs(roots.WindowsDev) {
+			return WorkspaceRoots{}, errors.New("windows workcell root is unsafe")
+		}
+	}
 	if !filepath.IsAbs(roots.Dev) || !filepath.IsAbs(roots.HTBLinux) || roots.Dev == roots.HTBLinux || isWindowsMount(roots.Dev) || isWindowsMount(roots.HTBLinux) {
 		return WorkspaceRoots{}, errors.New("linux workcell roots are unsafe")
 	}
@@ -102,6 +137,12 @@ func validateLinuxWorkcellPath(path string, roots WorkspaceRoots) (string, error
 }
 
 func validateWorkspaceConfiguration(workspace Workspace, roots WorkspaceRoots, config WorkspaceConfiguration) (WorkspaceConfiguration, error) {
+	if workspace.Profile == WorkspaceProfileWindowsWorkcell {
+		if config.Mode != "" && config.Mode != WorkspaceModeDev || roots.WindowsDev == "" || !pathInside(roots.WindowsDev, workspace.Path) || filepath.Clean(workspace.Path) == filepath.Clean(roots.WindowsDev) {
+			return WorkspaceConfiguration{}, errors.New("windows workcell requires dev mode under its registered root")
+		}
+		return WorkspaceConfiguration{Mode: WorkspaceModeDev}, nil
+	}
 	if workspace.Profile != WorkspaceProfileLinuxWorkcell {
 		return WorkspaceConfiguration{}, errors.New("workspace profile is not configurable")
 	}
@@ -154,47 +195,49 @@ func (r *WorkspaceRegistry) AddProfile(path string, profile WorkspaceProfile) (W
 	if r == nil || r.db == nil {
 		return Workspace{}, false, errors.New("workspace registry is unavailable")
 	}
-	if profile != WorkspaceProfileSandbox && profile != WorkspaceProfileLinuxWorkcell {
+	if profile != WorkspaceProfileSandbox && profile != WorkspaceProfileLinuxWorkcell && profile != WorkspaceProfileWindowsWorkcell {
 		return Workspace{}, false, errors.New("workspace profile is invalid")
 	}
 	validated := ""
 	var err error
 	if profile == WorkspaceProfileLinuxWorkcell {
 		validated, err = validateLinuxWorkcellPath(path, r.roots)
+	} else if profile == WorkspaceProfileWindowsWorkcell {
+		validated, err = validateWindowsWorkcellPath(path, r.roots.WindowsDev)
 	} else {
 		validated, err = ValidateRegisteredWorkspace(path)
 	}
 	if err != nil {
-		return Workspace{}, false, err
+		return Workspace{}, false, workspaceRegistrationErr(workspaceRegistrationValidation, err)
 	}
 	if existing, lookupErr := r.byPath(validated); lookupErr == nil {
 		if existing.Profile != profile {
-			return Workspace{}, false, errors.New("workspace is already registered with another profile")
+			return Workspace{}, false, workspaceRegistrationErr(workspaceRegistrationProfile, errors.New("workspace is already registered with another profile"))
 		}
 		return existing, false, nil
 	} else if !errors.Is(lookupErr, sql.ErrNoRows) {
-		return Workspace{}, false, errors.New("workspace registry lookup failed")
+		return Workspace{}, false, workspaceRegistrationErr(workspaceRegistrationLookup, errors.New("workspace registry lookup failed"))
 	}
 	id, err := newWorkspaceID()
 	if err != nil {
-		return Workspace{}, false, errors.New("workspace id generation failed")
+		return Workspace{}, false, workspaceRegistrationErr(workspaceRegistrationIdentity, errors.New("workspace id generation failed"))
 	}
 	now := r.now().UTC()
 	tx, err := r.db.Begin()
 	if err != nil {
-		return Workspace{}, false, errors.New("workspace registration failed")
+		return Workspace{}, false, workspaceRegistrationErr(workspaceRegistrationWrite, errors.New("workspace registration failed"))
 	}
 	defer tx.Rollback()
 	if _, err := tx.Exec(`INSERT INTO workspaces(workspace_id,path,created_at,updated_at) VALUES(?,?,?,?)`, id, validated, now.UnixNano(), now.UnixNano()); err != nil {
-		return Workspace{}, false, errors.New("workspace registration failed")
+		return Workspace{}, false, workspaceRegistrationErr(workspaceRegistrationWrite, errors.New("workspace registration failed"))
 	}
 	if _, err := tx.Exec(`INSERT INTO workspace_configs(workspace_id,profile,mode,machine_name,target_ip,difficulty,os,vpn_interface,authorization_revision) VALUES(?,?,?,?,?,?,?,?,0)`, id, profile, WorkspaceModeDev, "", "", "", "", ""); err != nil {
-		return Workspace{}, false, errors.New("workspace registration failed")
+		return Workspace{}, false, workspaceRegistrationErr(workspaceRegistrationWrite, errors.New("workspace registration failed"))
 	}
 	if err := tx.Commit(); err != nil {
-		return Workspace{}, false, errors.New("workspace registration failed")
+		return Workspace{}, false, workspaceRegistrationErr(workspaceRegistrationWrite, errors.New("workspace registration failed"))
 	}
-	return Workspace{ID: id, Path: validated, Profile: profile, Mode: WorkspaceModeDev, NetworkPosture: networkPosture(profile), CreatedAt: now, UpdatedAt: now}, true, nil
+	return r.decorateWorkspace(Workspace{ID: id, Path: validated, Profile: profile, Mode: WorkspaceModeDev, NetworkPosture: networkPosture(profile), CreatedAt: now, UpdatedAt: now}), true, nil
 }
 
 func (r *WorkspaceRegistry) Get(id string) (Workspace, error) {
@@ -205,10 +248,26 @@ func (r *WorkspaceRegistry) Get(id string) (Workspace, error) {
 	if err != nil {
 		return Workspace{}, errors.New("workspace not found")
 	}
+	workspace = r.decorateWorkspace(workspace)
 	if err := r.revalidate(workspace); err != nil {
 		return Workspace{}, err
 	}
 	return workspace, nil
+}
+
+// LookupRegistered reads the durable binding without touching the workspace
+// filesystem. It is reserved for registry-only consumers (for example,
+// observing or stopping an already-authorized process); execution callers
+// must use Get so the workspace boundary is revalidated before opening it.
+func (r *WorkspaceRegistry) LookupRegistered(id string) (Workspace, error) {
+	if r == nil || r.db == nil || !workspaceIDPattern.MatchString(id) {
+		return Workspace{}, errors.New("workspace id is invalid")
+	}
+	workspace, err := scanWorkspace(r.db.QueryRow(workspaceSelect+` WHERE w.workspace_id=?`, id))
+	if err != nil {
+		return Workspace{}, errors.New("workspace not found")
+	}
+	return r.decorateWorkspace(workspace), nil
 }
 
 func (r *WorkspaceRegistry) Configure(id string, config WorkspaceConfiguration) (Workspace, error) {
@@ -219,8 +278,17 @@ func (r *WorkspaceRegistry) Configure(id string, config WorkspaceConfiguration) 
 	if err != nil {
 		return Workspace{}, errors.New("workspace not found")
 	}
-	if _, err := validateLinuxWorkcellPath(workspace.Path, r.roots); err != nil {
-		return Workspace{}, err
+	switch workspace.Profile {
+	case WorkspaceProfileLinuxWorkcell:
+		if _, err := validateLinuxWorkcellPath(workspace.Path, r.roots); err != nil {
+			return Workspace{}, err
+		}
+	case WorkspaceProfileWindowsWorkcell:
+		if _, err := validateWindowsWorkcellPath(workspace.Path, r.roots.WindowsDev); err != nil {
+			return Workspace{}, err
+		}
+	default:
+		return Workspace{}, errors.New("workspace profile is not configurable")
 	}
 	config, err = validateWorkspaceConfiguration(workspace, r.roots, config)
 	if err != nil {
@@ -266,8 +334,10 @@ func (r *WorkspaceRegistry) Configure(id string, config WorkspaceConfiguration) 
 	if err != nil {
 		return Workspace{}, err
 	}
-	if err := writeWorkspaceAuthorizationRevision(configured.Path, configured.AuthorizationRevision); err != nil {
-		return Workspace{}, err
+	if configured.Mode == WorkspaceModeHTBLinux {
+		if err := writeWorkspaceAuthorizationRevision(configured.Path, configured.AuthorizationRevision); err != nil {
+			return Workspace{}, err
+		}
 	}
 	return configured, nil
 }
@@ -300,6 +370,12 @@ func (r *WorkspaceRegistry) revalidate(workspace Workspace) error {
 			Difficulty: workspace.Difficulty, OS: workspace.OS, VPNInterface: workspace.VPNInterface,
 		})
 		return err
+	case WorkspaceProfileWindowsWorkcell:
+		if _, err := validateWindowsWorkcellPath(workspace.Path, r.roots.WindowsDev); err != nil {
+			return err
+		}
+		_, err := validateWorkspaceConfiguration(workspace, r.roots, WorkspaceConfiguration{Mode: workspace.Mode})
+		return err
 	default:
 		return errors.New("workspace profile is invalid")
 	}
@@ -308,6 +384,9 @@ func (r *WorkspaceRegistry) revalidate(workspace Workspace) error {
 func networkPosture(profile WorkspaceProfile) string {
 	if profile == WorkspaceProfileLinuxWorkcell {
 		return LinuxWorkcellNetworkPosture
+	}
+	if profile == WorkspaceProfileWindowsWorkcell {
+		return WindowsWorkcellNetworkPosture
 	}
 	return "isolated_no_network"
 }

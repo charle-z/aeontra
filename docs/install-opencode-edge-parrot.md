@@ -1,4 +1,8 @@
-# Install and verify the Trusted Linux Workcell on Parrot WSL2
+# Historical OpenCode workcell installation on Parrot WSL2
+
+> **Superseded:** current releases use the neutral `mcp-devbox-edge@.service` and a
+> pinned stock Codex harness. This document is retained only for recovery of signed
+> manifest-v4 releases and must not be used for a new installation.
 
 Status: verified human-operated onboarding for P12. The first real remote smoke
 completed on 2026-07-18 from Parrot WSL2 through the CubePath-hosted control plane.
@@ -24,7 +28,9 @@ CubePath-hosted MCP Devbox control plane
 
 The successful smoke used workspace `ws_7c4686f5d9244bbad30ae705d4b660c5`,
 completed six model-turn sequences, created the exact requested file, and passed
-`git diff --check`. The workcell-owned `.mcp-devbox/` directory is expected. The
+`git diff --check`. Older workcells may have a workcell-owned `.mcp-devbox/` directory;
+new workcells keep control state in the Edge runtime root and expose it only through
+the sandbox mount. The
 service maintains bounded five-second heartbeat updates while a runtime is active.
 
 ## 1. Prerequisites
@@ -67,7 +73,7 @@ install -d -m 0700 \
 
 ```bash
 rm -rf /tmp/mcp-devbox-reviewed
-git clone https://github.com/charle-z/mcp-devbox.git /tmp/mcp-devbox-reviewed
+git clone https://github.com/charle-z/aeontra.git /tmp/mcp-devbox-reviewed
 cd /tmp/mcp-devbox-reviewed
 git checkout <REVIEWED_COMMIT>
 git status --short
@@ -261,8 +267,9 @@ workspace_runtime_continue(
 
 The server resolves the paired Edge from its signed opaque workspace registration,
 uses the fixed `resume-local-contract-v1` objective, and creates at most one active
-runtime for that workspace. The Edge reads `.mcp-devbox/instructions.md` and
-`.mcp-devbox/current-state.md` locally. The call carries no target, IP, machine,
+runtime for that workspace. Inside the sandbox, the Edge reads the private
+`/workspace/.mcp-devbox/instructions.md` and `/workspace/.mcp-devbox/current-state.md`
+mount. The call carries no target, IP, machine,
 credential, flag, command, checkpoint, path, or free-form instruction and is never
 retried automatically. See `docs/workspace-runtime-continuation.md`.
 

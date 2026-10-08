@@ -46,11 +46,16 @@ func (p *Provider) ChallengeHeader() string {
 // (resource), and scope, expiring after ttl. Used by the token endpoint (and tests).
 func (p *Provider) issueAccessToken(clientID, resource, scope string, ttl time.Duration) string {
 	token := randToken()
-	p.store.putAccess(token, accessGrant{
+	if token == "" {
+		return ""
+	}
+	if err := p.store.putAccess(token, accessGrant{
 		clientID:  clientID,
 		resource:  resource,
 		scope:     scope,
 		expiresAt: time.Now().Add(ttl),
-	})
+	}); err != nil {
+		return ""
+	}
 	return token
 }

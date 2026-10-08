@@ -32,10 +32,10 @@ func RegisterGitFastForward(register Register, service GitFastForwardService) {
 
 	register(Tool{
 		Name:        "repo_fast_forward",
-		Description: "Execute one previously reviewed, unexpired and unused fast-forward plan using exactly 'git merge --ff-only <upstream>'. Repository, branch, HEAD, target and clean state are revalidated; requires approval in ask mode.",
+		Description: "Execute one previously reviewed, unexpired and unused fast-forward plan using exactly 'git merge --ff-only <upstream>' inside the attested private L3 executor. Repository, branch, HEAD, target and clean state are revalidated; available only in administrator-selected allow mode with no host fallback.",
 		InputSchema: object(map[string]any{
 			"plan_id": strProp("plan id returned by repo_fast_forward_preview"),
-			"approve": boolProp("execute the plan when approval is required"),
+			"approve": boolProp("legacy compatibility field; does not grant execution authority"),
 		}, "plan_id"),
 		Version: "1",
 		Handler: func(arguments json.RawMessage) (string, error) {

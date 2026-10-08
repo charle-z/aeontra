@@ -186,3 +186,25 @@ func TestAuthorizePOST_PassphraseThrottled(t *testing.T) {
 		t.Error("repeated wrong passphrases must be throttled (429)")
 	}
 }
+
+func TestAuthorizePOST_ThrottleCannotBeBypassedWithAnotherRegisteredClient(t *testing.T) {
+	p := testProvider(t)
+	attackerID, attackerRedirect := regTestClient(t, p)
+	legitimateID, legitimateRedirect := regTestClient(t, p)
+	attackerForm := validAuthorizeParams(p, attackerID, attackerRedirect)
+	attackerForm.Set("passphrase", "wrong")
+	for i := 0; i < maxPassphraseFailures; i++ {
+		if rec := postAuthorize(t, p, attackerForm); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("attacker attempt %d status = %d, want 401", i, rec.Code)
+		}
+	}
+	if rec := postAuthorize(t, p, attackerForm); rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("attacker client status = %d, want 429", rec.Code)
+	}
+
+	legitimateForm := validAuthorizeParams(p, legitimateID, legitimateRedirect)
+	legitimateForm.Set("passphrase", "wrong")
+	if rec := postAuthorize(t, p, legitimateForm); rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("another anonymous registration bypassed the global budget: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}

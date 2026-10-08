@@ -2,6 +2,7 @@ package oauth
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -130,6 +131,106 @@ func TestRegister_CapEnforced(t *testing.T) {
 	}
 }
 
+func TestRegister_PrunesOnlyExpiredUnactivatedClients(t *testing.T) {
+	p := testProvider(t)
+	p.store.clients["activated"] = clientReg{
+		redirectURIs: []string{"https://active.example.com/cb"},
+		createdAt:    time.Now().Add(-2 * unactivatedClientTTL),
+		activated:    true,
+	}
+	for i := 0; i < maxClients-1; i++ {
+		p.store.clients[fmt.Sprintf("pending-%03d", i)] = clientReg{
+			redirectURIs: []string{"https://pending.example.com/cb"},
+			createdAt:    time.Now().Add(-2 * unactivatedClientTTL),
+		}
+	}
+
+	id, err := p.store.registerClient([]string{"https://new.example.com/cb"})
+	if err != nil {
+		t.Fatalf("register after pruning: %v", err)
+	}
+	if id == "" {
+		t.Fatal("register returned an empty client id")
+	}
+	if _, ok := p.store.getClient("activated"); !ok {
+		t.Fatal("expired activated client was pruned")
+	}
+	p.store.mu.Lock()
+	clientCount := len(p.store.clients)
+	p.store.mu.Unlock()
+	if clientCount != 2 {
+		t.Fatalf("client count after pruning = %d, want 2", clientCount)
+	}
+}
+
+func TestExpiredUnactivatedClientCannotAuthorize(t *testing.T) {
+	p := testProvider(t)
+	p.store.clients["expired-pending"] = clientReg{
+		redirectURIs: []string{"https://pending.example.com/cb"},
+		createdAt:    time.Now().Add(-2 * unactivatedClientTTL),
+	}
+	p.store.failTimes["expired-pending"] = []time.Time{time.Now()}
+
+	if _, ok := p.store.getClient("expired-pending"); ok {
+		t.Fatal("expired unactivated client remained valid")
+	}
+	if _, ok := p.store.failTimes["expired-pending"]; ok {
+		t.Fatal("expired client throttle state was retained")
+	}
+}
+
+func TestClientStoreVersionOneMigratesClientsAsActivated(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "oauth-clients.json")
+	createdAt := time.Now().Add(-2 * unactivatedClientTTL).UTC()
+	body := fmt.Sprintf(`{"version":1,"clients":[{"id":"legacy","redirect_uris":["https://legacy.example.com/cb"],"created_at":%q}]}`, createdAt.Format(time.RFC3339Nano))
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	p := testProviderWithClientStore(t, path)
+	client, ok := p.store.getClient("legacy")
+	if !ok || !client.activated {
+		t.Fatalf("version 1 client not migrated as activated: ok=%t client=%+v", ok, client)
+	}
+}
+
+func TestAuthorizationActivationFailsClosedWhenClientStoreCannotPersist(t *testing.T) {
+	p := testProvider(t)
+	clientID, err := p.store.registerClient([]string{"https://client.example.com/cb"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.store.mu.Lock()
+	p.store.clientStorePath = t.TempDir()
+	p.store.mu.Unlock()
+
+	if err := p.store.putCode("code", authCode{clientID: clientID, expiresAt: time.Now().Add(time.Minute)}); err == nil {
+		t.Fatal("authorization succeeded when client activation could not persist")
+	}
+	client, ok := p.store.getClient(clientID)
+	if !ok || client.activated {
+		t.Fatalf("failed activation changed client state: ok=%t client=%+v", ok, client)
+	}
+	if _, ok := p.store.consumeCode("code"); ok {
+		t.Fatal("failed activation exposed an authorization code")
+	}
+}
+
+func TestAuthorizationMarksDynamicClientActivated(t *testing.T) {
+	p := testProvider(t)
+	clientID, err := p.store.registerClient([]string{"https://client.example.com/cb"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.store.putCode("code", authCode{clientID: clientID, expiresAt: time.Now().Add(time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	client, ok := p.store.getClient(clientID)
+	if !ok || !client.activated {
+		t.Fatalf("authorized client was not activated: ok=%t client=%+v", ok, client)
+	}
+}
+
 func TestRegister_PersistentClientsSurviveProviderRestart(t *testing.T) {
 	clientStorePath := filepath.Join(t.TempDir(), "oauth-clients.json")
 	p1 := testProviderWithClientStore(t, clientStorePath)
@@ -177,7 +278,7 @@ func TestRegister_PersistenceDoesNotPersistTokens(t *testing.T) {
 	if p2.Authorize(bearerReq(access)) {
 		t.Fatal("access tokens must remain in-memory only across provider restart")
 	}
-	if _, ok := p2.store.consumeRefresh(refresh); ok {
+	if _, ok, _ := p2.store.consumeRefresh(refresh); ok {
 		t.Fatal("refresh tokens must remain in-memory only across provider restart")
 	}
 	body, err := os.ReadFile(clientStorePath)

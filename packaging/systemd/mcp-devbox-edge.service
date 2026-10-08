@@ -29,7 +29,9 @@ ProcSubset=pid
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 RestrictNamespaces=false
 RestrictRealtime=true
-RestrictSUIDSGID=true
+# Bubblewrap needs openat2 for safe bind-source resolution. RestrictSUIDSGID
+# blocks that syscall; NoNewPrivileges and empty capabilities remain enforced.
+RestrictSUIDSGID=no
 LockPersonality=true
 ReadWritePaths=/var/lib/mcp-devbox-edge /srv/mcp-devbox-workspaces
 

@@ -15,8 +15,9 @@ MCP tool. Use `read-only` by default and `ask` when reviewed writes are required
 - **Components:** the `mcp-devbox` binary and one or more absolute repository roots.
 - **Minimum configuration:** `serve --root <ABSOLUTE_PATH>`; mode defaults to
   `read-only`.
-- **Volumes:** none. Outside the production image, durable operational state falls
-  back below the primary root at `.agent-memory/state`.
+- **Volumes:** none. Outside the production image, durable operational state defaults
+  to an Aeontra user-configuration directory keyed by the primary-root digest and
+  disjoint from every repository root.
 - **Security posture:** no writes, commands, tests, or commits. Reads still pass
   through the jail, secret-path denial, content redaction, and audit.
 - **Validation:** start the process through an MCP stdio client, call
@@ -34,10 +35,12 @@ mcp-devbox serve --root /absolute/path/to/repository --mode read-only
   `--allow-cmd` only when those operations are needed.
 - **Volumes:** none required; use an administrator-owned state directory when local
   state must survive repository replacement.
-- **Security posture:** writes and commands remain jailed and allowlisted. Risky
-  actions require an explicit `approve=true`; preview is not approval.
-- **Validation:** inspect with `repo_status`, apply a disposable patch, run the
-  configured test, and verify the approval boundary before using a real repository.
+- **Security posture:** writes remain jailed. Repository code execution is denied in
+  ask mode because an argv approval cannot bind mutable workspace bytes. Use a private
+  L3 executor plus administrator-selected allow mode only for an explicitly trusted
+  workspace. Preview is not approval.
+- **Validation:** inspect with `repo_status`, apply a disposable patch, and verify the
+  write boundary before using a real repository.
 - **Optional:** GitHub, Coolify, Brain, and a private validation runner.
 
 ```bash
@@ -98,8 +101,13 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
 
 ### Global builder
 
-- **Components:** the VPS profile plus Go, Git, Node/npm in the image and optional
+- **Components:** the VPS profile plus Go, Git, and Node 22 in the image and optional
   GitHub/Coolify adapters.
+- **Package management:** the final public backend contains no npm/npx binaries or
+  npm dependency tree. The console is assembled with pinned pnpm in a separate build
+  stage. Repository commands and tests execute in the attested private L3 executor;
+  package-management workflows use that executor, Edge, or the fixed private validation
+  runner rather than the backend runtime.
 - **Minimum configuration:** use `ask`; configure only the integrations needed.
 - **Volumes:** persistent `/repos` and `/state`.
 - **Security posture:** no free shell, no force push, no caller-provided Git refspec,
@@ -145,9 +153,66 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
 - **Minimum configuration:** server `/state` persistence plus the documented signed
   package/onboarding process. Edge identity is not configured through public MCP
   environment variables.
+- **Local operator recovery:** `mcp-edge project prepare --alias <project>
+  --repository <repository> --target <edge-alias>` uses the same owner-bound
+  preparation policy as MCP, with a two-minute deadline and no caller-supplied
+  path, state root or credential. It can associate an unclaimed canonical
+  checkout; disappearance of an already registered binding still fails closed.
+  It does not replace or restart the managed Edge daemon.
 - **Volumes and paths:** server coordination is under `/state/edge` and
   `/state/model-turns`; the real Edge keeps private state under
   `~/.local/state/mcp-edge`, with workspaces under the configured local roots.
+- **Background process state:** the Edge stores private process metadata at
+  `~/.local/state/mcp-edge/project-processes.db` and separate redacted logs below
+  `~/.local/state/mcp-edge/project-process-logs`. The directory is owner-only and log
+  and database files are `0600`; none is mounted into a workcell or returned as a path.
+- **Development workspace state:** each registered workspace also gets private,
+  owner-only roots under the Edge state root:
+  `project-runtime/<workspace-id>`, `project-cache/<workspace-id>`, and
+  `project-artifacts/<workspace-id>`. Toolchain homes and package caches point there;
+  new Edge executions do not populate the source tree or its historical `.mcp-devbox`
+  directory. The exact roots are mounted only into the selected workcell or toolbox.
+- **Concurrency:** normal project, Git inspection, process observation and toolbox
+  operations use bounded shared capacity. Signed bundle update, rollback and repair
+  acquire an Edge-wide exclusive gate. The worker count is a server/Edge setting and
+  is not caller-controlled; waiting operations remain bounded by their own deadline.
+  An unstarted `project_exec` expires after three minutes in the queue. The
+  terminal operation remains readable by id; use a new idempotency key for a
+  fresh command after confirming the current project state.
+- **Recovery metadata:** project claims, checkout attestations, toolbox generations and
+  process bindings are durable. Schema migrations are additive and fail closed on a
+  newer schema. Reconciliation is explicit and never resets or deletes a source tree.
+- **Toolbox lifecycle:** toolbox metadata schema v3 records `persistent|disposable`
+  plus a durable generation. Missing/historical lifecycle is interpreted as
+  `persistent`; read-only status does not rewrite the record, while an explicit
+  mutating operation persists the additive migration;
+  lifecycle cannot be changed by reusing create. A disposable toolbox is only reported
+  reclaimable when stopped with no nonterminal recorded services/browser runs. This
+  classification covers the toolbox rootfs/record only: it does not make project
+  runtime, cache, artifact or source roots automatically deletable.
+- **Storage visibility:** Linux `edge_onboarding_status` reports total and available
+  bytes for the filesystem containing the validated private Edge state root, plus the
+  storage driver reported by the outer user-owned rootless container engine. Driver
+  posture is conservative: VFS is `degraded`, known copy-on-write drivers are
+  `copy_on_write`, and unrecognized/unavailable drivers remain `unknown`. This does
+  not claim visibility into a nested container engine running inside a toolbox.
+- **Optional storage reserve:** set `MCP_DEVBOX_STORAGE_RESERVED_MIN_BYTES` only in
+  the local Edge service environment to one positive integer byte count. When unset,
+  onboarding reports storage pressure as `unconfigured`; when set, available bytes
+  below the reserve are `critical`, otherwise `normal`. This status is read-only and
+  does not trigger cleanup, pruning or admission changes by itself.
+- **Emergency limits:** `mcp-edge codex --project-process-limit` defaults to `256`
+  concurrent durable processes (maximum `4096`).
+  `--project-process-log-limit` defaults to `67108864` bytes per stdout/stderr stream
+  (maximum `1073741824`). Neither setting is a TTL and terminal rows are not removed
+  automatically.
+- **Model runtime polling:** `mcp-edge codex --model-runtime-pollers` defaults to
+  four concurrent lease pollers (range `1`–`4`). Each leased runtime retains its
+  own workspace and journal identity. A slow runtime does not block lease polling
+  for the other slots. Final completed/failed reports have a 30-second deadline;
+  if delivery cannot be confirmed, the local failure remains visible for
+  reconciliation instead of holding a poller indefinitely. `--once` still
+  attempts only one lease.
 - **Security posture:** the ordinary Edge sandbox is networkless; the trusted Linux
   workcell intentionally shares the host network; authorized target-locked actions
   revalidate the private target and VPN route. These are distinct boundaries.
@@ -155,6 +220,35 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
   doctor/status commands for the installed Edge. Source release, deployed server, and
   installed device evidence are separate facts.
 - **Optional:** local owner-bound Git authority and authorized laboratory metadata.
+
+### Native Windows Edge
+
+- **Components:** a signed Windows bundle, the `AeontraEdge` SCM service, private
+  ACL-protected state, and registered workspace roots.
+- **Managed roots:** program files are under `%ProgramFiles%\Aeontra\Edge`;
+  service state is under `%ProgramData%\Aeontra\Edge`; workspaces are under
+  `%ProgramData%\Aeontra\Workspaces` by default. Install, state, and workspace
+  roots may be placed on any ready fixed local drive using the managed suffixes
+  `Aeontra\Edge`, `Aeontra\State`, and `Aeontra\Workspaces`. The historical
+  `%ProgramData%\Aeontra\Edge` state suffix remains valid for compatibility. Roots
+  must be local, non-overlapping, and free of reparse points; UNC, device, volume-root,
+  removable, and reparse paths are rejected.
+- **Operator visibility:** the installing Windows operator receives inherited
+  read-and-execute access only on the workspace root. Program releases and service
+  state remain private to the service, SYSTEM, and Administrators. Additional
+  workspace writers remain rejected by the Edge ACL contract.
+- **Service identity:** the service runs as the virtual account
+  `NT SERVICE\AeontraEdge`. The installer records `service-config.json` and
+  selects one immutable release with `active.json`.
+- **Validation and updates:** use the installed `mcp-edge doctor` and
+  `lifecycle inspect/status`. The paired `edge_bundle_status` and
+  `edge_onboarding_status` operations bind the responder to SCM's current PID and
+  return the same signed release/service identity without exposing paths. Windows
+  reports the restart counter as unknown because SCM has no `NRestarts` equivalent.
+  Updates and rollback are delegated to the signed `mcp-bundle-updater.exe`; doctor
+  does not mutate state.
+- **Status:** native Windows packaging and source support do not prove a signed
+  release, installed service, or accepted real device. Record those gates separately.
 
 ### Privileged profiles
 
@@ -202,9 +296,23 @@ remain unavailable until a tool is called.
 | `MCP_DEVBOX_MODE` | Docker entrypoint/policy | Optional; not secret | `read-only`; `read-only`, `ask`, `allow` | `read-only`; platform env | Missing is safe. Unsupported mode is rejected during policy initialization. |
 | `MCP_DEVBOX_TEST_CMD` | test runner | Required only for `run_tests`; not secret | none; argv parsed without a shell | `go test ./... -count=1`; platform env | Missing disables a useful test command. Unsafe/unallowlisted execution is denied. |
 | `MCP_DEVBOX_ALLOW_CMD` | command policy | Optional; not secret | secure list `git,go,ls,cat`; comma-separated basenames | `git,go`; platform env | Missing keeps the secure list. Invalid/unsafe commands remain denied by policy. |
-| `MCP_DEVBOX_SANDBOX` | L3 runner selection | Optional; not secret | `none`; `none`, `docker`, `nsjail`, `gvisor` | `none`; platform env | Unknown value fails startup. A named backend does not bypass availability checks. |
-| `MCP_DEVBOX_SANDBOX_IMAGE` | Docker sandbox | Only with Docker backend; not secret | `golang:1.26-alpine` | a reviewed pinned image; platform env | Missing uses default. Runtime creation fails if the image/backend is unavailable. |
-| `MCP_DEVBOX_ADMIN_TOKEN` | `mcp-devbox grant` CLI | Only as an alternative to `--admin-token`; secret | none | inject into the local operator process only | Missing requires the flag. It is not a daemon startup setting; the daemon generates its own loopback token. |
+| `MCP_DEVBOX_SANDBOX` | L3 runner selection | Optional; not secret | `none`; `private-rootless` enables only a verified private runner; legacy `docker`, `nsjail`, `gvisor` remain unavailable compatibility names | `private-rootless`; platform env | Unknown value fails startup. Missing or incomplete private authority leaves broad execution unavailable. |
+| `MCP_DEVBOX_SANDBOX_IMAGE` | private L3 image identity | Required with `private-rootless`; not secret | administrator-owned image reference pinned with `@sha256:<64 lowercase hex>` | `registry.example/aeontra-l3@sha256:...`; matching env on both services | Missing, tag-only or mismatched identity leaves the private runner unavailable. The caller cannot choose an image. |
+| `MCP_DEVBOX_SANDBOX_RUNNER_URL` | public MCP to private runner | Required with `private-rootless`; sensitive topology | credential-free internal HTTP origin resolving exclusively to loopback/private addresses | `http://mcp-sandbox-runner:8770`; platform env | Missing, invalid, public, mixed-DNS, redirected or unreachable endpoint leaves `sandbox_exec` unavailable. Do not assign a public domain. |
+| `MCP_DEVBOX_SANDBOX_RUNNER_TOKEN` | private L3 authentication | Required with `private-rootless`; secret | at least 32 random characters, equal on both services | secret manager | Missing, short or mismatched token leaves execution unavailable. Never pass it to a workcell. |
+| `MCP_DEVBOX_SANDBOX_WORKSPACE_ID` | private workspace mapping | Required with `private-rootless`; not secret | lowercase opaque identifier `[a-z0-9._-]`, max 64 | `primary`; platform env | Invalid identifier leaves execution unavailable. It is not a path. |
+| `MCP_DEVBOX_SANDBOX_RUNNER_ADDR` | private runner listener | Runner only; not secret | loopback or one explicit private IP and port | `10.0.1.250:8770`; private service env | Empty, hostname, unspecified or public binds fail runner startup. Do not publish the port. The reference Compose derives this value from `MCP_DEVBOX_SANDBOX_RUNNER_IPV4`. |
+| `MCP_DEVBOX_SANDBOX_RUNNER_IPV4` | private runner placement | Compose interpolation only; not secret | one unused private IPv4 from the external Coolify network | `10.0.1.250`; private service env | Missing or conflicting addresses prevent the runner from joining the private network. The reference Compose uses this single value for both IPAM placement and the listener. |
+| `MCP_DEVBOX_SANDBOX_RUNNER_WORKSPACE_SOURCE` | Compose workspace mapping | Runner deployment only; sensitive topology | absolute host mountpoint of the exact persistent storage mounted by the backend at its repository root; administrator-controlled and never accepted from an MCP request | `/var/lib/docker/volumes/<backend-repository-volume>/_data`; private service env | Missing, relative, broad or incorrect storage prevents the runner from seeing the backend repository set. The reference Compose binds this exact mountpoint because service orchestrators can namespace a named-volume declaration into different storage for each service. |
+| `MCP_DEVBOX_SANDBOX_RUNNER_WORKSPACE_ROOT` | private runner mapping | Runner only; sensitive container path | existing absolute directory, disjoint from state; either one direct repository or a multi-repository root whose direct child scopes are selected server-side | `/srv/aeontra-l3/workspace`; backed by the exact backend storage mountpoint; only the selected repository is mounted at `/workspace` | Missing, symlink-invalid, inaccessible or overlapping root fails startup/execution. Ambiguous or unsafe scope selection fails closed. |
+| `MCP_DEVBOX_SANDBOX_RUNNER_STATE_ROOT` | L3 receipts | Runner only; sensitive persistent path | existing/creatable absolute directory outside workspace | `/var/lib/aeontra-l3`; private volume | Missing, inaccessible or overlapping state fails startup. Completed receipts prevent effect replay. |
+| `MCP_DEVBOX_SANDBOX_RUNNER_PODMAN_SOCKET` | rootless engine authority | Runner only; sensitive socket path | direct Unix socket under `/run/user/<runner-uid>/`, owned by that UID; the runner uses the bounded Podman v5 HTTP API and packages no engine CLI | `/run/user/1000/podman/podman.sock`; exact mount | Missing, symlinked, foreign-owned or rootful endpoint fails startup. Never mount it into public MCP or workcells. |
+| `MCP_DEVBOX_SANDBOX_MAX_TIMEOUT_MS` | L3 resource policy | Runner only; not secret | positive, max 30 minutes; `120000` default | `120000` | Invalid maximum fails startup. |
+| `MCP_DEVBOX_SANDBOX_MAX_CPU_MILLIS` | L3 resource policy | Runner only; not secret | positive; `1000` default | `1000` | Invalid maximum fails startup. |
+| `MCP_DEVBOX_SANDBOX_MAX_MEMORY_MIB` | L3 resource policy | Runner only; not secret | positive; `1024` default | `1024` | Invalid maximum fails startup. |
+| `MCP_DEVBOX_SANDBOX_MAX_PROCESSES` | L3 resource policy | Runner only; not secret | positive; `256` default | `256` | Invalid maximum fails startup. |
+| `MCP_DEVBOX_SANDBOX_MAX_OUTPUT_BYTES` | L3 resource policy | Runner only; not secret | positive, max 8 MiB; `1048576` default | `1048576` | Invalid maximum fails startup. Stdout and stderr share this total budget. |
+| `MCP_DEVBOX_SANDBOX_MAX_CONCURRENT` | L3 resource policy | Runner only; not secret | integer `1..64`; `2` default | `2` | Invalid maximum fails startup. Waiting requests remain bound to their context deadline. |
 
 ### HTTP, OAuth, and console
 
@@ -214,8 +322,22 @@ remain unavailable until a tool is called.
 | `MCP_DEVBOX_PUBLIC_URL` | OAuth issuer/resource | Required with passphrase; not itself secret | none; HTTPS base URL, except localhost may use HTTP | `https://mcp.example.com`; platform env | Both OAuth vars absent disables OAuth. Only one set fails startup. Invalid issuer fails startup. |
 | `MCP_DEVBOX_OAUTH_PASSPHRASE` | OAuth owner login | Required with public URL; secret | none; strong passphrase | `REPLACE_WITH_LONG_OWNER_PASSPHRASE`; secret manager | Half-configuration or invalid provider setup fails startup. |
 | `MCP_DEVBOX_OAUTH_CLIENT_STORE` | OAuth DCR persistence | Optional; sensitive state path | under state root when configured; absolute override | `/state/oauth-clients.json`; `/state` volume | Missing with a state root uses the default; without a state root DCR is memory-only. Invalid/unwritable store fails OAuth startup. |
+| `MCP_DEVBOX_OAUTH_ACCESS_STORE` | access-grant continuity | Optional; sensitive state path | under state root when configured; absolute override | `/state/oauth-access.json`; `/state` volume | Stores only SHA-256 bearer digests and bounded grant metadata, never raw tokens. Missing with a state root uses the default; invalid/unwritable state fails OAuth startup or token issuance. |
 | `MCP_DEVBOX_OAUTH_REFRESH_STORE` | refresh-token persistence | Optional; secret-bearing state path | under state root when configured; absolute override | `/state/oauth-refresh.json`; `/state` volume | Missing with a state root uses the default; without it refresh grants are memory-only. Invalid/unwritable store fails OAuth startup. |
 | `CONSOLE_TIMEZONE` | console presentation | Optional; not secret | `America/Bogota`; valid IANA name or `UTC` | `America/Bogota`; platform env | Empty uses default. Invalid or ambiguous timezone fails startup. |
+
+### Isolated public product site
+
+The `aeontra-site` executable and `Dockerfile.site` serve only the public landing,
+health/readiness, and a sanitized view of an existing public MCP `/version` response.
+They do not register MCP, OAuth, console, repository, deployment, credential, or Edge
+routes. This is the recommended deployment for a marketing domain.
+
+| Name | Component | Required / secret | Default and valid values | Example and persistence | Missing or invalid effect |
+|---|---|---|---|---|---|
+| `AEONTRA_PUBLIC_RUNTIME_URL` | isolated public site | Required; not secret | exact HTTPS `/version` URL on an existing public Aeontra control plane; DNS hostname only, no credentials, port, query, or fragment | `https://mcp.example.com/version`; platform env | Missing or invalid configuration fails startup. Unavailable, redirected, oversized, malformed, or invalid upstream identity makes only the site's `/version` return 503. |
+| `AEONTRA_SITE_COMMIT` | isolated public site | Optional; not secret | exact 40-character lowercase Git commit override | exact approved commit; platform env | Missing or invalid input falls back to Coolify's predefined `SOURCE_COMMIT`, then to compile-time identity. If no source is valid, `/healthz` reports `unknown`. |
+| `AEONTRA_SITE_ADDR` | isolated public site | Optional; not secret | `:8080`; valid Go HTTP listen address | `:8080`; image env | Missing uses the image default. Invalid or unavailable bind fails startup. |
 
 ### Stable MCP Front Door service
 
@@ -234,21 +356,55 @@ remain unavailable until a tool is called.
 
 | Name | Component | Required / secret | Default and valid values | Example and persistence | Missing or invalid effect |
 |---|---|---|---|---|---|
-| `MCP_DEVBOX_STATE_ROOT` | all durable server state | Recommended in production; sensitive path | local fallback `<primary-root>/.agent-memory/state`; absolute path | `/state`; persistent volume outside the repository jail | Missing uses local fallback. Relative/NUL path fails startup. |
+| `MCP_DEVBOX_STATE_ROOT` | all durable server state | Recommended in production; sensitive path | user-configuration state keyed by primary-root digest; absolute path disjoint from every repository root | `/state`; persistent volume outside the repository jail | Missing uses the private user-level default. Relative, root, NUL, or repository-overlapping paths fail startup. |
 | `MCP_DEVBOX_TASK_ROOT` | durable task journal | Optional; sensitive path | none outside image; image `/state/tasks`; absolute path | `/state/tasks`; `/state` volume | Missing disables the task journal. Invalid path or open failure fails startup. |
 | `MCP_DEVBOX_BRAIN_ROOT` | Brain | Required to enable Brain; sensitive path | unset/disabled; absolute and disjoint from repo roots | `/brain`; dedicated volume | Missing leaves Brain tools registered but unavailable. Invalid source, permissions, overlap, Git, or index state fails startup. |
+| `MCP_DEVBOX_ASSET_LIBRARY` | reviewed raster assets | Optional; sensitive operator-owned path | unset/disabled; absolute regular Linux JSON manifest outside all repository roots, same-UID private parent and file | `/state/assets/library.json`; parent `0700`, file `0600` or `0400` | Missing leaves asset tools unavailable. Invalid entries, ownership, permissions, symlink or overlap fail startup. The manifest is loaded once; MCP cannot change it. |
+| `MCP_DEVBOX_MAINTAINER_PROFILE` | repository-maintainer operations | Optional; not secret | unset/disabled or exact `charle-z-production` | maintainer-controlled platform env only | Missing is the portable default: fixed Front Door, production backend, Brain deployment, and official Edge-release maintenance operations fail closed. Unsupported values fail startup. Third-party operators must leave it unset. |
 | `MCP_DEVBOX_OBSERVABILITY` | structured events | Optional; not secret | library default `stderr`; image `file`; `off`, `stderr`, `file`, `both` | `file`; platform env | Missing uses the applicable default. Invalid mode fails startup. |
 | `MCP_DEVBOX_OBSERVABILITY_PATH` | JSONL sink | Required only for an explicit path; sensitive path | in file/both mode defaults to `<state>/logs/observability.jsonl`; absolute path | `/state/logs/observability.jsonl`; `/state` volume | Invalid, unsafe, or unwritable path fails startup. |
 | `MCP_DEVBOX_OBSERVABILITY_MAX_BYTES` | log rotation | Optional; not secret | `16777216`; integer 1 MiB–1 GiB | `16777216`; platform env | Invalid or out-of-range value fails startup. |
+
+The server writes each local secret-read grant channel descriptor under
+`<state-root>/grant-admin/channel-*.json` with mode `0600` inside a `0700` directory.
+The descriptor contains the ephemeral loopback origin and bearer and is removed during
+clean shutdown. Its path is printed only in local operator diagnostics so the CLI can
+open it; the bearer and origin are never printed to MCP stdio, observability, or logs.
+Run `mcp-devbox grant --admin-file <that-private-file> ...` only from a local operator
+shell that can access the configured state root. Grant-admin state is always denied by
+repository read and search policy even if an administrator later misconfigures a path.
 
 ### GitHub adapter
 
 | Name | Component | Required / secret | Default and valid values | Example and persistence | Missing or invalid effect |
 |---|---|---|---|---|---|
-| `GITHUB_TOKEN` | GitHub API and HTTPS publication | Required to enable adapter; secret | none; fine-grained token | `REPLACE_WITH_FINE_GRAINED_GITHUB_VALUE`; secret manager | Missing disables the adapter. Incomplete owner/type makes GitHub tools fail closed when called. |
+| `GITHUB_TOKEN` | GitHub API and HTTPS publication | Required to enable adapter; secret | none; existing GitHub token with only the permissions needed for owner-bound work and selected public OSS operations | `REPLACE_WITH_GITHUB_VALUE`; secret manager | Missing disables the adapter. Incomplete owner/type or denied fork/comment/PR permission makes the exact operation fail closed. |
+| `GH_TOKEN` | Public OSS GitHub API authority | Optional; secret | none; user credential with permission to interact with third-party public repositories | `REPLACE_WITH_GITHUB_USER_VALUE`; secret manager | External `/repos/<owner>/...` calls try this credential first; GitHub 403/404 responses retry once with `GITHUB_TOKEN`. Missing preserves the existing single-token behavior. |
 | `GITHUB_OWNER` | owner boundary | Required with token; not secret | none; exact user/org login | `example-owner`; platform env | Missing leaves client unconfigured and tools fail closed. |
 | `GITHUB_OWNER_TYPE` | API routing | Required by documented setup; not secret | constructor default `user`; `user` or `org` | `user`; platform env | Invalid value makes the client unconfigured and tools fail closed. |
 | `GITHUB_DEFAULT_VISIBILITY` | repo creation | Optional; not secret | `private`; `private` or `public` | `private`; platform env | Missing stays private. Invalid requested visibility is rejected. |
+
+### Isolated development runner
+
+The runner is disabled unless an administrator configures the complete reviewed
+template below. It uses the existing GitHub adapter to dispatch one exact workflow;
+the GitHub credential stays in the control plane. It does not grant a workcell host
+Docker access. Source must be a public, clean committed checkout. Only the documented
+fixed command profiles are supported; unsupported command options are rejected.
+
+| Name | Component | Required / secret | Default and valid values | Missing or invalid effect |
+|---|---|---|---|---|
+| `MCP_DEVBOX_DEVELOPMENT_RUNNER_PROFILE` | isolated VM broker | Required to enable; not secret | unset/disabled or `github-hosted-ubuntu24-v1` | A partial or unsupported configuration fails startup. |
+| `MCP_DEVBOX_DEVELOPMENT_RUNNER_REPOSITORY` | owner-bound reviewed workflow | Required with profile; not secret | exact repository name under `GITHUB_OWNER` | Missing or invalid name fails startup. |
+| `MCP_DEVBOX_DEVELOPMENT_RUNNER_WORKFLOW_REF` | dispatch ref | Required with profile; not secret | exact reviewed branch, revalidated against the SHA before dispatch | A moved branch blocks dispatch; it does not silently update the template. |
+| `MCP_DEVBOX_DEVELOPMENT_RUNNER_WORKFLOW_SHA` | immutable workflow revision | Required with profile; not secret | 40 lowercase hexadecimal characters | Missing or malformed SHA fails startup. |
+| `MCP_DEVBOX_DEVELOPMENT_RUNNER_GENERATION` | template generation | Required with profile; not secret | canonical positive integer, at most `2^63-1` | Missing, zero, or malformed generation fails startup. |
+| `MCP_DEVBOX_DEVELOPMENT_RUNNER_CALIBRATION` | successful exact-template probe | Optional; not secret | successful `probe-only` effect ID, 64 lowercase hexadecimal characters | Missing makes the first explicitly requested runner operation run a durable calibration probe; no workload starts before it passes. An explicit stale or incomplete reference blocks workloads. |
+
+The installation and calibration procedure is in
+[`development-runner.md`](development-runner.md). Runner charges and repository
+visibility are independent of Aeontra's execution policy; keep GitHub account budgets
+under operator control.
 
 ### Coolify adapter
 
@@ -261,7 +417,7 @@ remain unavailable until a tool is called.
 | `COOLIFY_PROJECT_UUID` | app creation | Required for creation; not secret | none | `project-uuid`; platform env | Missing does not stop base runtime; creation preview fails. |
 | `COOLIFY_ENVIRONMENT_NAME` | app creation | One of name/UUID required; not secret | none | `production`; platform env | If both selectors are absent, creation preview fails. |
 | `COOLIFY_ENVIRONMENT_UUID` | app creation | One of UUID/name required; not secret | none | `environment-uuid`; platform env | If both selectors are absent, creation preview fails. |
-| `COOLIFY_ALLOWED_DOMAINS` | domain boundary | Optional; not secret | no caller-selectable domains unless policy permits; comma-separated suffixes | `example.com`; platform env | A requested domain outside the list is rejected. |
+| `COOLIFY_ALLOWED_DOMAINS` | domain boundary | Required for any caller-selected domain or existing-app domain promotion; not secret | empty denies every requested domain; comma-separated DNS suffixes controlled by the operator | `example.com,144.225.147.58.sslip.io`; platform env | A missing policy or requested domain outside it is rejected. Prefer the exact VPS-bound sslip suffix over the broad `sslip.io` suffix. |
 | `COOLIFY_GITHUB_APP_UUID` | private repo source | Optional; sensitive identifier | public repository endpoint when absent | `github-app-uuid`; platform env | Missing preserves public-source behavior. Invalid source fails the platform request. |
 | `COOLIFY_DESTINATION_UUID` | managed validation runner | Required only for managed runner creation; not secret | none | `destination-uuid`; platform env | Preview fails when absent. |
 | `COOLIFY_ALLOWED_MOUNTS` | managed validation runner | Required only for managed runner creation; sensitive host layout | exactly three semicolon-separated reviewed mounts | administrator-owned exact mount set; secret/private platform env | Preview fails unless Docker socket, `/repos`, and pnpm-store mounts match the closed contract. Never expose it as agent input. |
@@ -316,23 +472,58 @@ because they appear in source.
 | `/mcp` | authenticated MCP stream and JSON-RPC | no filesystem persistence | OAuth preferred; bearer header recovery only |
 | `/healthz` | bounded liveness/build identity | none | public only according to deployment policy |
 | `/version` | safe live version, commit, protocol, tool count, catalog hash | none | source of live deployment identity; do not hardcode it in operational docs |
-| OAuth discovery and `/oauth/*` | discovery, registration, authorization, token exchange | client/refresh stores under `/state` when configured | codes/access tokens remain memory-only; never expose store files to agents |
+| OAuth discovery and `/oauth/*` | discovery, registration, authorization, token exchange | client/access-digest/refresh stores under `/state` when configured | raw access tokens and authorization codes remain memory-only; never expose store files to agents |
 | `/repos` | repository jail root in global-builder mode | persistent, runtime UID/GID `10001:10001` in image | agent-visible by design; back up repositories according to project policy |
 | `/state` | OAuth stores, audit, observability, metrics, tasks, results, model turns, Edge coordination, console state | persistent, private; image prepares subdirectories `0700`, files are expected `0600` | must stay outside the repository jail; back up durable authority/state, not transient cache blindly |
 | `/state/results` | bounded redacted `result_ref` payloads | persistent when result continuity matters | sensitive operational data; expire/clean by store policy |
 | `/state/logs` | audit and observability segments | persistent; private fixed rotation | back up when audit retention requires it |
 | `/state/telemetry` | content-free aggregate SQLite metrics | persistent but reconstructability is limited | retain per operational policy; never treat it as request-content evidence |
-| `/state/model-turns` | durable model-turn coordination | persistent | private control-plane state; never expose to repository tools |
-| `/state/edge` | paired Edge/control operations | persistent | private authority state; back up and protect separately |
+| `/state/model-turns` | durable model-turn coordination and optional controller generations | persistent; additive controller table, response columns and admission trigger | private control-plane state; preserve in a consistent pre-rollout backup and never expose to repository tools |
+| `/state/edge` | paired Edge/control operations | persistent; oldest terminal operations are reclaimed within the fixed page budget | private authority state; queued and leased operations are never reclaimed; back up and protect separately |
+| `<edge-state>/project-runtime/<workspace-id>` | per-workspace toolchain homes and mutable runtime state, including a pre-created `home` directory | persistent until an administrator-controlled exact workspace cleanup; owner-only | outside the source tree; `project_toolbox_cleanup` removes the toolbox record/container but does not remove these roots; never expose the path to an MCP client; validate ownership and symlink ancestry |
+| `<edge-state>/project-cache/<workspace-id>` | package-manager and compiler caches | disposable but persistent between runs when retained | outside the source tree; reclaim only through an administrator-controlled exact workspace cleanup; no general cache purge is implicit |
+| `<edge-state>/project-artifacts/<workspace-id>` | generated reports, captures and managed artifacts | persistent until an administrator-controlled exact artifact/workspace cleanup; owner-only | mount only the exact workspace artifact root; arbitrary files are not artifacts |
 | `/state/console` | console sessions | persistent when login continuity matters | private; never agent-writable |
 | `/state/brain` | Brain console node identity | persistent | private runtime identity, distinct from Brain truth |
 | `/brain` | Brain Markdown truth, local Git, and disposable `.cache` | dedicated persistent volume; dirs `0700`, files `0600`, UID/GID `10001:10001` in image | outside the repository jail; back up `.git`, `.gitignore`, `curated`, `working`; `.cache` is disposable |
 | `~/.local/state/mcp-edge` | installed Edge identity, registry, jobs, results, local Git authority | persistent, owner-only; credential files `0600` | never mounted into model workcells or returned through tools; back up before lifecycle changes |
 | `/opt/mcp-devbox/releases/<release>` and `/opt/mcp-devbox/current` | signed immutable Edge releases and active link | root-owned package/updater state | replace only through the signed installer/updater; source release and installed release require separate evidence |
+| `/opt/mcp-devbox/current/codex/codex` | pinned stock Codex CLI used by the active signed harness | immutable component hashed by the Edge manifest | mounted read-only at `/mcp-codex` only inside the selected trusted Linux workcell |
+| `/opt/mcp-devbox/current/codex/container-tools/` | Docker CLI 29.8.1 and Buildx 0.37.1 in Linux manifest v7 | immutable components hashed by the signed Edge manifest | mounted read-only inside the selected Codex Linux workcell; no container daemon or host socket is bundled |
+| `/state/workqueue/queue.db` | durable control-plane jobs, task groups, development objectives, capability/source/environment digests, versioned evidence and declared objective contracts, receipts, leases, fences and opaque worker bindings | private SQLite schema version 4; v1/v2/v3 migrate transactionally and older readers fail closed on v4, `0600`, single active writer | never contains prompts, source bodies, host paths, commands or credentials |
+| `~/.local/state/mcp-edge/project-worktrees.db` | Edge-private managed worktree identity, ownership and fence registry | private SQLite, `0600` | paths remain local and are never returned by public task tools |
+| `<edge-state>/worktree-test-profile.json` | one optional operator-owned managed-worktree test profile | private regular file, owner UID, exact `0600`, canonical JSON with version `1`, profile ID, fixed argv and timeout; absent by default | never writable through a public MCP tool; only its ID, digest and timeout are returned to a task start |
+| `/opt/mcp-devbox/current/codex/pin.json` | official tag, asset, archive SHA-256, binary SHA-256 and provider contract | immutable component hashed by the Edge manifest | server-owned input; a runtime request cannot replace the executable, pin or provider URL |
 
 No secret store, OAuth store, Edge identity, local Git credential, Docker socket, or
 host-private state path should be exposed as a repository alias or normal agent-writable
 mount.
+
+## Reviewed asset library
+
+`MCP_DEVBOX_ASSET_LIBRARY` enables three optional image tools. Its JSON object has
+`version: 1` and a nonempty `assets` array of at most 256 entries; the entire file is
+limited to 512 KiB. Each entry requires `id`, `title`, `url`, `sha256`, `mime`,
+`max_bytes`, `license`, `license_url`, `attribution`, `provenance`, `reviewed_by` and
+`reviewed_at` (an ISO date). IDs use lowercase letters, digits, `_` and `-`; hashes
+are 64 lowercase hexadecimal characters. Unknown fields are rejected.
+
+Sources must be direct, credential-free public HTTPS URLs on port 443, without query
+strings or fragments. Only `image/png` and `image/jpeg` are supported. `max_bytes`
+cannot exceed 8 MiB, and decoded images are bounded to 4096 pixels per dimension and
+16 megapixels. The operator reviews source, license and attribution before adding an
+entry. The server verifies pinned bytes, not legal rights.
+
+Downloads identify the client as `Aeontra/1.0 (https://aeontra.com; asset validation)`.
+Origins must return HTTP 200 directly; redirects remain disabled. Rejected HTTP
+responses report their status code without returning their body or source URL.
+
+Keep the library outside every repository root in a same-UID, owner-private directory.
+Recommended modes are `0700` for its parent and `0600` or `0400` for the file; no group
+or other access is accepted. Symlink ancestry is rejected. Mount and persist the
+manifest as operator configuration; a changed library requires a normal restart.
+MCP cannot add entries or reload it. An unset library keeps the tools disabled.
+Materialization currently targets only Linux backend repositories, not Edge workspaces.
 
 ## Secret handling
 
@@ -385,3 +576,47 @@ MCP_DEVBOX_PRIVILEGED_TASKS=false
 Switch production to `ask` only when the operator deliberately wants reviewed
 patch/test/commit/publication/deployment workflows. `allow` is not a general deployment
 recommendation.
+
+
+## Managed browser runtime
+
+The general browser harness has no separate owner mode. It is available to every
+registered `dev` project that resolves to the existing `linux-workcell` toolbox. Browser
+engines, drivers, libraries and language packages are installed with
+`project_toolbox_install` or normal project package managers and persist in the toolbox
+rootfs until `project_toolbox_cleanup`.
+
+Harness runs need no server environment variables. The Edge supplies these fixed paths
+inside the toolbox:
+
+- `MCP_BROWSER_RUN_ID`: opaque `bh_...` run identity;
+- `MCP_BROWSER_RUN_DIR`: private managed directory for the run;
+- `MCP_BROWSER_ARTIFACTS_DIR`: arbitrary screenshots, PDFs, traces, videos, HARs and logs;
+- `MCP_BROWSER_DOWNLOADS_DIR`: browser downloads;
+- `MCP_BROWSER_PROFILE_DIR`: named persistent profile for cookies/auth/browser storage;
+- `PLAYWRIGHT_BROWSERS_PATH`, `PUPPETEER_CACHE_DIR`, and
+  `SELENIUM_MANAGER_CACHE`: persistent rootfs locations for installed browser tooling.
+
+All paths are under the project workspace or toolbox rootfs; public MCP responses never
+return the corresponding host paths. The legacy `.mcp-devbox/` harness tree is reserved
+for this feature and is handled as an Edge-managed untracked namespace for compatibility;
+it remains on disk until its explicit harness cleanup. New toolchain/runtime state uses
+the separate Edge-state roots described above. Managed run and profile directories use
+owner-only parents and have no automatic chat TTL.
+
+Resource limits are configured at two layers:
+
+- `project_toolbox_create`: optional `persistent|disposable` lifecycle plus CPU milliseconds, memory MiB and process count;
+- `project_browser_harness_start`: wall-clock timeout and combined managed run/profile
+  storage MiB.
+
+The harness uses the toolbox's ordinary network namespace. No browser-specific domain,
+port, action, JavaScript, upload, download or engine allowlist is configured. Localhost
+means the toolbox itself, so project services started with
+`project_toolbox_service_start` are directly reachable. Public Internet and private
+project endpoints follow the same network posture as other trusted-workcell commands.
+
+The signed Edge package still depends on distribution Chromium at
+`/usr/lib/chromium/chromium` for the optional convenience `project_browser_*` wrapper.
+The general harness does not depend on that fixed binary and may install or select other
+engines through project tooling.

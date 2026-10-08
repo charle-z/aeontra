@@ -67,6 +67,8 @@ func resolveTransport(opts serveOptions) (transportConfig, error) {
 }
 
 func serveTransport(runtime *appRuntime, transport transportConfig) (serveErr error) {
+	runtime.Server.StartProjectTaskCoordinator(context.Background())
+	defer runtime.Server.StopProjectTaskCoordinator()
 	transportLabel := observability.TransportStdio
 	if transport.Mode == transportHTTP {
 		transportLabel = observability.TransportHTTP

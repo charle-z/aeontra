@@ -39,6 +39,8 @@ func validWorkspaceRegistration(item WorkspaceRegistration) bool {
 		return item.Mode == "dev"
 	case "linux-workcell":
 		return item.Mode == "dev" || item.Mode == "htb-linux"
+	case "windows-workcell":
+		return item.Mode == "dev"
 	default:
 		return false
 	}

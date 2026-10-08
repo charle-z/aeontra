@@ -14,8 +14,9 @@ func TestDocumentationMapProtectsSourcesAndStatusVocabulary(t *testing.T) {
 	text := string(content)
 	for _, required := range []string{
 		".specify/memory/constitution.md",
-		".agent-memory/current-task.md",
-		".agent-memory/handoffs/latest.md",
+		".agent-memory/",
+		"must remain untracked",
+		"Brain",
 		"specs/001-layer-1/",
 		"docs/context-capsule.md",
 		"docs/product-roadmap.md",

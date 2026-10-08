@@ -22,6 +22,14 @@ func TestP16WorkqueueStoreContractIsDocumented(t *testing.T) {
 		"stale completion",
 		"contains no source",
 		"grants no authority",
+		"schema version 3",
+		"development objectives",
+		"1024 development-objective rows",
+		"project_task_start",
+		"project_task_list",
+		"managed worktree",
+		"strictly newer fence",
+		"preserves its Git branch",
 	} {
 		if !containsNormalizedProse(document, required) {
 			t.Errorf("workqueue documentation missing %q", required)
@@ -30,8 +38,8 @@ func TestP16WorkqueueStoreContractIsDocumented(t *testing.T) {
 	for _, literal := range []string{
 		"Redis",
 		"dependency_failed",
-		"1024 jobs",
-		"64 per workspace",
+		"1024 pending jobs",
+		"64 pending jobs per workspace",
 		"64 MiB",
 		"Backup",
 		"RestoreBackup",
@@ -52,6 +60,46 @@ func TestP16WorkqueueStoreContractIsDocumented(t *testing.T) {
 	} {
 		if !strings.Contains(tasks, required) {
 			t.Errorf("Step 5 checklist missing %q", required)
+		}
+	}
+}
+
+func TestManagedTaskWorktreeContractIsDocumented(t *testing.T) {
+	workspace, err := os.ReadFile("project-workspace-resolution.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	security, err := os.ReadFile("security.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tools, err := os.ReadFile("tools.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		".mcp-devbox-worktrees",
+		"codex/worktree-<id>",
+		"clean tree",
+		"no worker shares a writer checkout",
+	} {
+		combined := string(workspace) + "\n" + string(security) + "\n" + string(tools)
+		if !strings.Contains(combined, required) {
+			t.Errorf("managed worktree documentation missing %q", required)
+		}
+	}
+	for _, tool := range []string{"project_task_start", "project_task_status", "project_task_list", "project_task_cancel", "project_task_cleanup"} {
+		if !strings.Contains(string(tools), "`"+tool+"`") {
+			t.Errorf("task tool documentation missing %q", tool)
+		}
+	}
+	workqueue, err := os.ReadFile("workqueue-store.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{"acceptance_pending", "reconciliation_required", "runtime reaching `completed`", "does not prove", "version-1 Git evidence contract", "durable Git evidence receipt", "revalidates the same receipt", "stable server-derived key", "private backup before rollback"} {
+		if !strings.Contains(string(workqueue), required) {
+			t.Errorf("workqueue semantic status documentation missing %q", required)
 		}
 	}
 }

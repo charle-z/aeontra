@@ -251,6 +251,31 @@ func TestPlatformDeployParsesWrappedCoolifyResponse(t *testing.T) {
 	}
 }
 
+func TestPlatformDeployParsesArrayCoolifyResponse(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/deploy" {
+			_, _ = w.Write([]byte("[{\"deployment_uuid\":\"dep-array\",\"status\":\"queued\",\"message\":\"deployment queued\"}]"))
+			return
+		}
+		_, _ = w.Write([]byte("{\"uuid\":\"app1\",\"name\":\"demo\",\"status\":\"running\",\"git_repository\":\"acme/demo\",\"git_branch\":\"main\",\"git_commit_sha\":\"abc123\"}"))
+	}))
+	defer ts.Close()
+	svc := configuredPlatformService(t, config.ModeAllow, ts.URL)
+	preview, err := svc.PlatformDeployPreview("app1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := svc.PlatformDeploy(field(preview, "plan_id"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"deployment_id: dep-array", "status: queued", "message: deployment queued"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("array deploy response missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestPlatformDeploymentStatusReturnsSafeSummary(t *testing.T) {
 	var gotPath string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -286,6 +311,49 @@ func TestPlatformDeploymentStatusReturnsSafeSummary(t *testing.T) {
 
 func TestSafeCoordinatorDeploymentCodeRejectsUnknownOrAmbiguousLogs(t *testing.T) {
 	t.Parallel()
+	known := []string{
+		"configuration_invalid",
+		"journal_open_failed",
+		"coolify_client_invalid",
+		"topology_validation_failed",
+		"topology_front_application_failed",
+		"topology_front_application_request_build_failed",
+		"topology_front_application_transport_target_failed",
+		"topology_front_application_transport_resolution_failed",
+		"topology_front_application_transport_address_policy_failed",
+		"topology_front_application_transport_connection_refused",
+		"topology_front_application_transport_connection_timed_out",
+		"topology_front_application_transport_route_unavailable",
+		"topology_front_application_transport_connection_failed",
+		"topology_front_application_transport_failed",
+		"topology_front_application_response_read_failed",
+		"topology_front_application_http_failed",
+		"topology_front_application_decode_failed",
+		"topology_front_application_identity_failed",
+		"topology_backend_application_failed",
+		"topology_identity_invalid",
+		"topology_front_backend_failed",
+		"topology_contract_invalid",
+		"durable_state_failed",
+		"status_publish_failed",
+		"status_publish_request_build_failed",
+		"status_publish_transport_failed",
+		"status_publish_transport_target_failed",
+		"status_publish_transport_resolution_failed",
+		"status_publish_transport_address_policy_failed",
+		"status_publish_transport_connection_refused",
+		"status_publish_transport_connection_timed_out",
+		"status_publish_transport_route_unavailable",
+		"status_publish_transport_connection_failed",
+		"status_publish_response_read_failed",
+		"status_publish_http_failed",
+		"status_publish_response_decode_failed",
+	}
+	for _, code := range known {
+		if got := safeCoordinatorDeploymentCode("prefix code=" + code + " suffix"); got != code {
+			t.Fatalf("known code %q returned %q", code, got)
+		}
+	}
 	if got := safeCoordinatorDeploymentCode("code=topology_front_application_transport_unreviewed"); got != "" {
 		t.Fatalf("unknown code accepted: %q", got)
 	}

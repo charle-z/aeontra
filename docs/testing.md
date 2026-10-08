@@ -15,6 +15,124 @@ go build ./...
 These commands are the per-step baseline. They do not replace race, fuzz, coverage,
 or integration gates.
 
+## Authenticated MCP routing smoke
+
+After deployment, validate the actual authenticated transport from the exact expected
+source commit:
+
+```text
+MCP_DEVBOX_TOKEN="..." go run ./cmd/mcp-routing-smoke \
+  --url https://mcp.example.com \
+  --expected-commit "$(git rev-parse HEAD)"
+```
+
+This is distinct from `cmd/mcp-catalog-smoke`: it initializes an MCP session,
+materializes the complete tool catalog, and invokes `system_runtime_info` and
+`sandbox_status`. A transport-level HTTP `404` permits one fresh session; JSON-RPC and
+tool errors are not retried. The command does not print the bearer, session identifier,
+tool output, repository path, or command output.
+
+For an explicitly authorized repository, `--sandbox-cwd` adds read-only `pwd`,
+`git rev-parse HEAD`, and before/after `git status --porcelain=v1` probes. The smoke
+fails if the worktree state changes.
+
+Focused regressions:
+
+```text
+go test ./cmd/mcp-routing-smoke ./internal/mcpserver \
+  -run 'TestRoutingSmoke|TestConnectorSessionInterruption' -count=1
+```
+
+## Direct background-process candidate
+
+The Hito 3A focused matrix runs on Linux because the launcher and PID/start-time
+identity are Linux contracts:
+
+```text
+go test ./internal/edge ./internal/edgeclient ./internal/mcpserver ./cmd/mcp-edge -count=1
+go test ./internal/mcpserver ./internal/app ./internal/integration ./cmd/mcp-catalog-smoke ./docs -count=1
+```
+
+It covers closed request/result validation, operation-kind binding, same-request
+idempotency, conflicting reuse, no implicit shell, cwd traversal and symlink escape,
+secret input rejection, independent concurrent processes, natural zero/non-zero exit,
+separate incremental stdout/stderr, output ceilings, split-chunk and private-key
+redaction before persistence, TERM/KILL escalation, repeated stop, cross-project
+lookup denial, private-log no-follow checks and PID start-time reuse defense. Exact-head CI remains authoritative for
+race, Linux packaging modes and the complete release matrix.
+
+Hito 3B extends that matrix with manager close/reopen recovery, live-process reuse
+without duplication, offline exit classification, incomplete metadata, foreign owner,
+missing process group, unsafe/missing logs, bounded list output, closed signal values,
+live-preserving cleanup and systemd `KillMode=process`. Reconciliation runs only on
+open or an explicit lifecycle request; there is no polling goroutine or idle busy loop.
+The worker regression proves split-stream redaction and an exact non-zero exit receipt
+without storing unredacted pipe output in the Edge control process.
+
+Safe checkout synchronization adds focused tests for fixed owner-bound remotes, live
+versus fetched remote identity, ahead/behind parsing, no-tag fetch, clean attached
+preview, ancestor proof, exact `merge --ff-only`, single-use replay rejection, dirty
+tree rejection, malformed plan state, private ownership/modes, and operation-kind
+result binding. The focused command is:
+
+```text
+go test ./internal/edge ./cmd/mcp-edge ./internal/mcpserver -count=1
+```
+
+The first `p15.0.18` real-device pass accepted Hito 3A and exposed two host-specific
+gaps that fake runners did not reproduce: the worker and Bubblewrap workload use
+separate process groups, and Podman 5.4 returns a bare 64-hex image ID. The corrective
+matrix additionally proves that a signal targets the recorded workload group without
+killing the receipt-writing worker and that Docker-prefixed and Podman-bare SHA-256
+identities canonicalize identically while malformed forms fail closed. See
+`docs/baselines/2026-08-03-p15-real-edge-acceptance-fixes.md`.
+
+The `p15.0.19` retry exposed two additional format-boundary regressions. Podman also
+returns the container inspect `.Image` identity as bare lowercase hexadecimal during
+ownership verification, so that second engine value must pass through the same strict
+canonicalizer. Local Git commands deliberately receive an empty credential, and Go's
+`strings.ReplaceAll` must not be called with that empty value because it inserts the
+replacement between every rune. Focused tests now cover both the second bare identity
+and unchanged local output while retaining exact non-empty credential redaction. See
+`docs/baselines/2026-08-03-p15-real-edge-acceptance-followup.md`.
+
+The subsequent Hito 3B retry proved log continuity across the managed update but also
+exposed a terminal-cleanup gap. A stale journal identity could be classified
+`process_identity_changed` while the owner-only worker/child identity artifacts still
+resolved to live exact PID/start-tick/process-group tuples. Cleanup trusted the
+terminal row and removed metadata even though the worker and Bubblewrap child remained
+alive. The focused matrix now proves that reconciliation can restore the exact live
+private worker identity before offline classification, and that cleanup counts the
+record as active while either the worker or child identity remains live. PID reuse,
+foreign ownership, malformed private state and genuinely dead terminal records retain
+their fail-closed behavior.
+
+The `p15.0.21` real retry proved that the private worker identity repair preserves a
+running process and continuous non-duplicated stdout/stderr across an Edge restart.
+It also isolated the remaining signal defect: Bubblewrap's `--new-session` reports an
+inner sandbox leader distinct from the outer supervisor returned by `exec.Start`.
+Signalling the outer group terminated the supervisor but left the inner Bubblewrap and
+workload alive. The new worker regression uses a separate-session helper and fails if
+the persisted identity is the launcher rather than the reported leader. The GREEN
+matrix reserves Bubblewrap `--info-fd`, accepts only a positive reported child PID,
+revalidates its exact owner/start-ticks/PGID tuple before readiness, targets that group,
+and keeps `--die-with-parent` bound to the durable worker to close crash-time orphans.
+
+The first `p15.0.22` real start then exposed a readiness race hidden by the original
+helper: Bubblewrap writes `child-pid` before `--new-session` necessarily finishes
+`setsid`. Immediate `PGID == PID` validation failed closed while the harmless bounded
+probe continued and exited normally. The regression now deliberately publishes the
+child PID before the delayed `setsid`; RED fails to persist readiness, while GREEN
+waits at most two seconds and still requires an unchanged start time, current-user
+ownership and `PGID == PID`. The affected Edge/docs matrix passes on Linux.
+
+Signed `p15.0.23` closes the real gate. A fresh process resumed after exactly one
+managed Edge restart at the next sequential stdout/stderr record, with no replay. A
+public closed `interrupt` terminated the inner sandbox without operator help and
+produced known exit code 130. Repeated interrupt and stop remained idempotent;
+exclusive cleanup removed the record, the final list was empty, no marked workload
+remained and doctor reported ready with an empty journal and `NRestarts=0`.
+
 ## Race detector baseline — P5 Step 79
 
 Canonical command:
@@ -186,18 +304,27 @@ observed from GitHub Actions after publication.
 
 `.github/workflows/security.yml` adds three bounded jobs:
 
-- **CodeQL:** Go manual build analysis with `github/codeql-action@v4.37.0`; only
+- **CodeQL:** Go manual build analysis with `github/codeql-action` pinned to commit
+  `99df26d4f13ea111d4ec1a7dddef6063f76b97e9` (`v4.37.0`); only
   `contents: read` and `security-events: write` are granted;
-- **Dependency review:** `actions/dependency-review-action@v5.0.0` runs only for pull
-  requests and blocks moderate-or-higher introduced vulnerabilities without PR comments;
+- **Dependency review:** `actions/dependency-review-action` pinned to commit
+  `a1d282b36b6f3519aa1f3fc636f609c47dddb294` (`v5.0.0`) runs only for pull requests
+  and blocks moderate-or-higher introduced vulnerabilities without PR comments;
 - **Container evidence:** builds `mcp-devbox:ci` locally, generates
-  `sbom.spdx.json` with `anchore/sbom-action@v0.24.0`, and scans the local image with
-  `anchore/scan-action@v7.4.0`, failing on high-or-critical findings.
+  `sbom.spdx.json` with `anchore/sbom-action` pinned to
+  `e22c389904149dbc22b58101806040fa8d37a610` (`v0.24.0`), and scans the local image
+  with `anchore/scan-action` pinned to
+  `e1165082ffb1fe366ebaf02d8526e7c4989ea9d2` (`v7.4.0`), failing on
+  unaccepted high-or-critical findings. The workcell gate supports only the
+  [reviewed, expiring approval](security.md#temporary-container-risk-acceptance)
+  for the exact bundled package; the original report remains unchanged.
 
-No registry login, image push, workflow secret, artifact/release upload, production
-endpoint, or active DAST exists. SBOM and Grype JSON are verified as non-empty local
-files and disappear with the ephemeral runner. Real action conclusions are observed
-after branch publication.
+This source-security workflow has no registry login, image push, workflow secret,
+production endpoint, or active DAST. SBOM and Grype JSON are verified as non-empty
+local files and retained as artifacts for 7 days, including on failure. Real action
+conclusions are observed after branch publication. The separate
+[daily image watch](runbooks/security-risk-watch.md) uses read-only registry access
+and scans only its explicitly inventoried immutable image, without rebuilding it.
 
 ## Scheduled fuzzing — P6 Step 89
 
@@ -366,6 +493,21 @@ merges, `/brain` persistence is configured, and deployment smoke completes.
 
 ## P15 development Edge Git follow-up
 
+The managed model-turn completion gate has a deterministic multi-step regression:
+
+- active responses for tool A, B and C are accepted only with offered tool calls;
+- attempts to stop after progress text such as `Now I will run B` or
+  `Ahora voy a ejecutar C` are rejected without consuming the turn;
+- the corrected active response can reuse the same exact turn identity;
+- only the final `complete`/`stop` response is accepted as terminal;
+- mismatched task states and truncated responses fail closed;
+- cached legacy clients that omit `task_state` receive the same inferred-state and
+  pending-action validation;
+- the stock Codex loopback adapter independently rejects a persisted premature stop.
+
+This tests the managed relay boundary. A direct client response that does not invoke
+an MCP tool remains outside server control.
+
 The private development Git boundary is covered at four layers:
 
 - credential tests prove stdin-only atomic 0600 storage, owner validation, invalid
@@ -383,6 +525,69 @@ On 2026-07-20 the candidate passed under Parrot WSL2 Go 1.26.5: `go test ./...
 -count=1`, `go vet ./...`, `go build ./...`, all 19 Node provider tests, packaging
 shell syntax, and `git diff --check`. Exact-head GitHub gates and live signed-release
 installation remain separate closure requirements.
+
+## Hito 5 official GitHub CLI broker candidate
+
+The first direct GitHub broker slice is deterministic and credential-free in tests:
+
+- CLI-import tests inject a synthetic `gh auth token` reader, verify atomic private
+  storage and assert that neither stdout nor errors contain the token;
+- broker tests inject the command runner, require the exact fixed repository, pull
+  request and Actions `gh api` argv, reject malformed or cross-owner metadata, bound
+  responses and expose only closed permission issue codes;
+- direct-operation tests bind the request to an existing `linux-workcell`/`dev`
+  project and validate restart-safe operation persistence without a model runtime;
+- MCP tests prove the public schema accepts only project alias and Edge target and
+  that the response omits token, URL, path, header and raw CLI output;
+- Debian package contract tests retain the official `gh` dependency for package
+  installs. Bundle tests separately prove manifest-v2 rollback compatibility,
+  manifest-v3 `github-cli` integrity, fixed safe executable resolution and managed-link
+  creation/removal across upgrade and rollback. Updater tests also require inspection
+  and retirement of only the two fixed legacy Edge units and propagate any systemd
+  failure. The real `p15.0.15` rollback proved that an archive updater must not stop
+  the legacy Edge caller that is waiting for it. The subsequent `p15.0.16` attempt,
+  after the operator completed a manual process handoff, proved that retaining fixed
+  `Conflicts`/`After` directives in the signed managed unit still prevented activation.
+  The post-handoff regression therefore requires the managed unit to contain neither
+  directive. An active unpackaged legacy unit remains a fail-closed operator migration,
+  not a reason to add privileged pre-start logic to the signed service.
+
+  Signed `p15.0.17` then isolated a separate pre-unit failure: the v2 updater service
+  ran with `ProtectSystem=strict` and could not create the manifest-v3 managed
+  `/usr/local/bin/gh` link. Package contracts now require both update and rollback to
+  own exactly `/opt/mcp-devbox`, `/etc/systemd/system` and `/usr/local/bin`; repair
+  already had that closed authority. No Edge service receives the added write path.
+
+Real-device acceptance has completed interactive `gh auth login`, safe
+`mcp-edge github import-gh` and installation of official release `p15.0.13`. A live
+`project_github_status` against an owner-bound private repository remains required
+after the v2 bridge and v3 bundled-CLI releases. No test fixture or CI artifact
+contains a real account credential.
+
+## Browser harness host-specific acceptance
+
+The hosted workflow still blocks on deterministic source, package, catalog, security,
+real Chromium and rootless Podman/PostgreSQL lifecycle checks. It does not attempt to
+manufacture the Edge's cgroup authority. GitHub's Ubuntu 22.04 job runs inside a
+root-owned `/system.slice` unit whose `cgroup.procs` is not writable by the job user. A
+separate user-manager subtree, when present, does not transfer that authority to the job
+cgroup; the real Edge instead executes under its owner-controlled delegated subtree.
+
+The workflow writes one bounded TSV record containing schema version, checked-out commit,
+tree, `not-reproducible` status, the accepted runtime commit and the exact host
+limitation. The record is verified and uploaded. Any different cgroup posture, missing
+record, malformed identity or unrelated failure remains red; there is no
+`continue-on-error` path.
+
+The publication gate is the owner-controlled Edge evidence. Commit
+`c27053c56b6214e52862ead675b874670f322295` ran the exact
+`TestProjectBrowserHarnessRealPlaywrightE2E` on `parrot-trusted-linux`, including real
+rootless Podman, toolbox limits, Playwright/Chromium, FFmpeg video, Internet, localhost,
+upload/download, persistent authentication, artifacts, restart-safe manager reopen,
+cancellation and cleanup. A later candidate may reuse that acceptance only when its diff
+contains no Edge, server, toolbox or browser-harness runtime change and a fresh real
+browser smoke passes on the same Edge. Any runtime change requires a new exact E2E. Source
+CI and real-device acceptance are reported separately.
 
 ## Rootless PostgreSQL fixture identity
 

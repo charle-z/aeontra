@@ -147,17 +147,18 @@ All metadata remains in the local SQLite registry. A legacy workspace row is mig
 
 ## Runtime filesystem
 
-Every Linux Workcell creates these private paths idempotently:
+Current Edge releases keep mutable development state outside the Git checkout:
 
 ```text
-<workspace>/.mcp-devbox/
-├── instructions.md       # rendered per runtime, mode 0400
-├── current-state.md      # durable checkpoint, mode 0600, bounded to 1 MiB
-├── tool-inventory.json   # sanitized local inventory, mode 0400
-├── tools/                # user-scoped package/tool prefixes
-├── cache/                # package caches
-└── runtime/              # temporary runtime-owned files
+<edge-state>/project-runtime/<workspace-id>/
+<edge-state>/project-cache/<workspace-id>/
+<edge-state>/project-artifacts/<workspace-id>/
 ```
+
+The runtime root contains the isolated HOME, toolchain homes and user-installed
+binaries. Package-manager and compiler caches use the cache root. Managed outputs use
+the artifact root. Exact host paths stay private; Linux mounts them as `/runtime`,
+`/cache` and `/artifacts`.
 
 HTB mode additionally creates:
 
@@ -172,23 +173,33 @@ tickets/
 
 Directories are private (`0700`). Atomic replacement rejects symlinked or unsafe parents and targets.
 
+New runtime or toolchain state is never created in the source-side `.mcp-devbox/`
+namespace. Explicit legacy runtime paths remain recognizable when Git reports them
+individually; an ambiguous collapsed `.mcp-devbox/` directory is treated as an ordinary
+dirty checkout. Dirty source never invalidates filesystem or repository identity and
+does not block status or process control.
+
 ## User-scoped dependencies
 
-The workcell environment points package managers to the workspace:
+The workcell environment points package managers to the private runtime and cache
+mounts:
 
 ```text
-PATH=<workspace>/.mcp-devbox/tools/bin:...
-XDG_CACHE_HOME=<workspace>/.mcp-devbox/cache
-PIP_CACHE_DIR=<workspace>/.mcp-devbox/cache/pip
-npm_config_cache=<workspace>/.mcp-devbox/cache/npm
-PNPM_HOME=<workspace>/.mcp-devbox/tools/bin
-PIPX_HOME=<workspace>/.mcp-devbox/tools/pipx
-PIPX_BIN_DIR=<workspace>/.mcp-devbox/tools/bin
-GOPATH=<workspace>/.mcp-devbox/tools/go
-GOBIN=<workspace>/.mcp-devbox/tools/bin
-CARGO_HOME=<workspace>/.mcp-devbox/tools/cargo
-RUSTUP_HOME=<workspace>/.mcp-devbox/tools/rustup
-TMPDIR=<workspace>/.mcp-devbox/runtime/tmp
+PATH=/runtime/tools/bin:/runtime/cargo/bin:/runtime/go/bin:/runtime/pnpm:...
+HOME=/runtime/home
+XDG_CACHE_HOME=/cache
+PIP_CACHE_DIR=/cache/pip
+npm_config_cache=/cache/npm
+PNPM_HOME=/runtime/pnpm
+PIPX_HOME=/runtime/pipx
+PIPX_BIN_DIR=/runtime/tools/bin
+GOPATH=/runtime/go
+GOBIN=/runtime/tools/bin
+GOMODCACHE=/cache/go-mod
+GOCACHE=/cache/go-build
+CARGO_HOME=/runtime/cargo
+RUSTUP_HOME=/runtime/rustup
+TMPDIR=/tmp (private Bubblewrap tmpfs for each direct command)
 ```
 
 This supports virtualenv/pip, pipx, npm/pnpm, `go install`, Cargo, downloads, compilers, child processes, and temporary services without general sudo. Host `apt` dependencies remain an owner-controlled setup action or a future exact local approval profile.
@@ -206,7 +217,15 @@ The inventory checks a bounded, validated PATH without a shell. Each entry conta
 }
 ```
 
-Versions are time-bounded, output-bounded, and reduced to a safe version token. Executable paths are never returned. The catalog covers common development and Parrot tooling, including Python, Go, Node/npm/pnpm, Rust/Cargo, gcc, nmap, curl, wget, OpenSSL, content discovery tools, SMB/LDAP clients, Impacket, NetExec, password-auditing tools, and Docker/Podman when present. Missing tools are reported as `absent`; the runtime does not assume every Parrot package exists.
+Versions are time-bounded, output-bounded, and reduced to a safe version token. Executable paths are never returned. The catalog covers common development and Parrot tooling, including Python, Go, Node/npm/pnpm, Rust/Cargo, gcc/g++, make, CMake, Java/Javac, a shell, nmap, curl, wget, OpenSSL, content discovery tools, SMB/LDAP clients, Impacket, NetExec, password-auditing tools, and Docker/Podman when present. Missing tools are reported as `absent`; the runtime does not assume every Parrot package exists.
+
+The inventory is a local observation, not an installation plan. The networkless L3
+workcell has a separate fixed image matrix: Go, Rust/Cargo, Python, Node/npm and the
+C/C++ compiler baseline are included; Java/JDK, CMake, pnpm and alternate versions are
+Edge-toolbox capabilities. The persistent Edge path keeps manager binaries and caches
+in the workspace-bound runtime and cache roots, so it writes neither the source
+checkout nor host-global toolchains. A project manifest may therefore be
+`edge-required` even when the local inventory reports a related compiler or runtime.
 
 ## Rootless Docker or Podman
 
@@ -233,6 +252,26 @@ The socket is mounted at the private namespace path:
 /runtime/rootless-container.sock
 ```
 
+The Codex workcell binds `/runtime` before the nested socket, so the endpoint remains
+visible inside Bubblewrap. Linux manifest v7 also provides a signed Docker CLI and
+Buildx plugin without mounting Docker Desktop, host home, Windows filesystems, or a
+rootful daemon socket. The CLI uses writable per-workspace Docker configuration under
+`/toolchain/docker`; the Buildx executable itself is read-only. When a validated
+rootless Docker socket exists, Codex prefers it. The Codex runtime puts a private Unix
+proxy at the namespace socket path. It forwards Docker API calls to that validated
+rootless endpoint. For container creation, bind sources at `/workspace` or beneath it
+are resolved within the selected workspace and replaced with temporary opaque host
+aliases. This lets Docker use files that Bubblewrap presents at `/workspace` without
+exposing the host checkout path in the workcell or Docker create request. The source
+must already exist; a missing source or a symlink escaping the workspace is rejected.
+The aliases and proxy are removed when the runtime ends. Other Docker API calls and
+bind sources retain their rootless Docker behavior and authority.
+
+A host with only a validated rootless Podman socket retains the Podman fallback, but
+this Docker bind-path translation and Docker/Buildx compatibility are not asserted for
+Podman. Direct `project_exec` is a separate workcell route and does not gain a
+container socket from this Codex change.
+
 The runtime receives:
 
 ```text
@@ -252,7 +291,7 @@ The socket is powerful within the rootless user's namespace. Rootless does not m
 `dev` is the default and adds no hacking instructions. The goal may ask OpenCode to:
 
 - inspect and modify the selected repository;
-- install dependencies into workspace-local prefixes;
+- install dependencies into the workspace-bound runtime and cache roots;
 - run checks, tests, builds, browsers, and temporary services;
 - build and run rootless containers;
 - start PostgreSQL or a Chromium smoke environment;
@@ -302,6 +341,33 @@ Large scans, build logs, loot, scripts, and evidence stay in their normal worksp
 The lease timeout remains bounded to at most 3600 seconds. OpenCode runs in a new process group with Bubblewrap `--die-with-parent` and `--new-session`; cancellation terminates the runtime group. Rootless cleanup commands are independently time- and output-bounded.
 
 This version deliberately does not add Goal Runtime, 24-hour jobs, a scheduler, durable remote jobs, Windows access, Active Directory, an overlay network, or nftables target filtering. A human-operated Parrot onboarding flow is now packaged and documented; it does not automate pairing codes, sudo, or remote trust decisions.
+
+Direct foreground `project_exec` and durable `project_process_start/status/stdin/stop/signal/list/cleanup` are a
+separate GPT Web execution path from the legacy OpenCode runtime. Both direct paths use
+the trusted-workcell Bubblewrap construction, workspace-local writable state and
+host-shared network posture. Background processes receive an opaque durable identity,
+private redacted logs and explicit TERM/KILL lifecycle; ending the MCP turn does not
+stop them. OpenCode remains installed as an optional fallback and is not launched by
+these tools.
+
+The direct path also supports a persistent rootless toolbox per registered development
+workspace. The toolbox keeps its writable Debian rootfs, installed packages and caches
+across calls and Edge restarts, mounts the selected workspace at `/workspace` and the
+already validated user-owned Podman/Docker endpoint at one fixed private socket path.
+It never mounts a rootful socket or modifies the host WSL package database. Creation, status, arbitrary
+argv execution, installation, explicit repair and cleanup are available without
+starting an OpenCode/model runtime. Named background services use the same toolbox;
+their opaque identities survive chat and Edge-daemon restarts while the container is
+running. Service status never starts a stopped container, and service argv/environment
+are deliberately not persisted for automatic replay after a WSL/container restart.
+Creation also binds configurable CPU, memory and process limits to the persistent
+private record. Omitted values use broad server defaults. Each later operation compares
+those values with the engine's live `HostConfig`; drift or a request to reuse the same
+workspace with different limits fails closed. Storage continues to be the rootless
+user's persistent container storage; status reports bounded writable/rootfs byte usage
+and storage is removed only by explicit toolbox cleanup. Installed remote Podman,
+Docker or Compose clients inherit server-owned endpoint variables that callers cannot
+override.
 
 ## Verification matrix
 
@@ -399,7 +465,7 @@ Stop if the socket is outside `/run/user/$(id -u)`, symlinked, root-owned, or ac
 ### 4. Build the exact reviewed commit
 
 ```bash
-git clone https://github.com/charle-z/mcp-devbox.git /tmp/mcp-devbox-p12
+git clone https://github.com/charle-z/aeontra.git /tmp/mcp-devbox-p12
 cd /tmp/mcp-devbox-p12
 git checkout <EXACT_P12_MERGE_COMMIT>
 git status --short
@@ -501,3 +567,31 @@ Revoca primero desde producción con mcp-devbox edge revoke --state-root /state 
 ### 16. Desinstalación
 
 Revoca antes de borrar identidad. Deshabilita y detén el servicio, elimina su unidad, los binarios instalados, provider, OpenCode y el state root local. Los repositorios y evidencias bajo /home/charles/workspaces y /home/charles/htb-machines se conservan hasta una revisión humana separada.
+
+
+## General browser harness in the workcell
+
+The browser harness runs inside the ordinary authorized development toolbox; it does not
+introduce a separate owner mode. Arbitrary automation code sees `/workspace`, the
+persistent toolbox rootfs and the same general network available to other trusted
+workcell commands. Projects install Playwright, Puppeteer, Selenium, WebDriver, browsers,
+drivers and supporting libraries through the existing toolbox installation surface.
+
+The workcell boundary remains unchanged. Windows mounts, the general host home,
+container-engine sockets and Edge-private identity/state are not added. Browser tooling
+runs directly in the persistent toolbox and receives no host control channel.
+
+Project services started inside the toolbox share its localhost, so browser scripts can
+test a local web server directly. Browser code may also reach normal HTTP/HTTPS Internet
+and private development endpoints. MCP Devbox does not add browser-specific domain,
+JavaScript, upload, download, action or engine restrictions.
+
+Each run receives managed directories below ignored `.mcp-devbox/browser-harness/` for
+artifacts, downloads and named persistent profiles. This allows cookies/authentication,
+screenshots, PDFs, traces, videos, HARs and arbitrary test output to survive Edge
+reconnects while remaining local. Public results contain only opaque lifecycle,
+redacted/bounded logs and relative artifact metadata/chunks.
+
+The optional convenience Chromium wrapper still launches its fixed process in a narrower
+filesystem namespace, but it uses the general workcell HTTP/HTTPS network and permits
+managed downloads. It is an ergonomic shortcut, not the only browser automation path.

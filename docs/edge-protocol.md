@@ -1,7 +1,9 @@
 # Edge protocol
 
-Status: identity, pairing, and leased task transport implemented; the WSL
-`development` workcell is not implemented yet.
+Status: identity, pairing, leased task transport, and the registered
+`development` workcell are implemented for configured Linux/Parrot/WSL targets.
+Native Windows workcells use the separate Windows Edge implementation and
+acceptance path.
 
 ## Boundary
 
@@ -101,9 +103,11 @@ POST /edge/v1/tasks/<task_id>/complete
 
 A lease lasts 15 seconds to 10 minutes. Repeating a lease request with the same
 device and holder returns the same unexpired lease. Another holder cannot receive
-that task concurrently. Once expired, the same task and idempotency key may be
-redelivered with a new lease id and incremented attempt. The WSL agent journals
-that idempotency key locally before execution and replays a previously completed
+that task concurrently. Once expired, a task is requeued behind work that was
+already waiting; the same task and idempotency key may be redelivered with a new
+lease id and incremented attempt. After four expired leases it fails closed with
+the stable `task_recovery_exhausted` summary. The WSL agent journals that
+idempotency key locally before execution and replays a previously completed
 result instead of executing twice. If it finds a `started` entry after a crash, it
 fails closed for manual reconciliation rather than rerun.
 
@@ -139,6 +143,13 @@ database mode `0600`. The SQLite store uses full synchronization, a single
 connection, and a bounded 8192-page maximum. Symlink roots or ancestors are
 rejected.
 
+The operation journal keeps a storage reserve of one sixteenth of that page budget,
+capped at 512 pages. When the reserve is exhausted, the server deletes the oldest
+terminal `succeeded`, `failed`, or `cancelled` operations in bounded batches. Queued
+and leased operations are never reclaimed. Terminal operation IDs are durable
+coordination handles, not permanent audit records; the separate bounded audit and
+observability logs remain the historical evidence sources.
+
 ## WSL development workcell
 
 `cmd/mcp-edge` is the separately installed outbound client. Pairing reads the code
@@ -163,7 +174,29 @@ procedure.
 
 ## Deliberately deferred
 
-The initial workcell validates existing source; it is not a general coding-agent
-or remote shell. Registry-only egress, local OpenCode/provider adapters, mutation
-authority, Parrot, Burp, HTB, and security-engagement profiles require separate
-reviewed policy layers. They are not implied by pairing this device.
+Pairing alone grants no development authority. Registered development workcells can
+run scoped commands, persistent processes, rootless toolboxes, browser automation,
+Git operations and isolated workers under administrator-owned project policy. Parrot,
+HTB and other specialized profiles retain separate registration and network rules.
+
+The Edge does not expose a raw host shell, host Docker socket, arbitrary filesystem
+root, or client-supplied credentials. Native multi-user isolation against another
+process running as the Edge service account is outside the current single-user trust
+model.
+
+## Operation compatibility
+
+Compatibility-aware servers require ordinary operation leases to match the signed
+Edge operation protocol and carry a valid stamped catalog identity. The public MCP
+catalog can change without changing the Edge operation wire contract; its hash is
+retained for diagnostics, not used to block otherwise compatible work. A protocol
+mismatch or unstamped Edge receives `409 Conflict` with `edge version skew` instead of
+a generic bad request.
+Bundle status, update, rollback, repair and onboarding status remain leaseable so the
+device can converge safely.
+
+New Edge clients first send the legacy lease body. They include their stamped bundle
+identity only after a compatibility conflict, so a new client can still poll an older
+backend during a controlled rollback. Incompatible Edge operation changes must bump
+the bundle protocol and receive a signed Edge release. Catalog-only backend changes
+do not require one. Validate actual Edge operations after rollout.

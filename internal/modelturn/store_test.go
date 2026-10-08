@@ -343,6 +343,9 @@ func TestOpenStoreRejectsUnsafeRoots(t *testing.T) {
 	if err := os.Mkdir(unsafe, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Chmod(unsafe, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := OpenStore(StoreConfig{Root: unsafe, Now: clock.Now}); err == nil {
 		t.Fatal("world-readable root accepted")
 	}

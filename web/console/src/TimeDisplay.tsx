@@ -1,5 +1,5 @@
 import { createContext, useContext, type ReactNode } from "react";
-import { DEFAULT_TIMEZONE, formatTimestamp, relativeAge } from "./timeDisplay";
+import { DEFAULT_TIMEZONE, formatTimestamp, relativeAge } from "./time-format";
 
 export type TimeDisplayState = {
   timezone: string;

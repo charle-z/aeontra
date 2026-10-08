@@ -73,29 +73,55 @@ jobs:
           echo "GNUPGHOME=$GNUPGHOME" >> "$GITHUB_ENV"
           echo "GPG_KEY_ID=$key_id" >> "$GITHUB_ENV"
 
-      - name: Stage one indivisible signed bundle
+      - name: Stage rollback bridge and Codex-only signed bundles
         run: |
           catalog="$(go run ./cmd/mcp-catalog-id)"
+          bash packaging/github-cli/stage-pinned.sh --output "$RUNNER_TEMP/release/gh"
+          bash packaging/codex/stage-pinned.sh \
+            --output-bin "$RUNNER_TEMP/release/codex" \
+            --output-pin "$RUNNER_TEMP/release/codex-pin.json"
           bash packaging/parrot/stage-edge-bundle.sh \
-            --output "$RUNNER_TEMP/release/bundle" \
-            --release p15.0.0 \
+            --output "$RUNNER_TEMP/release/bundle-v4" \
+            --release v1.0.1 \
+            --manifest-version 4 \
             --commit "$(git rev-parse HEAD)" \
             --catalog "$catalog" \
-            --private-key "$RUNNER_TEMP/release/edge.key" \
             --public-key "$PUBLIC_KEY" \
             --node-bin "$(command -v node)" \
+            --gh-bin "$RUNNER_TEMP/release/gh" \
             --opencode-bin "$GITHUB_WORKSPACE/test/opencode-e2e/node_modules/opencode-linux-x64/bin/opencode" \
-            --opencode-lock "$GITHUB_WORKSPACE/test/opencode-e2e/package-lock.json"
+            --opencode-lock "$GITHUB_WORKSPACE/test/opencode-e2e/package-lock.json" \
+            --codex-bin "$RUNNER_TEMP/release/codex" \
+            --codex-pin "$RUNNER_TEMP/release/codex-pin.json"
+          bash packaging/parrot/stage-edge-bundle.sh \
+            --output "$RUNNER_TEMP/release/bundle" \
+            --release v1.1.0 \
+            --manifest-version 5 \
+            --commit "$(git rev-parse HEAD)" \
+            --catalog "$catalog" \
+            --public-key "$PUBLIC_KEY" \
+            --gh-bin "$RUNNER_TEMP/release/gh" \
+            --codex-bin "$RUNNER_TEMP/release/codex" \
+            --codex-pin "$RUNNER_TEMP/release/codex-pin.json"
+          go run ./cmd/mcp-bundle-manifest --root "$RUNNER_TEMP/release/bundle-v4" --release v1.0.1 --commit "$(git rev-parse HEAD)" --protocol mcp-devbox.edge-bundle.v1 --catalog "$catalog" --architecture amd64 --manifest-version 4 --private-key "$RUNNER_TEMP/release/edge.key"
+          go run ./cmd/mcp-bundle-manifest --root "$RUNNER_TEMP/release/bundle" --release v1.1.0 --commit "$(git rev-parse HEAD)" --protocol mcp-devbox.edge-bundle.v1 --catalog "$catalog" --architecture amd64 --manifest-version 5 --private-key "$RUNNER_TEMP/release/edge.key"
+          test -x "$RUNNER_TEMP/release/bundle-v4/opencode/opencode"
+          test ! -e "$RUNNER_TEMP/release/bundle/opencode"
+          test ! -e "$RUNNER_TEMP/release/bundle/opencode-provider"
+          test ! -e "$RUNNER_TEMP/release/bundle/libexec/node"
+          test ! -e "$RUNNER_TEMP/release/bundle/libexec/model-turn-driver"
 
       - name: Build package twice reproducibly
         run: |
           SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
           export SOURCE_DATE_EPOCH
-          bash packaging/debian/build-edge-deb.sh --bundle "$RUNNER_TEMP/release/bundle" --output "$RUNNER_TEMP/deb-a" --release p15.0.0 --signing-key "$GPG_KEY_ID"
-          bash packaging/debian/build-edge-deb.sh --bundle "$RUNNER_TEMP/release/bundle" --output "$RUNNER_TEMP/deb-b" --release p15.0.0 --signing-key "$GPG_KEY_ID"
-          cmp "$RUNNER_TEMP/deb-a/mcp-devbox-edge_15.0.0_amd64.deb" "$RUNNER_TEMP/deb-b/mcp-devbox-edge_15.0.0_amd64.deb"
-          dpkg-deb --info "$RUNNER_TEMP/deb-a/mcp-devbox-edge_15.0.0_amd64.deb"
-          dpkg-deb --contents "$RUNNER_TEMP/deb-a/mcp-devbox-edge_15.0.0_amd64.deb" > "$RUNNER_TEMP/package-contents.txt"
+          bash packaging/debian/build-edge-deb.sh --bundle "$RUNNER_TEMP/release/bundle" --output "$RUNNER_TEMP/deb-a" --release v1.1.0
+          bash packaging/debian/build-edge-deb.sh --bundle "$RUNNER_TEMP/release/bundle" --output "$RUNNER_TEMP/deb-b" --release v1.1.0
+          gpg --batch --yes --local-user "$GPG_KEY_ID" --armor --detach-sign --output "$RUNNER_TEMP/deb-a/mcp-devbox-edge_1.1.0_amd64.deb.asc" "$RUNNER_TEMP/deb-a/mcp-devbox-edge_1.1.0_amd64.deb"
+          gpg --batch --yes --local-user "$GPG_KEY_ID" --armor --detach-sign --output "$RUNNER_TEMP/deb-b/mcp-devbox-edge_1.1.0_amd64.deb.asc" "$RUNNER_TEMP/deb-b/mcp-devbox-edge_1.1.0_amd64.deb"
+          cmp "$RUNNER_TEMP/deb-a/mcp-devbox-edge_1.1.0_amd64.deb" "$RUNNER_TEMP/deb-b/mcp-devbox-edge_1.1.0_amd64.deb"
+          dpkg-deb --info "$RUNNER_TEMP/deb-a/mcp-devbox-edge_1.1.0_amd64.deb"
+          dpkg-deb --contents "$RUNNER_TEMP/deb-a/mcp-devbox-edge_1.1.0_amd64.deb" > "$RUNNER_TEMP/package-contents.txt"
 
       - name: Generate valid legacy Edge state fixture
         run: go run ./packaging/debian/testdata/edge-state-fixture --root "$RUNNER_TEMP/legacy-state"
@@ -106,47 +132,73 @@ jobs:
             -v "$RUNNER_TEMP/deb-a:/artifacts:ro" \
             -v "$RUNNER_TEMP/legacy-state:/fixtures/legacy-state:ro" \
             debian:bookworm-slim sh -euxc '
-              printf "#!/bin/sh\nif [ -e /tmp/fail-edge-service ] && [ \"\${1:-}\" = is-active ]; then exit 1; fi\nexit 0\n" >/usr/bin/systemctl
+              printf "#!/bin/sh\nprintf \"%%s\\\\n\" \"\$*\" >>/tmp/systemctl.log\nif [ \"\${1:-}\" = show ]; then printf \"not-found\\\\n\"; exit 0; fi\nif [ -e /tmp/fail-edge-service ] && [ \"\${1:-}\" = is-active ]; then exit 1; fi\nif [ -e /tmp/fail-disable ] && [ \"\${1:-}\" = disable ]; then exit 1; fi\nexit 0\n" >/usr/bin/systemctl
               chmod 0755 /usr/bin/systemctl
               printf "#!/bin/sh\nexit 0\n" >/usr/bin/loginctl
               chmod 0755 /usr/bin/loginctl
               install -d /opt/mcp-devbox/opencode-provider /opt/mcp-devbox/opencode-1.18.1
               printf "p14-provider\n" >/opt/mcp-devbox/opencode-provider/index.js
               printf "p14-opencode\n" >/opt/mcp-devbox/opencode-1.18.1/opencode
-              dpkg --force-depends -i /artifacts/mcp-devbox-edge_15.0.0_amd64.deb
+              dpkg --force-depends -i /artifacts/mcp-devbox-edge_1.1.0_amd64.deb
               test -L /opt/mcp-devbox/current
-              test -L /opt/mcp-devbox/opencode-provider
-              test -L /opt/mcp-devbox/opencode-1.18.1
+              test ! -e /opt/mcp-devbox/opencode-provider
+              test ! -e /opt/mcp-devbox/opencode-1.18.1
+              test ! -e /opt/mcp-devbox/current/opencode
+              test ! -e /opt/mcp-devbox/current/opencode-provider
+              test ! -e /opt/mcp-devbox/current/libexec/node
               test ! -e /opt/mcp-devbox/.p15-migration-opencode-provider
               test ! -e /opt/mcp-devbox/.p15-migration-opencode-1.18.1
               test -x /usr/local/bin/mcp-edge
               /usr/local/bin/mcp-edge bundle verify
-              useradd -m charles
+              useradd -m -d /srv/edgeci edgeci
               command -v runuser
-              install -d -o charles -g charles -m 0700 /home/charles/.config
-              install -d -o charles -g charles -m 0700 /home/charles/.config/mcp-devbox-edge
-              cp -a /fixtures/legacy-state/. /home/charles/.config/mcp-devbox-edge/
-              chown -R charles:charles /home/charles/.config/mcp-devbox-edge
+              install -d -m 0755 /etc/mcp-devbox
+              printf "edgeci\n" >/etc/mcp-devbox/edge-user
+              chmod 0600 /etc/mcp-devbox/edge-user
+              install -d -o edgeci -g edgeci -m 0700 /srv/edgeci/.config
+              install -d -o edgeci -g edgeci -m 0700 /srv/edgeci/.config/mcp-devbox-edge
+              cp -a /fixtures/legacy-state/. /srv/edgeci/.config/mcp-devbox-edge/
+              chown -R edgeci:edgeci /srv/edgeci/.config/mcp-devbox-edge
               printf "#!/bin/sh\nexit 0\n" >/usr/local/libexec/mcp-devbox/onboarding-preflight
               chmod 0755 /usr/local/libexec/mcp-devbox/onboarding-preflight
               touch /tmp/fail-edge-service
               if /var/lib/dpkg/info/mcp-devbox-edge.postinst configure; then exit 1; fi
-              cmp /fixtures/legacy-state/identity.json /home/charles/.config/mcp-devbox-edge/identity.json
-              cmp /fixtures/legacy-state/device.key /home/charles/.config/mcp-devbox-edge/device.key
-              cmp /fixtures/legacy-state/workspaces.db /home/charles/.config/mcp-devbox-edge/workspaces.db
-              test ! -e /home/charles/.local/state/mcp-edge
-              test ! -e /home/charles/.local/state/.mcp-edge-state-migration-v1.json
+              cmp /fixtures/legacy-state/identity.json /srv/edgeci/.config/mcp-devbox-edge/identity.json
+              cmp /fixtures/legacy-state/device.key /srv/edgeci/.config/mcp-devbox-edge/device.key
+              cmp /fixtures/legacy-state/workspaces.db /srv/edgeci/.config/mcp-devbox-edge/workspaces.db
+              test ! -e /srv/edgeci/.local/state/mcp-edge
+              test ! -e /srv/edgeci/.local/state/.mcp-edge-state-migration-v1.json
               rm /tmp/fail-edge-service
               /var/lib/dpkg/info/mcp-devbox-edge.postinst configure
-              cmp /fixtures/legacy-state/identity.json /home/charles/.local/state/mcp-edge/identity.json
-              cmp /fixtures/legacy-state/device.key /home/charles/.local/state/mcp-edge/device.key
-              cmp /fixtures/legacy-state/workspaces.db /home/charles/.local/state/mcp-edge/workspaces.db
-              cmp /fixtures/legacy-state/checkpoint.md /home/charles/.local/state/mcp-edge/checkpoint.md
-              test ! -e /home/charles/.config/mcp-devbox-edge
-              test ! -e /home/charles/.local/state/.mcp-edge-state-migration-v1.json
+              cmp /fixtures/legacy-state/identity.json /srv/edgeci/.local/state/mcp-edge/identity.json
+              cmp /fixtures/legacy-state/device.key /srv/edgeci/.local/state/mcp-edge/device.key
+              cmp /fixtures/legacy-state/workspaces.db /srv/edgeci/.local/state/mcp-edge/workspaces.db
+              cmp /fixtures/legacy-state/checkpoint.md /srv/edgeci/.local/state/mcp-edge/checkpoint.md
+              test ! -e /srv/edgeci/.config/mcp-devbox-edge
+              test ! -e /srv/edgeci/.local/state/.mcp-edge-state-migration-v1.json
+              grep -Fx "WorkingDirectory=/srv/edgeci/.local/state/mcp-edge" /etc/systemd/system/mcp-devbox-edge@edgeci.service.d/10-edge-home.conf
+              grep -Fx "Environment=HOME=/srv/edgeci" /etc/systemd/system/mcp-devbox-edge@edgeci.service.d/10-edge-home.conf
+              grep -Fx "ReadWritePaths=/srv/edgeci/.local/state/mcp-edge /srv/edgeci/workspaces /srv/edgeci/htb-machines" /etc/systemd/system/mcp-devbox-edge@edgeci.service.d/10-edge-home.conf
+              grep -Fx "PathExists=/srv/edgeci/.local/state/mcp-edge/identity.json" /etc/systemd/system/mcp-devbox-edge-onboard@edgeci.path.d/10-edge-home.conf
               /var/lib/dpkg/info/mcp-devbox-edge.postinst configure
-              cmp /fixtures/legacy-state/identity.json /home/charles/.local/state/mcp-edge/identity.json
-              test ! -e /home/charles/.local/state/.mcp-edge-state-migration-v1.json
+              cmp /fixtures/legacy-state/identity.json /srv/edgeci/.local/state/mcp-edge/identity.json
+              test ! -e /srv/edgeci/.local/state/.mcp-edge-state-migration-v1.json
+              : >/tmp/systemctl.log
+              /var/lib/dpkg/info/mcp-devbox-edge.prerm upgrade
+              test -f /etc/polkit-1/rules.d/49-mcp-devbox-updater.rules
+              test ! -s /tmp/systemctl.log
+              touch /tmp/fail-disable
+              if /var/lib/dpkg/info/mcp-devbox-edge.prerm remove; then exit 1; fi
+              test -f /etc/polkit-1/rules.d/49-mcp-devbox-updater.rules
+              test -f /etc/systemd/system/mcp-devbox-edge-onboard@edgeci.path.d/10-edge-home.conf
+              rm /tmp/fail-disable
+              : >/tmp/systemctl.log
+              /var/lib/dpkg/info/mcp-devbox-edge.prerm remove
+              grep -Fx "disable --now mcp-devbox-edge-onboard@edgeci.path" /tmp/systemctl.log
+              test ! -e /etc/polkit-1/rules.d/49-mcp-devbox-updater.rules
+              test ! -e /etc/systemd/system/mcp-devbox-edge-onboard@edgeci.path.d/10-edge-home.conf
+              test ! -e /etc/systemd/system/mcp-devbox-edge@edgeci.service.d/10-edge-home.conf
+              test -f /srv/edgeci/.local/state/mcp-edge/identity.json
             '
 
       - name: Upload package evidence

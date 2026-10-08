@@ -1,0 +1,1127 @@
+name: Aeontra isolated development runner
+run-name: aeontra-development-${{ inputs.effect_id }}-${{ inputs.plan_digest }}-${{ inputs.execution_digest }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      effect_id: {required: true, type: string}
+      plan_digest: {required: true, type: string}
+      source_owner: {required: true, type: string}
+      source_repo: {required: true, type: string}
+      source_sha: {required: true, type: string}
+      command_profile: {required: true, type: choice, options: [probe-only, make-validate-all, go-test-all]}
+      workflow_sha: {required: true, type: string}
+      workflow_id: {required: true, type: string}
+      execution_digest: {required: true, type: string}
+
+# No production environment, deployment permission, OIDC permission or secrets.
+# Standard public-repository hosted VM only; not ubuntu-slim or a paid label.
+permissions:
+  contents: read
+concurrency:
+  group: development-runner-${{ inputs.effect_id }}
+  cancel-in-progress: false
+
+jobs:
+  execution:
+    name: Isolated development execution
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      EFFECT_ID: ${{ inputs.effect_id }}
+      PLAN_DIGEST: ${{ inputs.plan_digest }}
+      SOURCE_OWNER: ${{ inputs.source_owner }}
+      SOURCE_REPO: ${{ inputs.source_repo }}
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      COMMAND_PROFILE: ${{ inputs.command_profile }}
+      WORKFLOW_SHA: ${{ inputs.workflow_sha }}
+      WORKFLOW_ID: ${{ inputs.workflow_id }}
+      EXECUTION_DIGEST: ${{ inputs.execution_digest }}
+    steps:
+      - name: Validate immutable request
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$GITHUB_SHA" = "$WORKFLOW_SHA"
+          [[ "$EFFECT_ID" =~ ^[a-f0-9]{64}$ ]]
+          [[ "$PLAN_DIGEST" =~ ^[a-f0-9]{64}$ ]]
+          [[ "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$SOURCE_OWNER" =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,38}$ ]]
+          [[ "$SOURCE_REPO" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ ]]
+          [[ "$WORKFLOW_ID" =~ ^[1-9][0-9]{0,18}$ ]]
+          [[ "$EXECUTION_DIGEST" =~ ^[a-f0-9]{64}$ ]]
+          case "$COMMAND_PROFILE" in probe-only|make-validate-all|go-test-all) ;; *) exit 1 ;; esac
+          # Bind the title to actual inputs; an asserted digest is not evidence.
+          python3 - <<'PYTHON'
+          import hashlib, json, os, struct
+          with open(os.environ['GITHUB_EVENT_PATH'], 'rb') as event_file:
+              event = json.load(event_file)
+          repository = event.get('repository') if isinstance(event, dict) else None
+          if (not isinstance(repository, dict) or repository.get('private') is not False
+                  or repository.get('full_name') != os.environ['GITHUB_REPOSITORY']):
+              raise SystemExit('runner repository must be the exact public repository')
+          digest = hashlib.sha256(b'aeontra-development-runner-execution-v1\x00')
+          for name in ('EFFECT_ID', 'PLAN_DIGEST', 'SOURCE_OWNER', 'SOURCE_REPO',
+                       'SOURCE_SHA', 'COMMAND_PROFILE', 'WORKFLOW_SHA', 'WORKFLOW_ID'):
+              value = os.environ[name].encode('utf-8')
+              digest.update(struct.pack('>I', len(value)))
+              digest.update(value)
+          if digest.hexdigest() != os.environ['EXECUTION_DIGEST']:
+              raise SystemExit('execution input binding mismatch')
+          PYTHON
+          if test "$COMMAND_PROFILE" = probe-only; then
+            test "$SOURCE_OWNER/$SOURCE_REPO" = "$GITHUB_REPOSITORY"
+            test "$SOURCE_SHA" = "$WORKFLOW_SHA"
+          fi
+
+      - name: Set up pinned Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.26.8'
+          cache: false
+
+      - name: Stage trusted CI runtime adapter
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir .aeontra-runner-ci
+          printf '%s\n' 'name: Trusted CI runtime adapter' 'description: Stage only ephemeral Actions cache authority' 'runs:' '  using: node24' '  main: index.js' >.aeontra-runner-ci/action.yml
+          cat >.aeontra-runner-ci/index.js <<'JAVASCRIPT'
+          const fs = require('fs');
+          const names = ['ACTIONS_RUNTIME_TOKEN', 'ACTIONS_RUNTIME_URL', 'ACTIONS_RESULTS_URL'];
+          const values = {};
+          for (const name of names) {
+            if (!process.env[name]) throw new Error('ephemeral CI runtime contract missing');
+            values[name] = process.env[name];
+          }
+          for (const name of ['ACTIONS_CACHE_URL', 'ACTIONS_CACHE_SERVICE_V2']) {
+            if (process.env[name]) values[name] = process.env[name];
+          }
+          for (const name of ['GITHUB_REF', 'GITHUB_REPOSITORY', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT']) {
+            if (process.env[name]) values[name] = process.env[name];
+          }
+          fs.writeFileSync(process.env.RUNNER_TEMP + '/aeontra-ci.json', JSON.stringify(values), {mode: 0o600, flag: 'wx'});
+          JAVASCRIPT
+
+      - name: Capture scoped CI runtime
+        uses: ./.aeontra-runner-ci
+
+      - name: Prepare disposable VM
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Fixed VM-only setup. It never changes an Edge/VPS host.
+          sudo install -d -m 0700 /opt/aeontra-control
+          sudo install -m 0600 "$RUNNER_TEMP/aeontra-ci.json" /opt/aeontra-control/ci.json
+          rm "$RUNNER_TEMP/aeontra-ci.json"
+          sudo chmod 0700 "$RUNNER_WORKSPACE" "$RUNNER_TEMP" "$HOME"
+          sudo systemctl stop docker.service docker.socket
+          # Allocate unused ranges through useradd, only for this fresh VM UID.
+          # Nested rootless test users need IDs beyond the default 65536.
+          sudo useradd --no-create-home --home-dir /home/aeontra-workload --shell /bin/bash --key SUB_UID_COUNT=262144 --key SUB_GID_COUNT=262144 aeontra-workload
+          # Host /home may carry a controller-UID default ACL. Clear inheritance
+          # only on this newly created empty root, before any source or storage.
+          sudo python3 - <<'FRESH_WORKLOAD_HOME'
+          import errno, os, pwd, stat
+          ACL_NAMES = ('system.posix_acl_access', 'system.posix_acl_default')
+          def acl_absent(fd):
+              for name in ACL_NAMES:
+                  try: os.getxattr(fd, name)
+                  except OSError as error:
+                      if error.errno == errno.ENODATA: continue
+                      raise
+                  raise RuntimeError('fresh workload home retained an ACL')
+          def prepare_home(parent, leaf, uid, gid):
+              if (not leaf or leaf in ('.', '..') or '/' in leaf or uid <= 0 or gid <= 0):
+                  raise ValueError('invalid fresh workload home identity')
+              parent_fd = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+              try:
+                  # EEXIST is fatal, including an existing directory or symlink.
+                  os.mkdir(leaf, 0o700, dir_fd=parent_fd)
+                  fd = os.open(leaf, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
+                  try:
+                      created = os.fstat(fd)
+                      def verify(owner, group):
+                          observed = os.fstat(fd)
+                          entry = os.stat(leaf, dir_fd=parent_fd, follow_symlinks=False)
+                          if (not stat.S_ISDIR(entry.st_mode) or
+                                  (observed.st_dev, observed.st_ino) != (created.st_dev, created.st_ino) or
+                                  (entry.st_dev, entry.st_ino) != (created.st_dev, created.st_ino) or
+                                  observed.st_uid != owner or observed.st_gid != group or
+                                  stat.S_IMODE(observed.st_mode) != 0o700 or os.listdir(fd)):
+                              raise RuntimeError('fresh workload home changed')
+                      verify(os.geteuid(), created.st_gid)
+                      for name in ACL_NAMES:
+                          try: os.removexattr(fd, name)
+                          except OSError as error:
+                              if error.errno != errno.ENODATA: raise
+                      os.fchmod(fd, 0o700)
+                      acl_absent(fd)
+                      verify(os.geteuid(), created.st_gid)
+                      os.fchown(fd, uid, gid)
+                      verify(uid, gid)
+                      acl_absent(fd)
+                  finally: os.close(fd)
+              finally: os.close(parent_fd)
+          if __name__ == '__main__':
+              account = pwd.getpwnam('aeontra-workload')
+              prepare_home('/home', 'aeontra-workload', account.pw_uid, account.pw_gid)
+          FRESH_WORKLOAD_HOME
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends uidmap dbus-user-session slirp4netns=1.2.1-1build2
+          # Ubuntu's AppArmor unprivileged-userns restriction is changed only in
+          # this disposable VM; the subsequent nested mount probe is mandatory.
+          if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          sudo sysctl -w kernel.unprivileged_userns_clone=1
+          # off must mean NOFOLLOW in this fresh VM, including unchanged
+          # upstream mounts. Never apply this policy to an Edge or VPS host.
+          sudo python3 - <<'OVERLAY_REDIRECT_POLICY'
+          import os, stat
+          def configure_overlay_redirect_policy(path):
+              if os.geteuid() != 0:
+                  raise RuntimeError('overlay setup requires the VM controller')
+              fd = os.open(path, os.O_RDWR | os.O_NOFOLLOW)
+              try:
+                  info = os.fstat(fd)
+                  if not stat.S_ISREG(info.st_mode) or info.st_uid != 0:
+                      raise RuntimeError('overlay parameter identity is invalid')
+                  value = os.read(fd, 8)
+                  if value not in (b'Y', b'Y\n', b'N', b'N\n'):
+                      raise RuntimeError('overlay redirect policy is unknown')
+                  if value in (b'Y', b'Y\n'):
+                      os.lseek(fd, 0, os.SEEK_SET)
+                      if os.write(fd, b'N\n') != 2:
+                          raise RuntimeError('overlay redirect policy write was incomplete')
+                  os.lseek(fd, 0, os.SEEK_SET)
+                  if os.read(fd, 8) not in (b'N', b'N\n'):
+                      raise RuntimeError('overlay redirect policy was not applied')
+              finally: os.close(fd)
+          if __name__ == '__main__':
+              configure_overlay_redirect_policy('/sys/module/overlay/parameters/redirect_always_follow')
+              print('overlay_redirect_always_follow=N')
+          OVERLAY_REDIRECT_POLICY
+          # runc detects the user-bus owner through real process cgroup metadata.
+          # Exempt only this fixed workload group from hidepid metadata filtering;
+          # cross-UID ptrace/DAC still deny controller secrets and are probed below.
+          workload_gid="$(id -g aeontra-workload)"
+          test "$workload_gid" -gt 0
+          test "$workload_gid" != "$(id -g)"
+          test "$(id -G aeontra-workload)" = "$workload_gid"
+          sudo mount -o "remount,hidepid=2,gid=$workload_gid" /proc
+          grep -Eq '^aeontra-workload:[0-9]+:[0-9]+$' /etc/subuid
+          grep -Eq '^aeontra-workload:[0-9]+:[0-9]+$' /etc/subgid
+          work="$(mktemp -d)"
+          curl --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --max-time 300 -o "$work/docker.tgz" https://download.docker.com/linux/static/stable/x86_64/docker-29.8.1.tgz
+          printf '%s  %s\n' d8db66739d2e28d4933786d73e918d9be643a67fbd835db1bf740d650a259e70 "$work/docker.tgz" | sha256sum --check --status
+          tar -xzf "$work/docker.tgz" -C "$work"
+          sudo install -d -m 0755 /opt/aeontra-bin
+          sudo install -m 0755 "$work"/docker/* /opt/aeontra-bin/
+          curl --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --max-time 300 -o "$work/buildx" https://github.com/docker/buildx/releases/download/v0.37.1/buildx-v0.37.1.linux-amd64
+          printf '%s  %s\n' 9447199cdb435f25880548343c128a4b6650e8891ee598905d8d29d39a8e359b "$work/buildx" | sha256sum --check --status
+          sudo install -d -m 0755 /usr/local/lib/docker/cli-plugins
+          sudo install -m 0755 "$work/buildx" /usr/local/lib/docker/cli-plugins/docker-buildx
+          # Pin the checksum manifest itself, then verify the release archive.
+          curl --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --max-time 300 -o "$work/SHA256SUMS" https://github.com/rootless-containers/rootlesskit/releases/download/v2.3.5/SHA256SUMS
+          printf '%s  %s\n' 35c4618e1e9a5cb2aaea08edbba6e3de5bbeedd00a65fcf7d14f31fc942a7655 "$work/SHA256SUMS" | sha256sum --check --status
+          curl --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --max-time 300 -o "$work/rootlesskit-x86_64.tar.gz" https://github.com/rootless-containers/rootlesskit/releases/download/v2.3.5/rootlesskit-x86_64.tar.gz
+          (cd "$work" && grep '  rootlesskit-x86_64.tar.gz$' SHA256SUMS | sha256sum --check --status)
+          tar -xzf "$work/rootlesskit-x86_64.tar.gz" -C "$work" rootlesskit
+          sudo install -m 0755 "$work/rootlesskit" /opt/aeontra-bin/rootlesskit
+          sudo install -d -o aeontra-workload -g aeontra-workload -m 0700 /home/aeontra-workload/runtime
+          sudo install -d -m 0755 /opt/aeontra-go
+          sudo cp -a "$(go env GOROOT)/." /opt/aeontra-go/
+          sudo chown -R root:root /opt/aeontra-go
+          sudo chmod -R go-w /opt/aeontra-go
+          # RootlessKit copy-up preserves host /run entries as symlinks. Unlink
+          # only these namespace-local entries, never their host targets.
+          sudo tee /opt/aeontra-bin/rootless-child.py >/dev/null <<'ROOTLESS_CHILD'
+          import os
+          with open('/proc/self/uid_map') as mappings:
+              first = mappings.readline().split()
+          if len(first) != 3 or first[0] != '0' or int(first[1]) <= 0 or first[2] != '1':
+              raise SystemExit('rootless child user namespace missing')
+          with open('/proc/self/mountinfo') as mounts:
+              copied_run = any(len(parts := line.split()) > 6 and parts[4] == '/run'
+                               and ' - tmpfs ' in line for line in mounts)
+          if not copied_run:
+              raise SystemExit('rootless child copied-up runtime missing')
+          for name in ('docker', 'containerd', 'xtables.lock'):
+              path = '/run/' + name
+              if os.path.islink(path):
+                  os.unlink(path)
+              elif os.path.lexists(path):
+                  raise SystemExit('unexpected rootless runtime entry')
+          os.execv('/opt/aeontra-bin/dockerd', ['/opt/aeontra-bin/dockerd', '--rootless',
+                   '--host=unix:///home/aeontra-workload/runtime/docker.sock',
+                   '--data-root=/home/aeontra-workload/docker',
+                   '--exec-root=/home/aeontra-workload/runtime/dockerd'])
+          ROOTLESS_CHILD
+          sudo chmod 0755 /opt/aeontra-bin/rootless-child.py
+          # Docker inspect has no raw ACL reader. This fixed diagnostic reads
+          # only workload storage and one read-only image subpath; it never
+          # executes an image's binaries or supplies receipt evidence.
+          sudo tee /opt/aeontra-bin/runner-acl-diagnostics.py >/dev/null <<'ACL_DIAGNOSTICS'
+          #!/usr/bin/python3
+          import errno, json, os, pwd, re, stat, struct, subprocess, sys
+          budget = 3800
+          def emit(value):
+              global budget
+              line = json.dumps(value, separators=(',', ':'), ensure_ascii=True)
+              if len(line) > 1000:
+                  line = '{"diagnostic_error":"oversized diagnostic record"}'
+              if len(line) + 1 <= budget:
+                  print(line, flush=True)
+                  budget -= len(line) + 1
+          def decode_acl(raw):
+              if len(raw) < 4 or len(raw) > 256 or (len(raw) - 4) % 8 or struct.unpack_from('<I', raw)[0] != 2:
+                  raise ValueError('invalid or oversized ACL')
+              tags = {1: 'owner', 2: 'user', 4: 'group_owner', 8: 'group', 16: 'mask', 32: 'other'}
+              entries = []
+              for offset in range(4, len(raw), 8):
+                  tag, perm, identifier = struct.unpack_from('<HHI', raw, offset)
+                  if tag not in tags or perm > 7:
+                      raise ValueError('invalid ACL entry')
+                  entries.append([tags[tag], identifier if tag in (2, 8) else None, perm])
+              return {'raw_hex': raw.hex(), 'entries': entries,
+                      'unmapped_named_id': any(entry[0] in ('user', 'group') and entry[1] == 4294967295 for entry in entries)}
+          def read_map(path):
+              with open(path) as source:
+                  data = source.read(4097)
+              if len(data) > 4096:
+                  raise ValueError('oversized namespace map')
+              mappings = [list(map(int, line.split())) for line in data.splitlines()]
+              if not mappings or any(len(row) != 3 or min(row) < 0 or row[2] == 0 for row in mappings):
+                  raise ValueError('invalid namespace map')
+              return mappings
+          def inspect_fd(fd, label, require_owner=True):
+              observed = os.fstat(fd)
+              if not stat.S_ISDIR(observed.st_mode) or (require_owner and observed.st_uid != os.getuid()):
+                  raise ValueError('diagnostic directory ownership mismatch')
+              emit({'directory': label, 'uid': observed.st_uid, 'gid': observed.st_gid, 'mode': oct(stat.S_IMODE(observed.st_mode))})
+              for name in ('system.posix_acl_access', 'system.posix_acl_default'):
+                  try:
+                      raw = os.getxattr(fd, name)
+                      emit({'directory': label, 'xattr': name, **decode_acl(raw)})
+                  except OSError as error:
+                      emit({'directory': label, 'xattr': name, 'errno': error.errno})
+                      if error.errno not in (errno.ENODATA, errno.ENOTSUP):
+                          raise
+                  except ValueError:
+                      emit({'directory': label, 'xattr': name, 'error': 'invalid or oversized ACL'})
+                      raise
+          def inspect_storage():
+              # Walk every component without following a workload-supplied link.
+              fd = os.open('/home', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+              try:
+                  for name, label in (('aeontra-workload', 'workload-home'), ('docker', 'docker-data-root')):
+                      child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+                      os.close(fd)
+                      fd = child
+                      inspect_fd(fd, label)
+              finally:
+                  os.close(fd)
+          def docker(*argv):
+              result = subprocess.run(['/opt/aeontra-bin/docker', *argv], capture_output=True, timeout=10)
+              if result.returncode or len(result.stdout) > 16384:
+                  emit({'docker_diagnostic': argv[0], 'exit_code': result.returncode, 'stdout_bytes': len(result.stdout)})
+                  raise RuntimeError('bounded Docker diagnostic unavailable')
+              return result.stdout.decode('utf-8', errors='strict').strip()
+          def reader(pid, initial_namespace):
+              mappings = read_map('/proc/self/uid_map')
+              namespace = os.stat('/proc/self/ns/user').st_ino
+              if namespace == initial_namespace or namespace != os.stat('/proc/' + str(pid) + '/ns/user').st_ino:
+                  raise ValueError('reader did not enter the holder namespace')
+              emit({'reader': 'image-tmp-rootless', 'uid_map': mappings, 'gid_map': read_map('/proc/self/gid_map')})
+              # This is the kernel root reference of our fixed BusyBox holder,
+              # not a repository-supplied path. The final image directory may
+              # not be a symlink. nsenter itself runs only as the workload UID.
+              fd = os.open('/proc/' + str(pid) + '/root/image-tmp', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+              try:
+                  inspect_fd(fd, 'buildkit-tests-tmp-rootless', require_owner=False)
+              finally:
+                  os.close(fd)
+          def main():
+              if len(sys.argv) == 4 and sys.argv[1] == '--reader' and sys.argv[2].isdigit() and sys.argv[3].isdigit():
+                  reader(int(sys.argv[2]), int(sys.argv[3]))
+                  return
+              if len(sys.argv) != 1 or os.getuid() != pwd.getpwnam('aeontra-workload').pw_uid or os.getuid() == 0:
+                  raise ValueError('diagnostic must run as workload')
+              emit({'reader': 'workload', 'uid_map': read_map('/proc/self/uid_map'), 'gid_map': read_map('/proc/self/gid_map')})
+              inspect_storage()
+              info_format = '{"server_version":{{json .ServerVersion}},"driver":{{json .Driver}},"driver_status":{{json .DriverStatus}},"kernel":{{json .KernelVersion}},"cgroup_driver":{{json .CgroupDriver}},"security_options":{{json .SecurityOptions}}}'
+              emit({'docker_info': json.loads(docker('info', '--format', info_format))})
+              image = docker('image', 'inspect', 'buildkit-tests', '--format', '{{.Id}}')
+              if not re.fullmatch(r'sha256:[a-f0-9]{64}', image):
+                  raise ValueError('invalid diagnostic image identity')
+              emit({'image': image})
+              cid = docker('run', '--detach', '--rm', '--pull=never', '--network=none', '--read-only', '--memory=64m', '--pids-limit=16', '--user=0:0',
+                  '--mount', 'type=image,src=' + image + ',dst=/image-tmp,image-subpath=tmp',
+                  'busybox:1.37.0@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0', '/bin/sleep', '45')
+              if not re.fullmatch(r'[a-f0-9]{64}', cid):
+                  raise ValueError('invalid diagnostic holder identity')
+              try:
+                  pid_text = docker('inspect', '--format', '{{.State.Pid}}', cid)
+                  if not pid_text.isdigit() or int(pid_text) <= 0:
+                      raise ValueError('invalid diagnostic holder process')
+                  pid = int(pid_text)
+                  with open('/proc/' + str(pid) + '/status') as status:
+                      owner = next((int(line.split()[1]) for line in status if line.startswith('Uid:')), None)
+                  if owner != os.getuid():
+                      raise ValueError('diagnostic holder ownership mismatch')
+                  fd = os.open('/proc/' + str(pid) + '/root/image-tmp', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+                  try:
+                      inspect_fd(fd, 'buildkit-tests-tmp-initial', require_owner=False)
+                  finally:
+                      os.close(fd)
+                  initial_namespace = os.stat('/proc/self/ns/user').st_ino
+                  result = subprocess.run(['/usr/bin/nsenter', '--target', str(pid), '--user', '--preserve-credentials', '--',
+                      '/usr/bin/python3', '/opt/aeontra-bin/runner-acl-diagnostics.py', '--reader', str(pid), str(initial_namespace)], capture_output=True, timeout=10)
+                  if result.returncode or len(result.stdout) > 3800:
+                      raise RuntimeError('rootless ACL reader unavailable')
+                  for line in result.stdout.decode('utf-8', errors='strict').splitlines():
+                      emit(json.loads(line))
+              finally:
+                  docker('rm', '--force', cid)
+          if __name__ == '__main__':
+              try:
+                  main()
+              except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
+                  emit({'diagnostic_error': type(error).__name__, 'errno': getattr(error, 'errno', None)})
+                  raise SystemExit(1)
+          ACL_DIAGNOSTICS
+          sudo chmod 0755 /opt/aeontra-bin/runner-acl-diagnostics.py
+          # Fixed namespace-only mount experiment, never repository code or a
+          # required capability. Preserve syscall errno instead of shell text.
+          sudo tee /opt/aeontra-control/overlay-probe.go >/dev/null <<'OVERLAY_PROBE'
+          package main
+          import (
+              "encoding/json"
+              "fmt"
+              "os"
+              "path/filepath"
+              "strings"
+              "syscall"
+          )
+          func emit(record map[string]any) { if err := json.NewEncoder(os.Stdout).Encode(record); err != nil { panic(err) } }
+          func errno(err error) int { if code, ok := err.(syscall.Errno); ok { return int(code) }; if err != nil { return -1 }; return 0 }
+          func probe(root, mode, redirect, option string) error {
+              base := filepath.Join(root, mode)
+              for _, name := range []string{"lower", "upper", "work", "merged"} {
+                  if err := os.MkdirAll(filepath.Join(base, name), 0700); err != nil { return err }
+              }
+              if err := os.WriteFile(filepath.Join(base, "lower", "marker"), []byte("aeontra-overlay-marker"), 0600); err != nil { return err }
+              options := "lowerdir=" + filepath.Join(base, "lower") + ",upperdir=" + filepath.Join(base, "upper") + ",workdir=" + filepath.Join(base, "work") + ",redirect_dir=" + redirect + option
+              target := filepath.Join(base, "merged")
+              mountErr := syscall.Mount("overlay", target, "overlay", 0, options)
+              if mountErr != nil {
+                  emit(map[string]any{"mode": mode, "mounted": false, "errno": errno(mountErr), "error": mountErr.Error()})
+                  return nil // A rejected optional mount is diagnostic, not acceptance.
+              }
+              marker, readErr := os.ReadFile(filepath.Join(target, "marker"))
+              unmountErr := syscall.Unmount(target, 0)
+              verified := readErr == nil && string(marker) == "aeontra-overlay-marker"
+              emit(map[string]any{"mode": mode, "mounted": true, "verified": verified, "unmount_errno": errno(unmountErr)})
+              if unmountErr != nil { return unmountErr }
+              if !verified { return fmt.Errorf("overlay marker verification failed") }
+              return nil
+          }
+          func main() {
+              for _, item := range []struct{ name, path string }{
+                  {"kernel", "/proc/sys/kernel/osrelease"}, {"uid_map", "/proc/self/uid_map"},
+                  {"redirect_dir", "/sys/module/overlay/parameters/redirect_dir"},
+                  {"redirect_always_follow", "/sys/module/overlay/parameters/redirect_always_follow"},
+                  {"metacopy", "/sys/module/overlay/parameters/metacopy"}, {"index", "/sys/module/overlay/parameters/index"},
+              } {
+                  value, err := os.ReadFile(item.path)
+                  emit(map[string]any{"field": item.name, "available": err == nil, "value": strings.TrimSpace(string(value))})
+              }
+              var fs syscall.Statfs_t
+              if err := syscall.Statfs("/tmp", &fs); err != nil { panic(err) }
+              emit(map[string]any{"tmp_filesystem_type": fmt.Sprintf("0x%x", fs.Type)})
+              root, err := os.MkdirTemp("/tmp", "aeontra-overlay-")
+              if err != nil { panic(err) }
+              for _, item := range []struct{ mode, redirect, option string }{
+                  {"default", "off", ""}, {"userxattr", "off", ",userxattr"},
+                  {"nofollow-userxattr", "nofollow", ",userxattr"},
+              } {
+                  if err := probe(root, item.mode, item.redirect, item.option); err != nil { panic(err) }
+              }
+              if err := os.RemoveAll(root); err != nil { panic(err) }
+          }
+          OVERLAY_PROBE
+          sudo env -i PATH=/usr/bin:/bin HOME=/opt/aeontra-control CGO_ENABLED=0 GO111MODULE=off GOTOOLCHAIN=local /opt/aeontra-go/bin/go build -o /opt/aeontra-bin/overlay-probe /opt/aeontra-control/overlay-probe.go
+          sudo chmod 0755 /opt/aeontra-bin/overlay-probe
+          sudo tee /opt/aeontra-bin/runner-overlay-diagnostics.py >/dev/null <<'OVERLAY_DIAGNOSTICS'
+          #!/usr/bin/python3
+          import json, os, pwd, re, stat, subprocess
+          def emit(record):
+              encoded = json.dumps(record, separators=(',', ':'))
+              if len(encoded.encode()) > 1000: raise ValueError('oversized overlay record')
+              print(encoded, flush=True)
+          def counters():
+              uid = os.getuid()
+              base = '/sys/fs/cgroup/user.slice/user-%d.slice/user@%d.service/' % (uid, uid)
+              result = {}
+              for name in ('pids.events', 'memory.events'):
+                  fd = os.open(base + name, os.O_RDONLY | os.O_NOFOLLOW)
+                  try:
+                      if not stat.S_ISREG(os.fstat(fd).st_mode): raise ValueError('invalid counter type')
+                      raw = os.read(fd, 1025)
+                  finally: os.close(fd)
+                  if len(raw) > 1024: raise ValueError('oversized counter')
+                  tokens = raw.decode('ascii').split()
+                  if len(tokens) % 2 or any(not value.isdecimal() for value in tokens[1::2]): raise ValueError('invalid event counter')
+                  result[name] = {key: int(value) for key, value in zip(tokens[::2], tokens[1::2])}
+              return result
+          def main():
+              if os.getuid() <= 0 or os.getuid() != pwd.getpwnam('aeontra-workload').pw_uid: raise ValueError('overlay diagnostic must run as workload')
+              env = {'HOME': '/home/aeontra-workload', 'PATH': '/usr/bin:/bin', 'DOCKER_HOST': 'unix:///home/aeontra-workload/runtime/docker.sock'}
+              docker = '/opt/aeontra-bin/docker'
+              emit({'phase': 'before', 'counters': counters()})
+              created = subprocess.run([docker, 'create', '--name=aeontra-overlay-diagnostic', '--pull=never', '--privileged',
+                  '--network=none', '--read-only', '--memory=256m', '--pids-limit=64', '--mount', 'type=volume,dst=/tmp',
+                  '--mount', 'type=bind,src=/opt/aeontra-bin/overlay-probe,dst=/overlay-probe,readonly',
+                  'busybox:1.37.0@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0', '/overlay-probe'],
+                  env=env, capture_output=True, timeout=5)
+              if created.returncode or not re.fullmatch(rb'[a-f0-9]{64}\n?', created.stdout):
+                  raise RuntimeError('overlay experiment creation failed')
+              cid = created.stdout.decode('ascii').strip()
+              try:
+                  result = subprocess.run([docker, 'start', '--attach', cid],
+                      env=env, capture_output=True, timeout=30)
+                  if len(result.stdout) > 4096: raise ValueError('oversized overlay output')
+                  for line in result.stdout.splitlines():
+                      record = json.loads(line)
+                      if not isinstance(record, dict): raise ValueError('invalid overlay record')
+                      emit(record)
+                  if result.returncode: raise RuntimeError('overlay experiment infrastructure failed')
+              finally:
+                  cleanup = subprocess.run([docker, 'rm', '--force', '--volumes', cid], env=env, capture_output=True, timeout=5)
+                  emit({'phase': 'after', 'counters': counters(), 'cleanup_exit': cleanup.returncode})
+                  if cleanup.returncode: raise RuntimeError('overlay experiment cleanup failed')
+          if __name__ == '__main__': main()
+          OVERLAY_DIAGNOSTICS
+          sudo chmod 0755 /opt/aeontra-bin/runner-overlay-diagnostics.py
+          workload_uid="$(id -u aeontra-workload)"
+          # Bound the manager ancestor, including Docker's sibling scopes.
+          sudo install -d -m 0755 "/etc/systemd/system/user@${workload_uid}.service.d"
+          sudo tee "/etc/systemd/system/user@${workload_uid}.service.d/aeontra.conf" >/dev/null <<'MANAGER'
+          [Service]
+          Delegate=cpu cpuset io memory pids
+          MemoryMax=10G
+          TasksMax=4096
+          MANAGER
+          sudo install -d -m 0755 /etc/systemd/user
+          sudo tee /etc/systemd/user/aeontra-rootless.service >/dev/null <<'UNIT'
+          [Unit]
+          Requires=dbus.socket
+          After=dbus.socket
+          [Service]
+          Delegate=yes
+          KillMode=control-group
+          MemoryMax=10G
+          TasksMax=4096
+          TimeoutStopSec=30
+          ExecStart=/usr/bin/env -i HOME=/home/aeontra-workload PATH=/opt/aeontra-bin:/usr/bin:/bin:/usr/sbin:/sbin XDG_CONFIG_HOME=/home/aeontra-workload/.config XDG_DATA_HOME=/home/aeontra-workload/.local/share XDG_CACHE_HOME=/home/aeontra-workload/.cache XDG_RUNTIME_DIR=%t DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus /opt/aeontra-bin/rootlesskit --net=slirp4netns --port-driver=builtin --disable-host-loopback --copy-up=/etc --copy-up=/run --propagation=rslave /usr/bin/python3 /opt/aeontra-bin/rootless-child.py
+          UNIT
+          sudo systemctl daemon-reload
+          sudo loginctl enable-linger aeontra-workload
+          sudo systemctl start "user@${workload_uid}.service"
+          test "$(stat -c %u /run/user/"$workload_uid")" = "$workload_uid"
+          test "$(stat -c %a /run/user/"$workload_uid")" = 700
+          sudo -u aeontra-workload env -i HOME=/home/aeontra-workload PATH=/usr/bin:/bin XDG_RUNTIME_DIR="/run/user/$workload_uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$workload_uid/bus" systemctl --user start aeontra-rootless.service
+          # Trusted executor drops supplementary groups and UID before every
+          # child. Output cannot inject runner commands or alter GITHUB_OUTPUT.
+          sudo tee /opt/aeontra-control/execute.py >/dev/null <<'PYTHON'
+          import json, os, pwd, subprocess, sys
+          from contextlib import ExitStack
+          def capture_output(stream, log, critical_log=None):
+              import re
+              from collections import deque
+              chunks, retained, seen = deque(), 0, 0
+              limit = 16 << 20
+              pending, discarding, oversized = b'', False, 0
+              first, panic, remaining = None, None, [0, 0]
+              context_bytes = [0, 0]
+              preceding, preceding_bytes = deque(), 0
+              subtest, subtest_remaining, subtest_bytes = None, 0, 0
+              def complete_line(line):
+                  nonlocal first, panic, preceding_bytes, subtest, subtest_remaining, subtest_bytes
+                  stripped = line.lstrip()
+                  if subtest is None and len(line) <= (4 << 10) and re.fullmatch(rb'--- FAIL: Test[^\s]+/[^\s]+ \([0-9]+(?:\.[0-9]+)?s\)\n', stripped):
+                      # Separate the marker from surrounding stdout. Parallel
+                      # tests can interleave; nearby text is not attributed.
+                      subtest = [line, b''.join(preceding), []]
+                      subtest_bytes, subtest_remaining = len(line) + preceding_bytes, 16
+                  elif subtest is not None and subtest_remaining:
+                      if subtest_bytes + len(line) <= (8 << 10):
+                          subtest[2].append(line); subtest_bytes += len(line)
+                      subtest_remaining -= 1
+                  if stripped.startswith(b'panic:'):
+                      panic, remaining[1], context_bytes[1] = [], 32, 0
+                  if first is None and stripped.startswith((b'panic:', b'--- FAIL:', b'Error response', b'ERROR', b'error:', b'make:')):
+                      first, remaining[0] = [], 32
+                  for index, context in enumerate((first, panic)):
+                      if remaining[index]:
+                          if context_bytes[index] + len(line) <= (16 << 10):
+                              context.append(line); context_bytes[index] += len(line)
+                          remaining[index] -= 1
+                  preceding.append(line); preceding_bytes += len(line)
+                  while len(preceding) > 32 or preceding_bytes > (4 << 10):
+                      preceding_bytes -= len(preceding.popleft())
+              def observe(chunk):
+                  nonlocal pending, discarding, oversized
+                  parts = chunk.split(b'\n')
+                  for index, part in enumerate(parts):
+                      ended = index < len(parts) - 1
+                      if not discarding:
+                          if len(pending) + len(part) > 65536:
+                              pending, discarding = b'', True
+                              oversized += 1
+                          else: pending += part
+                      if ended:
+                          if not discarding: complete_line(pending + b'\n')
+                          pending, discarding = b'', False
+              try:
+                  while True:
+                      chunk = stream.read(65536)
+                      if not chunk: break
+                      if critical_log is not None: observe(chunk)
+                      chunks.append(chunk); retained += len(chunk); seen += len(chunk)
+                      while retained > limit:
+                          oldest_chunk = chunks.popleft()
+                          discard = min(len(oldest_chunk), retained - limit)
+                          retained -= discard
+                          if discard < len(oldest_chunk): chunks.appendleft(oldest_chunk[discard:])
+              finally:
+                  data = b''.join(chunks)
+                  if seen > limit:
+                      # The window can begin inside a credential. Never retain
+                      # that partial line; the renderer drops an incomplete end.
+                      _, _, data = data.partition(b'\n')
+                  log.write(('aeontra-capture bytes_seen=%d bytes_dropped=%d bytes_retained=%d\n' %
+                             (seen, seen - len(data), len(data))).encode('ascii'))
+                  log.write(data)
+                  if critical_log is not None:
+                      def bounded_context(lines, allowance=8 << 10):
+                          selected, size = [], 0
+                          for line in lines or []:
+                              if size + len(line) <= allowance:
+                                  selected.append(line); size += len(line)
+                          return b''.join(selected)
+                      if subtest is not None:
+                          observed, last_panic = bounded_context(first, 4 << 10), bounded_context(panic, 4 << 10)
+                          marker, before, after = subtest[0], subtest[1], b''.join(subtest[2])
+                          context = observed + marker + before + after + last_panic
+                          header = ('aeontra-context reason=subtest first_bytes=%d subtest_marker_bytes=%d subtest_before_bytes=%d subtest_after_bytes=%d panic_bytes=%d bytes_retained=%d oversize_lines=%d\n' %
+                                    (len(observed), len(marker), len(before), len(after), len(last_panic), len(context), oversized))
+                      elif first is not None and panic is not None and first != panic:
+                          observed, last_panic = bounded_context(first), bounded_context(panic)
+                          context = observed + last_panic
+                          header = ('aeontra-context reason=both first_bytes=%d panic_bytes=%d bytes_retained=%d oversize_lines=%d\n' %
+                                    (len(observed), len(last_panic), len(context), oversized))
+                      else:
+                          context = b''.join(panic if panic is not None else first or [])
+                          reason = 'panic' if panic is not None else 'failure' if first is not None else 'none'
+                          header = ('aeontra-context reason=%s bytes_retained=%d oversize_lines=%d\n' %
+                                    (reason, len(context), oversized))
+                      critical_log.write(header.encode('ascii'))
+                      critical_log.write(context)
+          workload_uid = pwd.getpwnam('aeontra-workload').pw_uid
+          env = {'HOME': '/home/aeontra-workload', 'PATH': '/opt/aeontra-bin:/opt/aeontra-go/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+                 'XDG_RUNTIME_DIR': '/run/user/' + str(workload_uid), 'DOCKER_HOST': 'unix:///home/aeontra-workload/runtime/docker.sock',
+                 'XDG_CONFIG_HOME': '/home/aeontra-workload/.config', 'XDG_DATA_HOME': '/home/aeontra-workload/.local/share',
+                 'XDG_CACHE_HOME': '/home/aeontra-workload/.cache',
+                 'DBUS_SESSION_BUS_ADDRESS': 'unix:path=/run/user/' + str(workload_uid) + '/bus',
+                 'DOCKER_CONFIG': '/home/aeontra-workload/.docker', 'GITHUB_ACTIONS': 'true',
+                 'GOTOOLCHAIN': 'local', 'GOENV': 'off'}
+          diagnostic = sys.argv[2] in ('acl-diagnostics', 'overlay-diagnostics')
+          if diagnostic:
+              if sys.argv[1:] != [sys.argv[2], sys.argv[2]]:
+                  raise ValueError('invalid fixed diagnostic invocation')
+              env.pop('GITHUB_ACTIONS')
+          else:
+              env.update(json.load(open('/opt/aeontra-control/ci.json')))
+          with open('/opt/aeontra-control/runtime.env', 'w') as f:
+              for key, value in env.items():
+                  if '\n' in value or '\r' in value: raise ValueError('invalid private environment')
+                  f.write(key + '=' + '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"\n')
+          os.chmod('/opt/aeontra-control/runtime.env', 0o600)
+          executable = {'docker': '/opt/aeontra-bin/docker', 'go': '/opt/aeontra-go/bin/go', 'make': '/usr/bin/make',
+                        'acl-diagnostics': '/opt/aeontra-bin/runner-acl-diagnostics.py',
+                        'overlay-diagnostics': '/opt/aeontra-bin/runner-overlay-diagnostics.py'}.get(sys.argv[2])
+          if not executable: raise ValueError('unregistered executable')
+          with open('/opt/aeontra-control/' + sys.argv[1] + '.log', 'wb') as log, ExitStack() as stack:
+              critical = None
+              if sys.argv[1] == 'command':
+                  # Fresh fixed sideband before launch, including failed starts.
+                  critical = stack.enter_context(open('/opt/aeontra-control/command-context.log', 'wb'))
+                  os.chmod('/opt/aeontra-control/command-context.log', 0o600)
+              argv = ['/usr/bin/systemd-run', '--quiet', '--wait', '--pipe', '--collect',
+                      '--unit=aeontra-' + sys.argv[1], '--service-type=exec',
+                      '-p', 'User=aeontra-workload', '-p', 'Group=aeontra-workload',
+                      '-p', 'Delegate=yes', '-p', 'KillMode=control-group', '-p', 'MemoryMax=10G',
+                      '-p', 'TasksMax=4096', '-p', 'RuntimeMaxSec=' + ('60' if diagnostic else '4200'),
+                      '-p', 'EnvironmentFile=/opt/aeontra-control/runtime.env',
+                      '--working-directory=/home/aeontra-workload/source', executable] + sys.argv[3:]
+              child = subprocess.Popen(argv, env={'PATH': '/usr/bin:/bin'},
+                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+              capture_output(child.stdout, log, critical)
+              status = child.wait(timeout=15)
+          sys.exit(status)
+          PYTHON
+          sudo chmod 0600 /opt/aeontra-control/execute.py
+
+      - name: Fetch exact public Git objects
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Credential-free Git transport, not command-output reconstruction.
+          sudo env -i PATH=/usr/bin:/bin HOME=/opt/aeontra-control git -c core.hooksPath=/dev/null init /home/aeontra-workload/source
+          sudo env -i PATH=/usr/bin:/bin HOME=/opt/aeontra-control git -C /home/aeontra-workload/source -c core.hooksPath=/dev/null remote add origin "https://github.com/$SOURCE_OWNER/$SOURCE_REPO.git"
+          sudo env -i PATH=/usr/bin:/bin HOME=/opt/aeontra-control GIT_TERMINAL_PROMPT=0 git -C /home/aeontra-workload/source -c core.hooksPath=/dev/null fetch --no-tags origin "$SOURCE_SHA"
+          sudo env -i PATH=/usr/bin:/bin HOME=/opt/aeontra-control git -C /home/aeontra-workload/source -c core.hooksPath=/dev/null checkout --detach "$SOURCE_SHA"
+          test "$(sudo git -C /home/aeontra-workload/source rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(sudo git -C /home/aeontra-workload/source rev-parse --is-shallow-repository)" = false
+          sudo chown -R aeontra-workload:aeontra-workload /home/aeontra-workload/source
+
+      - name: Probe kernel and CI contracts (Go 1.26.8)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Real cross-UID checks, including mapped namespace root. Fixtures have
+          # no actual credential values; failures never print a private read.
+          sudo test -f /opt/aeontra-control/ci.json
+          python3 - <<'CONTROLLER_ISOLATION'
+          import os, subprocess, tempfile
+          probe = r'''
+          import ctypes, errno, os, sys
+          pid, controller_uid, private_file, private_home = sys.argv[1:]
+          with open('/proc/1/cgroup') as metadata:
+              if not metadata.read(): raise SystemExit('init cgroup metadata unavailable')
+          with open('/proc/sys/kernel/overflowuid') as overflow:
+              expected_uid = int(overflow.read())
+          with open('/proc/self/uid_map') as mappings:
+              for mapping in mappings:
+                  inside, outside, length = map(int, mapping.split())
+                  if outside <= int(controller_uid) < outside + length:
+                      expected_uid = inside + int(controller_uid) - outside
+                      break
+          with open('/proc/' + pid + '/status') as status:
+              observed_uid = next((int(line.split()[1]) for line in status if line.startswith('Uid:')), None)
+              if observed_uid != expected_uid:
+                  raise SystemExit('controller sentinel identity changed')
+          def denied(operation):
+              try: operation()
+              except PermissionError: return
+              raise SystemExit('controller isolation violation')
+          for name in ('environ', 'mem', 'maps'):
+              denied(lambda: os.close(os.open('/proc/' + pid + '/' + name, os.O_RDONLY)))
+          for name in ('fd', 'root', 'cwd', 'exe'):
+              path = '/proc/' + pid + '/' + name
+              denied(lambda: os.listdir(path) if name == 'fd' else os.readlink(path))
+          for path in (private_file, '/opt/aeontra-control/ci.json', '/opt/aeontra-control/execute.py'):
+              denied(lambda: os.close(os.open(path, os.O_RDONLY)))
+          denied(lambda: os.listdir(private_home))
+          denied(lambda: os.close(os.open('/opt/aeontra-control/isolation-write-probe', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)))
+          libc = ctypes.CDLL(None, use_errno=True)
+          if libc.ptrace(0x4206, int(pid), None, None) != -1 or ctypes.get_errno() != errno.EPERM:
+              raise SystemExit('controller ptrace isolation violation')
+          '''
+          with tempfile.NamedTemporaryFile(dir=os.environ['RUNNER_TEMP']) as private_file:
+              sentinel = subprocess.Popen(['/usr/bin/sleep', '120'], cwd=os.environ['HOME'],
+                  env={'AEONTRA_CONTROLLER_SENTINEL': 'nonsecret-isolation-fixture'},
+                  stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+              try:
+                  def live_controller():
+                      if sentinel.poll() is not None: raise SystemExit('controller sentinel exited')
+                      with open('/proc/' + str(sentinel.pid) + '/status') as status:
+                          uid = next((int(line.split()[1]) for line in status if line.startswith('Uid:')), None)
+                          if uid != os.getuid(): raise SystemExit('controller sentinel identity changed')
+                  for namespace in (False, True):
+                      live_controller()
+                      argv = ['/usr/bin/sudo', '/usr/sbin/runuser', '-u', 'aeontra-workload', '--',
+                              '/usr/bin/env', '-i', 'PATH=/usr/bin:/bin']
+                      if namespace: argv += ['/usr/bin/unshare', '--user', '--map-root-user']
+                      argv += ['/usr/bin/python3', '-c', probe, str(sentinel.pid), str(os.getuid()),
+                               private_file.name, os.environ['HOME']]
+                      subprocess.run(argv, check=True, timeout=15)
+                      live_controller()
+              finally:
+                  sentinel.terminate()
+                  sentinel.wait(timeout=5)
+          print('Controller credential and ptrace isolation verified for workload and namespace root')
+          CONTROLLER_ISOLATION
+          workload_uid="$(id -u aeontra-workload)"
+          # Use real bus credentials in the same UID mapping as runc, not a
+          # manufactured OwnerUID or permission to use the system bus.
+          sudo -u aeontra-workload env -i HOME=/home/aeontra-workload PATH=/usr/bin:/bin XDG_RUNTIME_DIR="/run/user/$workload_uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$workload_uid/bus" timeout 10s unshare --user --map-root-user busctl --user --no-pager status | sed 's/^[[:space:]]*//' | grep -Fx "OwnerUID=$workload_uid"
+          sudo runuser -u aeontra-workload -- unshare --user --map-root-user --mount --pid --fork sh -eu -c 'unshare --user --map-root-user --mount --pid --fork sh -eu -c "mount -t proc proc /proc; test -r /proc/self/status"'
+          for attempt in $(seq 1 30); do
+            if sudo python3 /opt/aeontra-control/execute.py docker-info docker info; then break; fi
+            if test "$attempt" = 30; then exit 1; fi
+            sleep 1
+          done
+          sudo grep -q rootless /opt/aeontra-control/docker-info.log
+          sudo grep -Eq '^ Cgroup Driver: systemd$' /opt/aeontra-control/docker-info.log
+          sudo grep -Eq '^ Cgroup Version: 2$' /opt/aeontra-control/docker-info.log
+          sudo python3 /opt/aeontra-control/execute.py workspace-bind docker run --rm --memory 256m --pids-limit 64 --mount type=bind,src=/home/aeontra-workload/source,dst=/workspace,readonly busybox:1.37.0@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0 sh -eu -c 'test "$(cat /sys/fs/cgroup/memory.max)" = 268435456; test "$(cat /sys/fs/cgroup/pids.max)" = 64; cat /workspace/.git/HEAD'
+          sudo grep -Fx "$SOURCE_SHA" /opt/aeontra-control/workspace-bind.log
+          sudo python3 /opt/aeontra-control/execute.py nested-idmap docker run --rm --pull=never --network=none --read-only --memory 256m --pids-limit 64 busybox:1.37.0@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0 sh -eu -c 'printf "uid\n"; cat /proc/self/uid_map; printf "gid\n"; cat /proc/self/gid_map'
+          sudo chmod 0600 /opt/aeontra-control/nested-idmap.log
+          sudo python3 - <<'NESTED_IDMAP'
+          import os, pwd, re, stat
+          def read_probe(path, owner):
+              fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+              try:
+                  observed = os.fstat(fd)
+                  if not stat.S_ISREG(observed.st_mode) or observed.st_uid != owner or stat.S_IMODE(observed.st_mode) & 0o077:
+                      raise ValueError('invalid private namespace probe log')
+                  return os.read(fd, 4097).decode('ascii')
+              finally: os.close(fd)
+          def verify_maps(text, uid, gid):
+              header, separator, body = text.partition('\n')
+              captured = re.fullmatch(r'aeontra-capture bytes_seen=([0-9]+) bytes_dropped=0 bytes_retained=([0-9]+)', header)
+              if (len(text) > 4096 or not captured or not separator or
+                      int(captured[1]) != len(body) or int(captured[2]) != len(body)):
+                  raise ValueError('incomplete namespace probe capture')
+              if uid <= 0 or gid <= 0 or not body.startswith('uid\n') or body.count('gid\n') != 1:
+                  raise ValueError('invalid namespace map output')
+              user_map, group_map = body[4:].split('gid\n')
+              for body, identity in ((user_map, uid), (group_map, gid)):
+                  rows = [list(map(int, line.split())) for line in body.splitlines()]
+                  if (len(rows) != 2 or rows[0] != [0, identity, 1] or len(rows[1]) != 3 or
+                          rows[1][0] != 1 or rows[1][1] < 100000 or rows[1][2] != 262144 or
+                          rows[1][1] + rows[1][2] >= 4294967295 or
+                          rows[1][1] <= identity < rows[1][1] + rows[1][2]):
+                      raise ValueError('nested subordinate namespace capacity or identity mismatch')
+          if __name__ == '__main__':
+              text = read_probe('/opt/aeontra-control/nested-idmap.log', 0)
+              account = pwd.getpwnam('aeontra-workload')
+              verify_maps(text, account.pw_uid, account.pw_gid)
+              print('Rootless subordinate UID/GID maps verified for nested allocation')
+          NESTED_IDMAP
+          # Exercise image-to-volume xattr copying, not only workspace binds.
+          sudo python3 /opt/aeontra-control/execute.py volume-copy docker run --rm --pull=never --network=none --read-only --memory 256m --pids-limit 64 --mount type=volume,dst=/tmp busybox:1.37.0@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0 sh -eu -c 'test "$(cat /sys/fs/cgroup/memory.max)" = 268435456; test "$(cat /sys/fs/cgroup/pids.max)" = 64; printf "%s\n" volume-copy-verified > /tmp/aeontra-proof; cat /tmp/aeontra-proof'
+          sudo grep -Fx volume-copy-verified /opt/aeontra-control/volume-copy.log
+          workload_uid="$(id -u aeontra-workload)"
+          user_systemctl=(sudo -u aeontra-workload env -i HOME=/home/aeontra-workload PATH=/usr/bin:/bin XDG_RUNTIME_DIR="/run/user/$workload_uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$workload_uid/bus" systemctl --user)
+          "${user_systemctl[@]}" show aeontra-rootless.service --property=Delegate --value | grep -Fx yes
+          test "$(stat -fc %T /sys/fs/cgroup)" = cgroup2fs
+          cgroup="$("${user_systemctl[@]}" show aeontra-rootless.service --property=ControlGroup --value)"
+          test "$cgroup" = "/user.slice/user-${workload_uid}.slice/user@${workload_uid}.service/app.slice/aeontra-rootless.service"
+          manager_cgroup="/sys/fs/cgroup/user.slice/user-${workload_uid}.slice/user@${workload_uid}.service"
+          test "$(sudo cat "$manager_cgroup/memory.max")" = 10737418240
+          test "$(sudo cat "$manager_cgroup/pids.max")" = 4096
+          sudo runuser -u aeontra-workload -- sh -eu -c 'test -w "$1/cgroup.procs"; test -w "$1/cgroup.subtree_control"' sh "/sys/fs/cgroup$cgroup"
+          # Real nested runc/proc execution and GitHub cache export/import. No
+          # capability is inferred merely from the runs-on label or env names.
+          sudo install -d -o aeontra-workload -g aeontra-workload -m 0700 /home/aeontra-workload/probe
+          printf '%s\n' 'FROM busybox:1.37.0@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0' 'RUN test -r /proc/self/status && echo measured > /proof' | sudo tee /home/aeontra-workload/probe/Dockerfile >/dev/null
+          sudo chown aeontra-workload:aeontra-workload /home/aeontra-workload/probe/Dockerfile
+          buildkit_image=moby/buildkit:v0.31.2-ubuntu@sha256:50cccfc001857e9e198d41632c0c2ca5a43ec5d0bf8f01335edab2c42215c9ae
+          sudo python3 /opt/aeontra-control/execute.py builder-export docker buildx create --name measured-export --driver docker-container --driver-opt "image=$buildkit_image" --use
+          sudo python3 /opt/aeontra-control/execute.py cache-export docker buildx build --progress=plain --cache-to "type=gha,version=2,scope=$EFFECT_ID,mode=max" --output type=cacheonly /home/aeontra-workload/probe
+          sudo python3 /opt/aeontra-control/execute.py builder-remove docker buildx rm measured-export
+          sudo python3 /opt/aeontra-control/execute.py builder-import docker buildx create --name measured-import --driver docker-container --driver-opt "image=$buildkit_image" --use
+          sudo python3 /opt/aeontra-control/execute.py cache-import docker buildx build --progress=plain --cache-from "type=gha,version=2,scope=$EFFECT_ID" --output type=cacheonly /home/aeontra-workload/probe
+          sudo grep -q CACHED /opt/aeontra-control/cache-import.log
+          sudo python3 /opt/aeontra-control/execute.py pinned-go go version
+          sudo grep -Fx 'go version go1.26.8 linux/amd64' /opt/aeontra-control/pinned-go.log
+          sudo python3 /opt/aeontra-control/execute.py make make --version
+
+      - name: Execute exact profile
+        id: exact-command
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$COMMAND_PROFILE" in
+            probe-only) sudo install -m 0600 /dev/null /opt/aeontra-control/command.log ;;
+            make-validate-all) sudo python3 /opt/aeontra-control/execute.py command make validate-all ;;
+            go-test-all) sudo python3 /opt/aeontra-control/execute.py command go test ./... -count=1 ;;
+            *) exit 1 ;;
+          esac
+
+      - name: Inspect rootless storage ACL after exact make failure
+        if: ${{ !cancelled() && steps.exact-command.outcome == 'failure' && inputs.command_profile == 'make-validate-all' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo python3 /opt/aeontra-control/execute.py acl-diagnostics acl-diagnostics
+
+      - name: Inspect rootless overlay compatibility
+        if: ${{ !cancelled() && (inputs.command_profile == 'probe-only' || (steps.exact-command.outcome == 'failure' && inputs.command_profile == 'make-validate-all')) }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo python3 /opt/aeontra-control/execute.py overlay-diagnostics overlay-diagnostics
+
+      - name: Bind trusted receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          # GitHub's exact-run job/step metadata is the broker receipt source.
+          # Repository-controlled files/logs/artifacts are never attestation.
+          workload_uid="$(id -u aeontra-workload)"
+          sudo -u aeontra-workload env -i HOME=/home/aeontra-workload PATH=/usr/bin:/bin XDG_RUNTIME_DIR="/run/user/$workload_uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$workload_uid/bus" systemctl --user stop aeontra-rootless.service
+          sudo test -f /opt/aeontra-control/command.log
+          sudo test ! -L /opt/aeontra-control/command.log
+          printf '%s\n' 'Exact command completed; semantic acceptance remains separate.'
+
+      - name: Capture bounded workload resource counters
+        if: always()
+        shell: bash
+        run: |
+          if ! sudo test -d /opt/aeontra-control; then exit 0; fi
+          sudo python3 - <<'RESOURCE_COUNTERS'
+          import json, os, pwd, stat, subprocess
+          def read_counter(group, name):
+              fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=group)
+              try:
+                  if not stat.S_ISREG(os.fstat(fd).st_mode): raise ValueError('nonregular counter')
+                  data = os.read(fd, 1025)
+                  if len(data) > 1024: raise ValueError('oversized counter')
+              finally:
+                  os.close(fd)
+              tokens = data.decode('ascii').split()
+              if name.endswith('.events'):
+                  allowed = {'max'} if name == 'pids.events' else {'low', 'high', 'max', 'oom', 'oom_kill', 'oom_group_kill', 'sock_throttled'}
+                  if len(tokens) % 2: raise ValueError('invalid event pairs')
+                  result = {}
+                  for key, value in zip(tokens[::2], tokens[1::2]):
+                      if key not in allowed or key in result or not value.isdecimal(): raise ValueError('invalid event')
+                      result[key] = int(value)
+                  return result
+              if len(tokens) != 1 or not (tokens[0].isdecimal() or tokens[0] == 'max'):
+                  raise ValueError('invalid scalar counter')
+              return int(tokens[0]) if tokens[0].isdecimal() else 'max'
+          def capture(unit, scope):
+              group = None
+              try:
+                  result = subprocess.run(['/usr/bin/systemctl', 'show', unit, '--property=ControlGroup', '--value'],
+                                          capture_output=True, timeout=3, env={'PATH': '/usr/bin:/bin'})
+                  if result.returncode or len(result.stdout) > 1024: raise ValueError('unit unavailable')
+                  path = result.stdout.decode('ascii').strip()
+                  if not path.startswith('/') or path == '/': raise ValueError('empty unit cgroup')
+                  parts = path[1:].split('/')
+                  if any(part in ('', '.', '..') for part in parts): raise ValueError('invalid cgroup path')
+                  flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+                  group = os.open('/sys/fs/cgroup', flags)
+                  for part in parts:
+                      child = os.open(part, flags, dir_fd=group)
+                      os.close(group); group = child
+                  counters = {name: read_counter(group, name) for name in
+                              ('pids.current', 'pids.max', 'pids.events', 'memory.current', 'memory.max', 'memory.events')}
+                  return {'scope': scope, 'state': 'observed', 'counters': counters}
+              except (OSError, ValueError, subprocess.SubprocessError) as error:
+                  return {'scope': scope, 'state': 'unavailable', 'error_type': type(error).__name__}
+              finally:
+                  if group is not None: os.close(group)
+          try:
+              uid = pwd.getpwnam('aeontra-workload').pw_uid
+          except KeyError:
+              raise SystemExit(0)
+          if uid <= 0: raise ValueError('invalid workload identity')
+          with open('/opt/aeontra-control/resources.log', 'w') as log:
+              for unit, scope in (('user@%d.service' % uid, 'rootless-manager'), ('aeontra-command.service', 'command')):
+                  log.write(json.dumps(capture(unit, scope)) + '\n')
+          RESOURCE_COUNTERS
+
+      - name: Bounded untrusted command diagnostics
+        if: always()
+        shell: bash
+        run: |
+          if sudo test -d /opt/aeontra-control; then
+            if ! sudo bash -o pipefail -c 'umask 077; journalctl --no-pager --lines=40 --output=cat _SYSTEMD_USER_UNIT=aeontra-rootless.service _UID="$(id -u aeontra-workload)" 2>&1 | tail -c 16384 > /opt/aeontra-control/rootless-service.log'; then
+              printf '%s\n' 'aeontra-untrusted-log diagnostic "daemon journal capture failed"'
+            fi
+          fi
+          sudo python3 - <<'PYTHON'
+          import json, os, re, stat
+          from collections import deque
+          directory = '/opt/aeontra-control/'
+          if not os.path.exists(directory + 'ci.json'):
+              raise SystemExit(0)
+          values = json.load(open(directory + 'ci.json'))
+          public_metadata = {'GITHUB_REF', 'GITHUB_REPOSITORY', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT'}
+          secrets = sorted((value for key, value in values.items() if key not in public_metadata
+                            and isinstance(value, str) and value), key=len, reverse=True)
+          # Reserve room for one fixed capture/open error without exceeding
+          # the total encoded-output ceiling.
+          budget = (16 << 10) - 256
+          command_reserved = (8 << 10) + 256 if os.path.exists(directory + 'command.log') else 0
+          def invalid_log():
+              print('aeontra-untrusted-log diagnostic "invalid private diagnostic log"')
+              raise SystemExit(1)
+          def emit_lines(name, lines, allowance):
+              global budget
+              for line in lines:
+                  encoded = 'aeontra-untrusted-log ' + name + ' ' + json.dumps(line[:1024], ensure_ascii=True)
+                  cost = len(encoded) + 1
+                  if cost > min(budget, allowance):
+                      break
+                  print(encoded)
+                  budget -= cost
+                  allowance -= cost
+          def encoded_tail(name, lines, allowance):
+              selected, available = [], min(budget, allowance)
+              for line in reversed(lines):
+                  encoded = 'aeontra-untrusted-log ' + name + ' ' + json.dumps(line[:1024], ensure_ascii=True)
+                  cost = len(encoded) + 1
+                  if cost > available: break
+                  selected.append(encoded); available -= cost
+              return list(reversed(selected))
+          def emit_encoded(lines):
+              global budget
+              for line in lines:
+                  print(line); budget -= len(line) + 1
+          def critical_context():
+              try:
+                  fd = os.open(directory + 'command-context.log', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+              except FileNotFoundError:
+                  return None
+              except OSError:
+                  invalid_log()
+              with os.fdopen(fd, 'rb') as log:
+                  if not stat.S_ISREG(os.fstat(log.fileno()).st_mode) or os.fstat(log.fileno()).st_size > (16 << 10) + 256:
+                      invalid_log()
+                  raw = log.read((16 << 10) + 257)
+              if len(raw) > (16 << 10) + 256: invalid_log()
+              header, _, body = raw.partition(b'\n')
+              def redacted_lines(value):
+                  text = value.decode('utf-8', errors='replace')
+                  for secret in secrets: text = text.replace(secret, '[REDACTED]')
+                  return text.splitlines()
+              if header.startswith(b'aeontra-context reason=subtest'):
+                  match = re.fullmatch(rb'aeontra-context reason=subtest first_bytes=([0-9]{1,20}) subtest_marker_bytes=([0-9]{1,20}) subtest_before_bytes=([0-9]{1,20}) subtest_after_bytes=([0-9]{1,20}) panic_bytes=([0-9]{1,20}) bytes_retained=([0-9]{1,20}) oversize_lines=[0-9]{1,20}', header)
+                  if not match: invalid_log()
+                  first_bytes, marker_bytes, before_bytes, after_bytes, panic_bytes, retained = (int(value) for value in match.groups())
+                  if (first_bytes > (4 << 10) or panic_bytes > (4 << 10) or not 0 < marker_bytes <= (4 << 10) or before_bytes > (4 << 10)
+                      or marker_bytes + before_bytes + after_bytes > (8 << 10) or first_bytes + marker_bytes + before_bytes + after_bytes + panic_bytes != retained or retained != len(body)):
+                      invalid_log()
+                  sections, offset = [], 0
+                  for size in (first_bytes, marker_bytes, before_bytes, after_bytes, panic_bytes):
+                      section = body[offset:offset + size]; offset += size
+                      if section and not section.endswith(b'\n'): invalid_log()
+                      sections.append(section)
+                  first, marker, before, after, panic = sections
+                  # The marker is emitted before bounded surrounding text so
+                  # nearby noise cannot displace the observed test identity.
+                  marker_display = '\n'.join(redacted_lines(marker))
+                  if len(marker_display) > 128:
+                      marker_display = marker_display[:128] + ' [marker display truncated]'
+                  sample = ['aeontra-context first-failed-subtest surrounding-stdout-unassociated', marker_display]
+                  sample += ['aeontra-context preceding-stdout-unassociated'] + redacted_lines(before)
+                  sample += ['aeontra-context following-stdout-unassociated'] + redacted_lines(after)
+                  observed = ['aeontra-context first-observed-failure'] + redacted_lines(first) if first else []
+                  last = redacted_lines(header) + (['aeontra-context last-panic'] + redacted_lines(panic) if panic else [])
+                  return observed, sample, last
+              if header.startswith(b'aeontra-context reason=both'):
+                  match = re.fullmatch(rb'aeontra-context reason=both first_bytes=([0-9]{1,20}) panic_bytes=([0-9]{1,20}) bytes_retained=([0-9]{1,20}) oversize_lines=[0-9]{1,20}', header)
+                  if not match: invalid_log()
+                  first_bytes, panic_bytes, retained = (int(value) for value in match.groups())
+                  if first_bytes > (8 << 10) or panic_bytes > (8 << 10) or first_bytes + panic_bytes != retained or retained != len(body):
+                      invalid_log()
+                  if not retained: return None
+                  first, panic = body[:first_bytes], body[first_bytes:]
+                  if (first and not first.endswith(b'\n')) or (panic and not panic.endswith(b'\n')):
+                      invalid_log()
+                  # Byte lengths, not untrusted section-like log markers, frame
+                  # the observed first failure and independently bounded panic.
+                  return (['aeontra-context first-observed-failure'] + redacted_lines(first), [],
+                          redacted_lines(header) + ['aeontra-context last-panic'] + redacted_lines(panic))
+              raw, _, _ = raw.rpartition(b'\n')
+              text = raw.decode('utf-8', errors='replace')
+              for value in secrets: text = text.replace(value, '[REDACTED]')
+              lines = text.splitlines()
+              return ([], [], lines) if len(lines) > 1 else None
+          # Fixed controller-owned logs only; failures before command execution
+          # must remain observable. No glob, environment file or source input.
+          names = ('resources', 'acl-diagnostics', 'overlay-diagnostics', 'command', 'rootless-service', 'docker-info', 'workspace-bind', 'nested-idmap', 'volume-copy',
+                   'builder-export', 'cache-export', 'builder-remove',
+                   'builder-import', 'cache-import', 'pinned-go', 'make')
+          for name in names:
+              try:
+                  fd = os.open(directory + name + '.log', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+              except FileNotFoundError:
+                  continue
+              except OSError:
+                  invalid_log()
+              if not stat.S_ISREG(os.fstat(fd).st_mode):
+                  os.close(fd)
+                  invalid_log()
+              with os.fdopen(fd, 'rb') as log:
+                  if name == 'command':
+                      header = log.readline(256)
+                      if re.fullmatch(rb'aeontra-capture bytes_seen=[0-9]{1,20} bytes_dropped=[0-9]{1,20} bytes_retained=[0-9]{1,20}\n', header):
+                          text = header.decode('ascii').rstrip()
+                          for value in secrets: text = text.replace(value, '[REDACTED]')
+                          emit_lines(name, [text], 256)
+                  window = (2 << 20) if name == 'command' else (4 << 10)
+                  start = max(0, os.fstat(log.fileno()).st_size - window)
+                  log.seek(start)
+                  raw = log.read(window)
+              # A truncated first line could begin inside a credential. Keep
+              # complete lines at both boundaries before credential redaction.
+              if start:
+                  _, _, raw = raw.partition(b'\n')
+              raw, _, _ = raw.rpartition(b'\n')
+              data = raw.decode('utf-8', errors='replace')
+              for value in secrets:
+                  data = data.replace(value, '[REDACTED]')
+              if name == 'command':
+                  # A Go panic can precede a large goroutine dump. Preserve a
+                  # bounded error context before its tail, never as a receipt.
+                  lines = data.splitlines()
+                  context, following, panic = deque(maxlen=64), 0, None
+                  markers = ('panic:', '--- FAIL:', 'FAIL', 'Error response', 'ERROR', 'error:', 'make:')
+                  for index, line in enumerate(lines):
+                      if line.lstrip().startswith('panic:'):
+                          panic = index
+                      if line.lstrip().startswith(markers):
+                          following = 16
+                      if following:
+                          context.append(line)
+                          following -= 1
+                  # Earlier negative-test errors must not hide the last panic.
+                  if panic is not None:
+                      context = lines[panic:panic + 32]
+                  critical = critical_context()
+                  observed, sample = [], []
+                  if critical: observed, sample, context = critical
+                  # Discard a partial tail line before emitting it as well.
+                  tail = data[-4096:]
+                  if len(data) > 4096:
+                      _, _, tail = tail.partition('\n')
+                  selected = encoded_tail(name, tail.splitlines(), 4 << 10)
+                  reserved = sum(len(line) + 1 for line in selected)
+                  allowance = min(4 << 10, max(0, budget - reserved))
+                  if observed:
+                      before = budget
+                      emit_lines(name, observed, allowance // (4 if sample else 2))
+                      allowance -= before - budget
+                  if sample:
+                      before = budget
+                      emit_lines(name, sample, min(2 << 10, allowance))
+                      allowance -= before - budget
+                  emit_lines(name, context, allowance)
+                  emit_encoded(selected)
+                  command_reserved = 0
+              else:
+                  emit_lines(name, data.splitlines(), max(0, budget - command_reserved))
+          PYTHON
+
+      - name: Stop disposable workload
+        if: always()
+        shell: bash
+        run: |
+          if id aeontra-workload >/dev/null 2>&1; then
+            workload_uid="$(id -u aeontra-workload)"
+            sudo systemctl stop "user@${workload_uid}.service"
+            sudo pkill -KILL -u aeontra-workload || test "$?" = 1
+          fi

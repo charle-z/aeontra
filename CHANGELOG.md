@@ -1,0 +1,61 @@
+# Changelog
+
+This file records user-visible changes to Aeontra. Git history and pull requests retain
+the complete change record. Compatibility executable, module, service and protocol
+identifiers continue to use `mcp-devbox` and `mcp-edge` where documented.
+
+## Unreleased
+
+- Infer only Go requirements for the registered isolated `go-test-all` command
+  when fresh committed-source evidence identifies module/workspace minimum versions.
+  Preserve exact Go pins, caller requirements and conservative older Edge behavior.
+- Run operator-pinned tests for a durable task in its isolated worker checkout and
+  retain a source-bound, immutable result receipt. Test execution is opt-in and does
+  not turn process completion into automatic task acceptance.
+- Keep Bubblewrap 0.12 workcells executable under the packaged Linux Edge units by
+  permitting `openat2` while retaining non-root, no-new-privileges and empty-capability
+  boundaries.
+- Report an attached Git branch with no first commit as `unborn` in read-only project
+  snapshot and Git status; keep publication and fast-forward blocked until a valid
+  commit exists. Include validated installed Git in the controlled Windows workcell PATH.
+- Report Edge storage pressure and rootless storage-driver posture. Toolboxes can be
+  marked disposable and inspected for reclaimability; cleanup remains explicit.
+- Show advisory continuation and per-worker attention in `project_task_status` so a
+  later client can resume a pending model turn or review without treating runtime
+  completion as proof that the task objective was met.
+- Use digest-pinned Wolfi runtimes with patched zlib and PCRE2 packages for the
+  service images; retain the High-severity Grype gate without a VEX exemption.
+- Keep managed multi-step model turns active until a tool call, explicit terminal
+  failure, or completed response satisfies the runtime completion contract; reject
+  progress text that announces unexecuted follow-up work as a final response.
+- Preserve that completion gate for clients with cached pre-`task_state` tool schemas
+  by inferring the state from `finish_reason` and applying the same validation.
+- Retain only the current and previous trusted Linux Edge bundles after a successful
+  update so obsolete local releases do not accumulate.
+- Preserve terminal timestamps in native Windows process listings so reconciled stopped
+  workers remain valid list results.
+- Add a bounded public-alpha install, acceptance, and feedback path and describe signed
+  Edge assets directly in release notes.
+- Report native Windows bundle/onboarding diagnostics through the paired Edge with an
+  exact SCM process binding instead of returning `diagnostic_unavailable_windows`.
+- Continue an already-persisted durable process stop during identity-safe
+  reconciliation while preserving ordinary running workers across Edge updates.
+
+## v1.2.25 — 2026-08-27
+
+- Generate deterministic Linux and Windows third-party notice assets alongside each
+  signed Edge release.
+- Reconcile the public roadmap with the accepted Linux/Parrot, Windows, Codex and P16
+  execution surfaces.
+
+## v1.2.24 — 2026-08-26
+
+- Accepted native Windows workcell results without applying Linux-only filesystem
+  assumptions.
+- Published signed Linux and Windows Edge artifacts, checksums, signatures and SBOMs.
+- Reconciled the backend, stable Front Door and both paired Edge platforms on one commit
+  and catalog identity.
+
+Earlier release evidence remains in Git, GitHub tags and `docs/baselines/`. Historical
+release assets are retained according to the current release-retention policy rather
+than duplicated in this changelog.

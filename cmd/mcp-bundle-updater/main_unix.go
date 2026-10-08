@@ -22,7 +22,15 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/edgeupdate"
 )
 
-var servicePattern = regexp.MustCompile(`^mcp-devbox-opencode-edge@[a-z_][a-z0-9_-]{0,31}\.service$`)
+const (
+	legacyServiceBase  = "mcp-devbox-opencode-edge"
+	currentServiceBase = "mcp-devbox-edge"
+)
+
+var serviceUserPattern = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
+var systemctlCommand = func(args ...string) ([]byte, error) {
+	return exec.Command("systemctl", args...).CombinedOutput()
+}
 
 func main() { os.Exit(run(os.Args[1:])) }
 
@@ -36,7 +44,7 @@ func run(args []string) int {
 		fmt.Fprintln(os.Stderr, bundle.ManifestInvalid)
 		return 1
 	}
-	service, err := configuredService()
+	service, err := configuredService(key)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "updater service configuration is invalid")
 		return 1
@@ -88,19 +96,44 @@ func compiledPublicKey() (ed25519.PublicKey, error) {
 	return ed25519.PublicKey(key), nil
 }
 
-func configuredService() (*systemdService, error) {
+func configuredService(publicKey ed25519.PublicKey) (*systemdService, error) {
 	content, err := os.ReadFile("/etc/mcp-devbox/edge-user")
 	if err != nil {
 		return nil, err
 	}
-	name := "mcp-devbox-opencode-edge@" + strings.TrimSpace(string(content)) + ".service"
-	if !servicePattern.MatchString(name) {
+	user := strings.TrimSpace(string(content))
+	if !serviceUserPattern.MatchString(user) {
 		return nil, errors.New("invalid service")
 	}
-	return &systemdService{name: name}, nil
+	manifest, manifestErr := bundle.LoadTrustedManifest("/opt/mcp-devbox/current", publicKey)
+	neutralUnitInstalled := false
+	if info, statErr := os.Lstat("/etc/systemd/system/mcp-devbox-edge@.service"); statErr == nil {
+		neutralUnitInstalled = info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0
+	}
+	base := serviceBaseFromEvidence(manifest.Version, manifestErr == nil, neutralUnitInstalled)
+	return &systemdService{name: serviceName(base, user), user: user, publicKey: publicKey}, nil
 }
 
-type systemdService struct{ name string }
+type systemdService struct {
+	name      string
+	user      string
+	publicKey ed25519.PublicKey
+}
+
+func serviceName(base, user string) string { return base + "@" + user + ".service" }
+
+func serviceBaseFromEvidence(manifestVersion int, manifestTrusted, neutralUnitInstalled bool) string {
+	if manifestTrusted {
+		if manifestVersion >= 5 {
+			return currentServiceBase
+		}
+		return legacyServiceBase
+	}
+	if neutralUnitInstalled {
+		return currentServiceBase
+	}
+	return legacyServiceBase
+}
 
 func repairInstallation(ctx context.Context, engine edgeupdate.Engine, resolver edgeupdate.OfficialResolver, service *systemdService) (edgeupdate.Status, error) {
 	status, err := engine.Status()
@@ -108,33 +141,26 @@ func repairInstallation(ctx context.Context, engine edgeupdate.Engine, resolver 
 		return resolver.UpdateStable(ctx, engine)
 	}
 	releaseRoot := filepath.Join("/opt/mcp-devbox", edgeupdate.ReleasesDirectory, status.Release)
-	if _, err := bundle.LoadTrusted(releaseRoot, engine.PublicKey); err != nil {
+	manifest, err := bundle.LoadTrustedManifest(releaseRoot, engine.PublicKey)
+	if err != nil {
 		return resolver.UpdateStable(ctx, engine)
 	}
-	for component, relative := range bundle.DefaultLayout() {
-		mode := os.FileMode(0o644)
-		if component == bundle.ComponentEdge || component == bundle.ComponentDriver || component == bundle.ComponentWorker || component == bundle.ComponentUpdater || component == bundle.ComponentNode || component == bundle.ComponentOpenCode {
-			mode = 0o755
-		}
-		if err := os.Chmod(filepath.Join(releaseRoot, filepath.FromSlash(relative)), mode); err != nil {
+	layout, ok := bundle.LayoutForVersion(manifest.Version)
+	if !ok {
+		return edgeupdate.Status{}, errors.New("official component layout is invalid")
+	}
+	for component, relative := range layout {
+		if err := repairComponentPermissions(releaseRoot, component, relative); err != nil {
 			return edgeupdate.Status{}, errors.New("official component permissions repair failed")
 		}
 	}
-	links := map[string]string{
-		"/usr/local/bin/mcp-edge":                            "/opt/mcp-devbox/current/bin/mcp-edge",
-		"/usr/local/libexec/mcp-devbox/model-turn-driver":    "/opt/mcp-devbox/current/libexec/model-turn-driver",
-		"/usr/local/libexec/mcp-devbox/mcp-autopilot-worker": "/opt/mcp-devbox/current/libexec/mcp-autopilot-worker",
-		"/usr/local/libexec/mcp-devbox/mcp-bundle-updater":   "/opt/mcp-devbox/current/libexec/mcp-bundle-updater",
-		"/usr/local/libexec/mcp-devbox/node":                 "/opt/mcp-devbox/current/libexec/node",
-		"/opt/mcp-devbox/opencode-provider":                  "/opt/mcp-devbox/current/opencode-provider",
-		"/opt/mcp-devbox/opencode-1.18.1":                    "/opt/mcp-devbox/current/opencode",
-	}
-	for destination, target := range links {
-		if err := repairOfficialLink(destination, target); err != nil {
-			return edgeupdate.Status{}, err
-		}
+	if err := reconcileBundledGitHubCLI(releaseRoot); err != nil {
+		return edgeupdate.Status{}, err
 	}
 	if err := service.InstallUnit(releaseRoot); err != nil {
+		return edgeupdate.Status{}, err
+	}
+	if err := service.ReconcileRootlessPodmanSocket(); err != nil {
 		return edgeupdate.Status{}, err
 	}
 	if !service.EdgeHealthy() {
@@ -143,6 +169,83 @@ func repairInstallation(ctx context.Context, engine edgeupdate.Engine, resolver 
 		}
 	}
 	return engine.Status()
+}
+
+func (s *systemdService) ReconcileRootlessPodmanSocket() error {
+	if s == nil || !regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`).MatchString(s.user) {
+		return errors.New("edge user configuration is invalid")
+	}
+	machine := "--machine=" + s.user + "@"
+	if _, err := systemctlCommand("--user", machine, "enable", "--now", "podman.socket"); err != nil {
+		return errors.New("rootless Podman socket repair failed")
+	}
+	if _, err := systemctlCommand("--user", machine, "restart", "podman.service"); err != nil {
+		return errors.New("rootless Podman API service repair failed")
+	}
+	if _, err := systemctlCommand("--user", machine, "restart", "podman.socket"); err != nil {
+		return errors.New("rootless Podman socket restart failed")
+	}
+	if _, err := systemctlCommand("--user", machine, "is-active", "--quiet", "podman.service"); err != nil {
+		return errors.New("rootless Podman API service health check failed")
+	}
+	if _, err := systemctlCommand("--user", machine, "is-active", "--quiet", "podman.socket"); err != nil {
+		return errors.New("rootless Podman socket health check failed")
+	}
+	return nil
+}
+
+func repairComponentPermissions(releaseRoot, component, relative string) error {
+	mode := os.FileMode(0o644)
+	if component == bundle.ComponentEdge || component == bundle.ComponentDriver || component == bundle.ComponentWorker || component == bundle.ComponentUpdater || component == bundle.ComponentNode || component == bundle.ComponentGitHubCLI || component == bundle.ComponentOpenCode || component == bundle.ComponentCodex || component == bundle.ComponentDockerCLI || component == bundle.ComponentDockerBuildx {
+		mode = 0o755
+	}
+	err := os.Chmod(filepath.Join(releaseRoot, filepath.FromSlash(relative)), mode)
+	if component == bundle.ComponentGitHubCLI && errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
+}
+
+type officialComponentLink struct {
+	component   string
+	destination string
+	target      string
+}
+
+func officialComponentLinks() []officialComponentLink {
+	return []officialComponentLink{
+		{bundle.ComponentEdge, "/usr/local/bin/mcp-edge", "/opt/mcp-devbox/current/bin/mcp-edge"},
+		{bundle.ComponentDriver, "/usr/local/libexec/mcp-devbox/model-turn-driver", "/opt/mcp-devbox/current/libexec/model-turn-driver"},
+		{bundle.ComponentWorker, "/usr/local/libexec/mcp-devbox/mcp-autopilot-worker", "/opt/mcp-devbox/current/libexec/mcp-autopilot-worker"},
+		{bundle.ComponentUpdater, "/usr/local/libexec/mcp-devbox/mcp-bundle-updater", "/opt/mcp-devbox/current/libexec/mcp-bundle-updater"},
+		{bundle.ComponentNode, "/usr/local/libexec/mcp-devbox/node", "/opt/mcp-devbox/current/libexec/node"},
+		{bundle.ComponentProvider, "/opt/mcp-devbox/opencode-provider", "/opt/mcp-devbox/current/opencode-provider"},
+		{bundle.ComponentOpenCode, "/opt/mcp-devbox/opencode-1.18.1", "/opt/mcp-devbox/current/opencode"},
+	}
+}
+
+func reconcileOfficialComponentLinks(layout map[string]string, links []officialComponentLink) error {
+	for _, link := range links {
+		_, present := layout[link.component]
+		if err := reconcileOfficialLink(link.destination, link.target, present); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func reconcileOfficialLink(destination, target string, present bool) error {
+	if present {
+		return repairOfficialLink(destination, target)
+	}
+	existing, err := os.Readlink(destination)
+	if err == nil && existing == target {
+		return os.Remove(destination)
+	}
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return nil
 }
 
 func repairOfficialLink(destination, target string) error {
@@ -176,12 +279,69 @@ func repairOfficialLink(destination, target string) error {
 }
 
 func (s *systemdService) InstallUnit(releaseRoot string) error {
-	source := releaseRoot + "/systemd/mcp-devbox-opencode-edge@.service"
+	if err := reconcileBundledGitHubCLI(releaseRoot); err != nil {
+		return err
+	}
+	manifest, err := bundle.LoadTrustedManifest(releaseRoot, s.publicKey)
+	if err != nil {
+		return err
+	}
+	layout, ok := bundle.LayoutForVersion(manifest.Version)
+	if !ok {
+		return errors.New("official component layout is invalid")
+	}
+	if err := reconcileOfficialComponentLinks(layout, officialComponentLinks()); err != nil {
+		return err
+	}
+	targetBase, unitRelative := serviceGeneration(manifest.Version)
+	if err := installSignedUnit(filepath.Join(releaseRoot, filepath.FromSlash(unitRelative)), "/etc/systemd/system/"+targetBase+"@.service"); err != nil {
+		return err
+	}
+	if err := installOnboardingPath(releaseRoot, manifest.Version); err != nil {
+		return err
+	}
+	if _, err := systemctlCommand("daemon-reload"); err != nil {
+		return errors.New("systemd reload failed")
+	}
+	targetName := serviceName(targetBase, s.user)
+	if _, err := systemctlCommand("enable", targetName); err != nil {
+		return errors.New("edge service enable failed")
+	}
+	previousBase := legacyServiceBase
+	if targetBase == legacyServiceBase {
+		previousBase = currentServiceBase
+	}
+	previousName := serviceName(previousBase, s.user)
+	output, err := systemctlCommand("show", previousName, "--property=LoadState", "--value")
+	if err != nil {
+		return errors.New("previous Edge service inspection failed")
+	}
+	switch strings.TrimSpace(string(output)) {
+	case "not-found":
+	case "loaded":
+		if _, err := systemctlCommand("disable", "--now", previousName); err != nil {
+			return errors.New("previous Edge service retirement failed")
+		}
+	default:
+		return errors.New("previous Edge service state is invalid")
+	}
+	s.name = targetName
+	return retireLegacyEdgeServices()
+}
+
+func serviceGeneration(version int) (string, string) {
+	if version >= 5 {
+		return currentServiceBase, "systemd/mcp-devbox-edge@.service"
+	}
+	return legacyServiceBase, "systemd/mcp-devbox-opencode-edge@.service"
+}
+
+func installSignedUnit(source, destination string) error {
 	info, err := os.Lstat(source)
 	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
 		return errors.New("signed edge unit is unavailable")
 	}
-	temporary := "/etc/systemd/system/.mcp-devbox-opencode-edge@.service.next"
+	temporary := filepath.Join(filepath.Dir(destination), "."+filepath.Base(destination)+".next")
 	input, err := os.Open(source)
 	if err != nil {
 		return err
@@ -198,11 +358,77 @@ func (s *systemdService) InstallUnit(releaseRoot string) error {
 		_ = os.Remove(temporary)
 		return errors.New("edge unit staging failed")
 	}
-	if err := os.Rename(temporary, "/etc/systemd/system/mcp-devbox-opencode-edge@.service"); err != nil {
+	if err := os.Rename(temporary, destination); err != nil {
 		_ = os.Remove(temporary)
 		return err
 	}
-	return exec.Command("systemctl", "daemon-reload").Run()
+	return nil
+}
+
+func installOnboardingPath(releaseRoot string, version int) error {
+	destination := "/etc/systemd/system/mcp-devbox-edge-onboard@.path"
+	if version >= 5 {
+		return installSignedUnit(filepath.Join(releaseRoot, "systemd", "mcp-devbox-edge-onboard@.path"), destination)
+	}
+	body := []byte("[Unit]\nDescription=Start MCP Devbox Edge when identity exists for %i\n\n[Path]\nPathExists=/home/%i/.local/state/mcp-edge/identity.json\nUnit=mcp-devbox-opencode-edge@%i.service\n\n[Install]\nWantedBy=multi-user.target\n")
+	temporary := filepath.Join(filepath.Dir(destination), ".mcp-devbox-edge-onboard@.path.next")
+	if err := os.WriteFile(temporary, body, 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(temporary, destination); err != nil {
+		_ = os.Remove(temporary)
+		return err
+	}
+	return nil
+}
+
+func retireLegacyEdgeServices() error {
+	for _, unit := range []string{"mcp-devbox-edge.service", "mcp-devbox-opencode-edge.service"} {
+		output, err := systemctlCommand("show", unit, "--property=LoadState", "--value")
+		if err != nil {
+			return errors.New("legacy Edge service inspection failed")
+		}
+		switch strings.TrimSpace(string(output)) {
+		case "not-found":
+			continue
+		case "loaded":
+		default:
+			return errors.New("legacy Edge service state is invalid")
+		}
+		// The legacy Edge may be the process that requested this updater. Disable
+		// only its boot persistence: stopping that caller here can orphan the
+		// control operation. If it is still active, managed activation fails
+		// closed until the operator completes the fixed one-host handoff.
+		if _, err := systemctlCommand("disable", unit); err != nil {
+			return errors.New("legacy Edge service retirement failed")
+		}
+	}
+	return nil
+}
+
+func reconcileBundledGitHubCLI(releaseRoot string) error {
+	return reconcileBundledGitHubCLIAt(releaseRoot, "/usr/local/bin/gh", "/opt/mcp-devbox/current/libexec/gh")
+}
+
+func reconcileBundledGitHubCLIAt(releaseRoot, destination, target string) error {
+	info, err := os.Lstat(filepath.Join(releaseRoot, "libexec/gh"))
+	if err == nil {
+		if !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 || info.Mode().Perm()&0o022 != 0 {
+			return errors.New("signed GitHub CLI is unsafe")
+		}
+		return repairOfficialLink(destination, target)
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return errors.New("signed GitHub CLI is unavailable")
+	}
+	existing, readErr := os.Readlink(destination)
+	if readErr == nil && existing == target {
+		return os.Remove(destination)
+	}
+	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+		return nil
+	}
+	return nil
 }
 
 func (s *systemdService) RestartEdge() error {

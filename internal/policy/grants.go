@@ -105,12 +105,6 @@ func (g *AccessGrants) Request(path string, raw bool) (AccessRequest, error) {
 	}
 	g.mu.Lock()
 	g.pruneExpiredLocked(now)
-	for _, existing := range g.requests {
-		if existing.Path == path && existing.RawRequested == raw {
-			g.mu.Unlock()
-			return existing, nil
-		}
-	}
 	if len(g.requests) >= maxPendingAccessRequests {
 		g.mu.Unlock()
 		return AccessRequest{}, ErrAccessRequestLimit

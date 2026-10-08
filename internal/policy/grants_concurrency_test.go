@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func TestAccessGrantsConcurrentDuplicateRequestAndSingleConsume(t *testing.T) {
+func TestAccessGrantsConcurrentRequestsAreDistinctAndConsumeIsSingleUse(t *testing.T) {
 	grants := NewAccessGrants()
 	var ids atomic.Int64
 	grants.newID = func() (string, error) {
@@ -40,20 +40,22 @@ func TestAccessGrantsConcurrentDuplicateRequestAndSingleConsume(t *testing.T) {
 		t.Fatalf("concurrent request: %v", err)
 	}
 
-	var requestID string
+	requestID := ""
+	unique := make(map[string]struct{}, workers)
 	for id := range requestIDs {
 		if requestID == "" {
 			requestID = id
 		}
-		if id != requestID {
-			t.Fatalf("duplicate request returned multiple ids: %q and %q", requestID, id)
+		if _, exists := unique[id]; exists {
+			t.Fatalf("concurrent callers shared request id %q", id)
 		}
+		unique[id] = struct{}{}
 	}
-	if got := notifications.Load(); got != 1 {
-		t.Fatalf("notifications = %d, want 1", got)
+	if got := notifications.Load(); got != workers {
+		t.Fatalf("notifications = %d, want %d", got, workers)
 	}
-	if got := len(grants.requests); got != 1 {
-		t.Fatalf("pending requests = %d, want 1", got)
+	if got := len(grants.requests); got != workers {
+		t.Fatalf("pending requests = %d, want %d", got, workers)
 	}
 	if _, err := grants.Approve(requestID, false, time.Minute); err != nil {
 		t.Fatal(err)

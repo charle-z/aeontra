@@ -28,10 +28,8 @@ func TestFrontDoorCoordinatorVolumeBootstrapDropsPrivileges(t *testing.T) {
 	}
 
 	for _, required := range []string{
-		"FROM cgr.dev/chainguard/wolfi-base:latest@sha256:1d95114038f76513a9ace6fca107d5582b08c65981f81f61cb56bf7fd2ef216d",
 		"apk upgrade --no-cache",
 		"apk add --no-cache ca-certificates curl su-exec",
-		"addgroup -S -g 10003 mcpcoord",
 		"USER 0:0",
 		`ENTRYPOINT ["/usr/local/bin/mcp-front-door-coordinator-entrypoint"]`,
 	} {
@@ -74,7 +72,7 @@ func TestFrontDoorCoordinatorVolumeBootstrapDropsPrivileges(t *testing.T) {
 		t.Error("coordinator smoke still depends on a Docker host alias")
 	}
 	if strings.Contains(string(smoke), "wget") {
-		t.Error("coordinator smoke requires wget, which is absent from the fixed runtime")
+		t.Error("coordinator smoke requires wget even though the runtime image installs curl")
 	}
 	for _, forbidden := range []string{"chown -R", "chmod -R", "eval ", "exec sh", "exec /bin/sh"} {
 		if strings.Contains(string(entrypoint), forbidden) {

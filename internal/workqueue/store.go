@@ -16,7 +16,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 1
+const schemaVersion = 4
 
 type Store struct {
 	root     string
@@ -24,6 +24,7 @@ type Store struct {
 	config   Config
 	db       *sql.DB
 	lockFile *os.File
+	fair     *FairScheduler
 	mu       sync.Mutex
 	now      func() time.Time
 }
@@ -75,7 +76,12 @@ func Open(config Config) (*Store, error) {
 			return nil, errors.New("workqueue: schema is unsupported")
 		}
 	}
-	store := &Store{root: root, path: path, config: validated, db: db, lockFile: lockFile, now: time.Now}
+	fair, err := NewFairScheduler(FairConfig{Quantum: 1, AgingLimit: time.Minute})
+	if err != nil {
+		_ = db.Close()
+		return nil, errors.New("workqueue: fair scheduler unavailable")
+	}
+	store := &Store{root: root, path: path, config: validated, db: db, lockFile: lockFile, fair: fair, now: time.Now}
 	if err := store.initialize(); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -159,6 +165,32 @@ func (s *Store) initialize() error {
 			FOREIGN KEY(dependency_id) REFERENCES jobs(job_id)
 		) WITHOUT ROWID`,
 		`CREATE INDEX IF NOT EXISTS dependencies_reverse ON dependencies(dependency_id,job_id)`,
+		`CREATE TABLE IF NOT EXISTS task_groups(
+			task_id TEXT PRIMARY KEY,
+			idempotency_key TEXT NOT NULL UNIQUE,
+			project_alias TEXT NOT NULL,
+			target_alias TEXT NOT NULL,
+			base_commit TEXT NOT NULL,
+			goal_hash TEXT NOT NULL,
+			pool TEXT NOT NULL,
+			profile TEXT NOT NULL,
+			worker_count INTEGER NOT NULL,
+			execution_timeout_seconds INTEGER NOT NULL,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL
+		) WITHOUT ROWID`,
+		`CREATE INDEX IF NOT EXISTS task_groups_project_recent ON task_groups(project_alias,target_alias,updated_at DESC,task_id DESC)`,
+		`CREATE TABLE IF NOT EXISTS task_workers(
+			task_id TEXT NOT NULL REFERENCES task_groups(task_id) ON DELETE CASCADE,
+			ordinal INTEGER NOT NULL,
+			job_id TEXT NOT NULL UNIQUE REFERENCES jobs(job_id) ON DELETE CASCADE,
+			goal_ref TEXT NOT NULL,
+			operation_id TEXT NOT NULL DEFAULT '',
+			worktree_id TEXT NOT NULL DEFAULT '',
+			workspace_id TEXT NOT NULL DEFAULT '',
+			runtime_id TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY(task_id,ordinal)
+		) WITHOUT ROWID`,
 	} {
 		if _, err := s.db.Exec(statement); err != nil {
 			return errors.New("workqueue: database initialization failed")
@@ -168,10 +200,8 @@ func (s *Store) initialize() error {
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version > schemaVersion {
 		return errors.New("workqueue: schema is unsupported")
 	}
-	if version == 0 {
-		if _, err := s.db.Exec(`PRAGMA user_version=1`); err != nil {
-			return errors.New("workqueue: schema activation failed")
-		}
+	if err := ensureSchemaExtensions(s.db, version); err != nil {
+		return err
 	}
 	if _, err := s.db.Exec(`INSERT INTO queue_meta(key,value) VALUES('controller_id',?) ON CONFLICT(key) DO NOTHING`, s.config.ControllerID); err != nil {
 		return errors.New("workqueue: controller metadata failed")
@@ -181,6 +211,108 @@ func (s *Store) initialize() error {
 		return errors.New("workqueue: controller identity conflicts")
 	}
 	return s.Integrity()
+}
+
+// ensureSchemaExtensions migrates older queues in one transaction. Schema 4
+// adds declared objective contracts and receipts. Older binaries fail closed
+// rather than ignoring the additional acceptance requirements.
+func ensureSchemaExtensions(db *sql.DB, version int) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return errors.New("workqueue: schema migration failed")
+	}
+	defer tx.Rollback()
+	for _, table := range []struct {
+		name    string
+		columns []struct{ name, declaration string }
+	}{
+		{name: "task_groups", columns: []struct{ name, declaration string }{
+			{"acceptance_contract_version", `INTEGER NOT NULL DEFAULT 0`},
+			{"acceptance_min_commits_ahead", `INTEGER NOT NULL DEFAULT 0`},
+			{"acceptance_min_changed_paths", `INTEGER NOT NULL DEFAULT 0`},
+			{"test_profile_id", `TEXT NOT NULL DEFAULT ''`},
+			{"test_profile_digest", `TEXT NOT NULL DEFAULT ''`},
+			{"objective_contract", `TEXT NOT NULL DEFAULT ''`},
+			{"integration_contract", `TEXT NOT NULL DEFAULT ''`},
+			{"integration_source_task", `TEXT NOT NULL DEFAULT ''`},
+			{"integration_pins", `TEXT NOT NULL DEFAULT ''`},
+			{"integration_receipt", `TEXT NOT NULL DEFAULT ''`},
+		}},
+		{name: "task_workers", columns: []struct{ name, declaration string }{
+			{"acceptance_receipt", `TEXT NOT NULL DEFAULT ''`},
+			{"worktree_cleaned", `INTEGER NOT NULL DEFAULT 0`},
+			{"test_acceptance_receipt", `TEXT NOT NULL DEFAULT ''`},
+			{"objective_receipt", `TEXT NOT NULL DEFAULT ''`},
+		}},
+	} {
+		present := make(map[string]bool)
+		rows, err := tx.Query(`PRAGMA table_info(` + table.name + `)`)
+		if err != nil {
+			return errors.New("workqueue: schema migration failed")
+		}
+		for rows.Next() {
+			var cid, notNull, primaryKey int
+			var name, columnType string
+			var defaultValue any
+			if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+				_ = rows.Close()
+				return errors.New("workqueue: schema migration failed")
+			}
+			present[name] = true
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return errors.New("workqueue: schema migration failed")
+		}
+		if err := rows.Close(); err != nil {
+			return errors.New("workqueue: schema migration failed")
+		}
+		for _, column := range table.columns {
+			if present[column.name] {
+				continue
+			}
+			if _, err := tx.Exec(`ALTER TABLE ` + table.name + ` ADD COLUMN ` + column.name + ` ` + column.declaration); err != nil {
+				return errors.New("workqueue: schema migration failed")
+			}
+		}
+	}
+	for _, statement := range []string{
+		`CREATE INDEX IF NOT EXISTS task_integration_sources ON task_groups(integration_source_task) WHERE integration_source_task<>''`,
+		`CREATE TABLE IF NOT EXISTS development_objectives(
+			objective_id TEXT PRIMARY KEY,
+			revision INTEGER NOT NULL,
+			state TEXT NOT NULL,
+			record_digest TEXT NOT NULL,
+			record_json BLOB NOT NULL,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL
+		) WITHOUT ROWID`,
+		`CREATE INDEX IF NOT EXISTS development_objectives_recent ON development_objectives(updated_at DESC,objective_id DESC)`,
+		`CREATE TABLE IF NOT EXISTS development_runner_effects(
+			effect_id TEXT PRIMARY KEY,
+			revision INTEGER NOT NULL,
+			record_json BLOB NOT NULL
+		) WITHOUT ROWID`,
+		`CREATE TABLE IF NOT EXISTS development_requests(
+			request_id TEXT PRIMARY KEY,key_digest TEXT NOT NULL UNIQUE,
+			revision INTEGER NOT NULL,state TEXT NOT NULL,record_digest TEXT NOT NULL,
+			record_json BLOB NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL
+		) WITHOUT ROWID`,
+		`CREATE INDEX IF NOT EXISTS development_requests_recent ON development_requests(state,updated_at DESC,request_id DESC)`,
+	} {
+		if _, err := tx.Exec(statement); err != nil {
+			return errors.New("workqueue: schema migration failed")
+		}
+	}
+	if version < schemaVersion {
+		if _, err := tx.Exec(`PRAGMA user_version=4`); err != nil {
+			return errors.New("workqueue: schema migration failed")
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return errors.New("workqueue: schema migration failed")
+	}
+	return nil
 }
 
 func (s *Store) Enqueue(spec Spec) (Job, bool, error) {
@@ -213,10 +345,10 @@ func (s *Store) Enqueue(spec Spec) (Job, bool, error) {
 		return existing, false, nil
 	}
 	var total, workspaceCount int
-	if err := tx.QueryRow(`SELECT COUNT(*) FROM jobs`).Scan(&total); err != nil {
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM jobs WHERE state IN (?,?,?)`, StateBlocked, StateQueued, StateLeased).Scan(&total); err != nil {
 		return Job{}, false, errors.New("workqueue: job count unavailable")
 	}
-	if err := tx.QueryRow(`SELECT COUNT(*) FROM jobs WHERE workspace=?`, spec.Workspace).Scan(&workspaceCount); err != nil {
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM jobs WHERE workspace=? AND state IN (?,?,?)`, spec.Workspace, StateBlocked, StateQueued, StateLeased).Scan(&workspaceCount); err != nil {
 		return Job{}, false, errors.New("workqueue: workspace count unavailable")
 	}
 	if total >= s.config.MaxJobs {
@@ -298,16 +430,40 @@ func (s *Store) LeaseNext(pool, holder string, ttl time.Duration) (Lease, error)
 	if err := recoverExpired(tx, now); err != nil {
 		return Lease{}, err
 	}
-	var jobID string
-	if err := tx.QueryRow(`SELECT job_id FROM jobs WHERE pool=? AND state=? AND cancel_requested=0 ORDER BY created_at,job_id LIMIT 1`, pool, StateQueued).Scan(&jobID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			if err := tx.Commit(); err != nil {
-				return Lease{}, errors.New("workqueue: lease recovery commit failed")
-			}
-			return Lease{}, ErrNoJobAvailable
-		}
+	rows, err := tx.Query(`SELECT job_id,workspace,updated_at FROM jobs WHERE pool=? AND state=? AND cancel_requested=0 ORDER BY updated_at,job_id LIMIT ?`, pool, StateQueued, s.config.MaxJobs)
+	if err != nil {
 		return Lease{}, errors.New("workqueue: lease selection failed")
 	}
+	candidates := make([]FairCandidate, 0)
+	for rows.Next() {
+		var candidate FairCandidate
+		var readyAt int64
+		if err := rows.Scan(&candidate.JobID, &candidate.Workspace, &readyAt); err != nil {
+			_ = rows.Close()
+			return Lease{}, errors.New("workqueue: lease selection failed")
+		}
+		candidate.Cost = 1
+		candidate.CreatedAt = time.Unix(0, readyAt).UTC()
+		candidates = append(candidates, candidate)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return Lease{}, errors.New("workqueue: lease selection failed")
+	}
+	if err := rows.Close(); err != nil {
+		return Lease{}, errors.New("workqueue: lease selection failed")
+	}
+	if len(candidates) == 0 {
+		if err := tx.Commit(); err != nil {
+			return Lease{}, errors.New("workqueue: lease recovery commit failed")
+		}
+		return Lease{}, ErrNoJobAvailable
+	}
+	selected, err := s.fair.Select(now, candidates)
+	if err != nil {
+		return Lease{}, errors.New("workqueue: lease selection failed")
+	}
+	jobID := selected.JobID
 	leaseID, err := randomID("wl_")
 	if err != nil {
 		return Lease{}, errors.New("workqueue: lease identity unavailable")
@@ -318,8 +474,8 @@ func (s *Store) LeaseNext(pool, holder string, ttl time.Duration) (Lease, error)
 	if err != nil {
 		return Lease{}, errors.New("workqueue: lease update failed")
 	}
-	rows, _ := result.RowsAffected()
-	if rows != 1 {
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected != 1 {
 		return Lease{}, errors.New("workqueue: lease lost race")
 	}
 	job, found, err := jobByID(tx, jobID)
@@ -333,18 +489,19 @@ func (s *Store) LeaseNext(pool, holder string, ttl time.Duration) (Lease, error)
 }
 
 func recoverExpired(tx *sql.Tx, now time.Time) error {
-	rows, err := tx.Query(`SELECT job_id,cancel_requested FROM jobs WHERE state=? AND lease_until<=?`, StateLeased, now.UnixNano())
+	rows, err := tx.Query(`SELECT job_id,cancel_requested,attempt FROM jobs WHERE state=? AND lease_until<=?`, StateLeased, now.UnixNano())
 	if err != nil {
 		return errors.New("workqueue: expired lease scan failed")
 	}
 	type expired struct {
 		id        string
 		cancelled bool
+		attempt   int
 	}
 	items := make([]expired, 0)
 	for rows.Next() {
 		var item expired
-		if err := rows.Scan(&item.id, &item.cancelled); err != nil {
+		if err := rows.Scan(&item.id, &item.cancelled, &item.attempt); err != nil {
 			_ = rows.Close()
 			return errors.New("workqueue: expired lease result failed")
 		}
@@ -363,6 +520,11 @@ func recoverExpired(tx *sql.Tx, now time.Time) error {
 			reason = ReasonCancelled
 			outcome = StateCancelled
 			summary = "cancelled"
+		} else if item.attempt >= MaxLeaseAttempts {
+			state = StateFailed
+			reason = ReasonRecoveryExhausted
+			outcome = StateFailed
+			summary = string(ReasonRecoveryExhausted)
 		}
 		if _, err := tx.Exec(`UPDATE jobs SET state=?,reason=?,lease_id=NULL,lease_holder=NULL,lease_until=NULL,outcome=?,summary=?,updated_at=? WHERE job_id=? AND state=?`, state, reason, outcome, summary, now.UnixNano(), item.id, StateLeased); err != nil {
 			return errors.New("workqueue: expired lease recovery failed")
@@ -372,6 +534,28 @@ func recoverExpired(tx *sql.Tx, now time.Time) error {
 				return err
 			}
 		}
+	}
+	return nil
+}
+
+// RecoverExpired makes abandoned leases visible to restart-safe coordinators without
+// requiring them to guess which pool or worker owned the previous process.
+func (s *Store) RecoverExpired() error {
+	if s == nil || s.db == nil {
+		return errors.New("workqueue: store is unavailable")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return errors.New("workqueue: recovery transaction failed")
+	}
+	defer tx.Rollback()
+	if err := recoverExpired(tx, s.clock().UTC()); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return errors.New("workqueue: recovery commit failed")
 	}
 	return nil
 }
@@ -583,6 +767,30 @@ func (s *Store) List(limit int) ([]Job, error) {
 	return jobs, rows.Err()
 }
 
+// LeasesForHolder lists only current leases in one pool. Retained terminal
+// history cannot crowd active effects out of a coordinator's bounded page.
+func (s *Store) LeasesForHolder(pool, holder string, limit int) ([]Lease, error) {
+	if s == nil || s.db == nil || !poolPattern.MatchString(pool) || !holderPattern.MatchString(holder) || limit < 1 || limit > MaxListResults {
+		return nil, errors.New("workqueue: lease list is invalid")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rows, err := s.db.Query(jobSelect+` WHERE pool=? AND lease_holder=? AND state=? ORDER BY updated_at,job_id LIMIT ?`, pool, holder, StateLeased, limit)
+	if err != nil {
+		return nil, errors.New("workqueue: lease list failed")
+	}
+	defer rows.Close()
+	leases := make([]Lease, 0, limit)
+	for rows.Next() {
+		job, err := scanJob(rows)
+		if err != nil {
+			return nil, errors.New("workqueue: lease list result failed")
+		}
+		leases = append(leases, Lease{Job: job, ID: job.LeaseID, Fence: job.Fence, Attempt: job.Attempt, ExpiresAt: job.LeaseExpiresAt})
+	}
+	return leases, rows.Err()
+}
+
 func (s *Store) Integrity() error {
 	if s == nil || s.db == nil {
 		return errors.New("workqueue: store is unavailable")
@@ -608,28 +816,82 @@ func (s *Store) Integrity() error {
 	if err != nil {
 		return errors.New("workqueue: semantic scan failed")
 	}
-	count := 0
 	for rows.Next() {
 		if _, err := scanJob(rows); err != nil {
 			_ = rows.Close()
 			return errors.New("workqueue: semantic integrity failed")
 		}
-		count++
-		if count > s.config.MaxJobs {
-			_ = rows.Close()
-			return errors.New("workqueue: row bound exceeded")
-		}
 	}
 	if err := rows.Close(); err != nil {
 		return errors.New("workqueue: semantic scan failed")
 	}
+	var activeCount int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM jobs WHERE state IN (?,?,?)`, StateBlocked, StateQueued, StateLeased).Scan(&activeCount); err != nil || activeCount > s.config.MaxJobs {
+		return errors.New("workqueue: row bound exceeded")
+	}
 	var oversizedWorkspaces int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM (SELECT workspace FROM jobs GROUP BY workspace HAVING COUNT(*)>?)`, s.config.MaxJobsPerWorkspace).Scan(&oversizedWorkspaces); err != nil || oversizedWorkspaces != 0 {
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM (SELECT workspace FROM jobs WHERE state IN (?,?,?) GROUP BY workspace HAVING COUNT(*)>?)`, StateBlocked, StateQueued, StateLeased, s.config.MaxJobsPerWorkspace).Scan(&oversizedWorkspaces); err != nil || oversizedWorkspaces != 0 {
 		return errors.New("workqueue: workspace row bound exceeded")
 	}
 	var dependencyCount int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM dependencies`).Scan(&dependencyCount); err != nil || dependencyCount < 0 || dependencyCount > s.config.MaxJobs*MaxDependencies {
 		return errors.New("workqueue: dependency bound exceeded")
+	}
+	taskRows, err := s.db.Query(`SELECT task_id FROM task_groups ORDER BY task_id`)
+	if err != nil {
+		return errors.New("workqueue: task semantic scan failed")
+	}
+	taskIDs := make([]string, 0)
+	for taskRows.Next() {
+		var taskID string
+		if err := taskRows.Scan(&taskID); err != nil {
+			_ = taskRows.Close()
+			return errors.New("workqueue: task semantic scan failed")
+		}
+		taskIDs = append(taskIDs, taskID)
+	}
+	if err := taskRows.Close(); err != nil {
+		return errors.New("workqueue: task semantic scan failed")
+	}
+	var activeTaskCount int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM task_groups tg WHERE EXISTS(SELECT 1 FROM task_workers tw JOIN jobs j ON j.job_id=tw.job_id WHERE tw.task_id=tg.task_id AND j.state IN (?,?,?))`, StateBlocked, StateQueued, StateLeased).Scan(&activeTaskCount); err != nil || activeTaskCount > s.config.MaxJobs {
+		return errors.New("workqueue: task row bound exceeded")
+	}
+	for _, taskID := range taskIDs {
+		if _, found, err := taskByID(s.db, taskID); err != nil || !found {
+			return errors.New("workqueue: task semantic integrity failed")
+		}
+	}
+	objectiveRows, err := s.db.Query(`SELECT objective_id FROM development_objectives ORDER BY objective_id`)
+	if err != nil {
+		return errors.New("workqueue: development objective semantic scan failed")
+	}
+	objectiveIDs := make([]string, 0)
+	for objectiveRows.Next() {
+		var objectiveID string
+		if err := objectiveRows.Scan(&objectiveID); err != nil {
+			_ = objectiveRows.Close()
+			return errors.New("workqueue: development objective semantic scan failed")
+		}
+		objectiveIDs = append(objectiveIDs, objectiveID)
+		if len(objectiveIDs) > MaxDevelopmentObjectives {
+			_ = objectiveRows.Close()
+			return errors.New("workqueue: development objective row bound exceeded")
+		}
+	}
+	if err := objectiveRows.Close(); err != nil {
+		return errors.New("workqueue: development objective semantic scan failed")
+	}
+	for _, objectiveID := range objectiveIDs {
+		if _, found, err := developmentObjectiveByID(s.db, objectiveID); err != nil || !found {
+			return errors.New("workqueue: development objective semantic integrity failed")
+		}
+	}
+	if err := s.developmentRunnerIntegrity(); err != nil {
+		return err
+	}
+	if err := s.developmentRequestIntegrity(); err != nil {
+		return err
 	}
 	foreignRows, err := s.db.Query(`PRAGMA foreign_key_check`)
 	if err != nil {
@@ -755,7 +1017,7 @@ func validateStoredJob(job Job) error {
 				return errors.New("workqueue: stored success reason is invalid")
 			}
 		case StateFailed:
-			if job.Reason != ReasonNone && job.Reason != ReasonDependencyFailed {
+			if job.Reason != ReasonNone && job.Reason != ReasonDependencyFailed && job.Reason != ReasonRecoveryExhausted && job.Reason != ReasonTaskGoalUnavailable {
 				return errors.New("workqueue: stored failure reason is invalid")
 			}
 		case StateCancelled:

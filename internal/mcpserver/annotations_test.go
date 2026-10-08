@@ -147,6 +147,6 @@ func TestToolAnnotationClassifications(t *testing.T) {
 	for _, name := range []string{"apply_patch", "memory_write", "memory_update_handoff", "repo_remote_set"} {
 		assertHints(name, false, true, false, false)
 	}
-	assertHints("run_command", false, true, false, true)
-	assertHints("run_tests", false, true, false, true)
+	assertHints("run_command", false, true, false, false)
+	assertHints("run_tests", false, true, false, false)
 }

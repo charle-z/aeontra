@@ -15,6 +15,7 @@ import (
 func configuredCoordinatorService(t *testing.T, mode config.Mode, baseURL string) *Service {
 	t.Helper()
 	svc := configuredPlatformService(t, mode, baseURL)
+	svc.WithMaintainerProfile(MaintainerProfileCharleZProduction)
 	svc.WithGitHub(NewGitHubClient(baseURL, "github-token", "acme", "org", "private"))
 	svc.WithCoolify(NewCoolifyClient(baseURL, "coolify-token", nil).
 		WithBuilderConfig("server1", "project1", "production", "", []string{"mcp-devbox-charlez.duckdns.org"}).
@@ -70,8 +71,10 @@ func TestPlatformFrontDoorTransitionDispatchesOnlyPrivateCoordinator(t *testing.
 	var ts *httptest.Server
 	ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && (r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/main" || r.URL.Path == "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable"):
+		case r.Method == http.MethodGet && (r.URL.Path == "/repos/acme/aeontra/git/ref/heads/main" || r.URL.Path == "/repos/acme/aeontra/git/ref/heads/front-door-stable"):
 			_, _ = w.Write([]byte(`{"object":{"sha":"` + frontDoorTestSHA + `"}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/aeontra/compare/"+frontDoorTestSHA+"..."+frontDoorTestSHA:
+			_, _ = w.Write([]byte(`{"status":"identical"}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications":
 			_, _ = w.Write([]byte(`[
 				{"uuid":"front1","name":"mcp-devbox-front-door-managed"},
@@ -82,7 +85,13 @@ func TestPlatformFrontDoorTransitionDispatchesOnlyPrivateCoordinator(t *testing.
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/coord1":
 			_, _ = w.Write([]byte(`{"uuid":"coord1","name":"mcp-devbox-front-door-coordinator-managed","status":"running:healthy","deployment_status":"finished","git_repository":"acme/mcp-devbox","git_branch":"main","git_commit_sha":"` + frontDoorTestSHA + `","fqdn":"","build_pack":"dockerfile","dockerfile_location":"/Dockerfile.front-door-coordinator","ports_exposes":"8766","is_auto_deploy_enabled":false,"instant_deploy":false,"health_check_path":"` + coordinatorHealthPath + `","custom_docker_run_options":"` + coordinatorDockerOptions + `"}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/"+managedBackendAppUUID:
-			_, _ = w.Write([]byte(`{"uuid":"` + managedBackendAppUUID + `","name":"mcp-devbox","status":"running:healthy","deployment_status":"finished","git_repository":"acme/mcp-devbox","git_branch":"main","git_commit_sha":"` + frontDoorTestSHA + `","fqdn":"https://mcp-devbox-charlez.duckdns.org,https://backend.mcp-devbox-charlez.duckdns.org"}`))
+			_, _ = w.Write([]byte(`{"uuid":"` + managedBackendAppUUID + `","name":"mcp-devbox","status":"running:healthy","deployment_status":null,"git_repository":"acme/mcp-devbox","git_branch":"main","git_commit_sha":"HEAD","fqdn":"https://mcp-devbox-charlez.duckdns.org,https://backend.mcp-devbox-charlez.duckdns.org"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deployments/applications/coord1":
+			writeManagedDeploymentList(w, "coord1", "finished", frontDoorTestSHA)
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deployments/applications/front1":
+			writeManagedDeploymentList(w, "front1", "finished", frontDoorTestSHA)
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deployments/applications/"+managedBackendAppUUID:
+			writeManagedDeploymentList(w, managedBackendAppUUID, "finished", frontDoorTestSHA)
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/coord1/storages":
 			_, _ = w.Write([]byte(`[{"uuid":"storage1","type":"persistent","name":"mcp-devbox-front-door-coordinator-state","mount_path":"/coordinator-state"}]`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/front1/envs":
@@ -113,7 +122,7 @@ func TestPlatformFrontDoorTransitionDispatchesOnlyPrivateCoordinator(t *testing.
 			}
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"uuid":"env1"}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/deploy":
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/deploy":
 			if r.URL.Query().Get("uuid") != coordinatorID || r.URL.Query().Get("force") != "false" {
 				t.Fatalf("unsafe deployment query: %s", r.URL.RawQuery)
 			}
@@ -169,8 +178,10 @@ func TestPlatformFrontDoorTransitionPreviewIsNoopAtTargetAndRejectsConflictingJo
 	var ts *httptest.Server
 	ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/repos/acme/mcp-devbox/git/ref/heads/main", "/repos/acme/mcp-devbox/git/ref/heads/front-door-stable":
+		case "/repos/acme/aeontra/git/ref/heads/main", "/repos/acme/aeontra/git/ref/heads/front-door-stable":
 			_, _ = w.Write([]byte(`{"object":{"sha":"` + frontDoorTestSHA + `"}}`))
+		case "/repos/acme/aeontra/compare/" + frontDoorTestSHA + "..." + frontDoorTestSHA:
+			_, _ = w.Write([]byte(`{"status":"identical"}`))
 		case "/api/v1/applications":
 			_, _ = w.Write([]byte(`[{"uuid":"front1","name":"mcp-devbox-front-door-managed"},{"uuid":"coord1","name":"mcp-devbox-front-door-coordinator-managed"}]`))
 		case "/api/v1/applications/front1":
@@ -178,7 +189,13 @@ func TestPlatformFrontDoorTransitionPreviewIsNoopAtTargetAndRejectsConflictingJo
 		case "/api/v1/applications/coord1":
 			_, _ = w.Write([]byte(`{"uuid":"coord1","name":"mcp-devbox-front-door-coordinator-managed","status":"running:healthy","deployment_status":"finished","description":` + mustJSON(statusDescription) + `,"git_repository":"acme/mcp-devbox","git_branch":"main","git_commit_sha":"` + frontDoorTestSHA + `","build_pack":"dockerfile","dockerfile_location":"/Dockerfile.front-door-coordinator","ports_exposes":"8766","is_auto_deploy_enabled":false,"instant_deploy":false,"health_check_path":"/readyz","custom_docker_run_options":"` + managedFrontDoorCoordinatorDockerOptions + `"}`))
 		case "/api/v1/applications/" + managedBackendAppUUID:
-			_, _ = w.Write([]byte(`{"uuid":"` + managedBackendAppUUID + `","status":"running:healthy","deployment_status":"finished","git_repository":"acme/mcp-devbox","git_branch":"main","git_commit_sha":"` + frontDoorTestSHA + `","fqdn":"` + backendDomains + `"}`))
+			_, _ = w.Write([]byte(`{"uuid":"` + managedBackendAppUUID + `","status":"running:healthy","deployment_status":null,"git_repository":"acme/mcp-devbox","git_branch":"main","git_commit_sha":"HEAD","fqdn":"` + backendDomains + `"}`))
+		case "/api/v1/deployments/applications/coord1":
+			writeManagedDeploymentList(w, "coord1", "finished", frontDoorTestSHA)
+		case "/api/v1/deployments/applications/front1":
+			writeManagedDeploymentList(w, "front1", "finished", frontDoorTestSHA)
+		case "/api/v1/deployments/applications/" + managedBackendAppUUID:
+			writeManagedDeploymentList(w, managedBackendAppUUID, "finished", frontDoorTestSHA)
 		case "/api/v1/applications/front1/envs":
 			_, _ = w.Write([]byte(frontBackendEnvironment(frontBackend)))
 		case "/api/v1/applications/coord1/storages":

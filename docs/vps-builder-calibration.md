@@ -15,7 +15,7 @@ The host must already have the reviewed private candidate installed and healthy:
 - cgroup v2 exposes CPU, memory, pressure and PID metrics for the complete service subtree;
 - `https://mcp-devbox-charlez.duckdns.org/healthz` is the allowed control-plane health endpoint.
 
-The script accepts exactly one value: a lowercase 40-character commit SHA from `charle-z/mcp-devbox`. It fetches only that commit from the fixed HTTPS repository. No branch, ref, repository, Dockerfile path, command, environment value, credential or destination is caller-controlled.
+The script accepts exactly one value: a lowercase 40-character commit SHA from `charle-z/aeontra`. It fetches only that commit from the fixed HTTPS repository. No branch, ref, repository, Dockerfile path, command, environment value, credential or destination is caller-controlled.
 
 ## Reviewed invocation
 

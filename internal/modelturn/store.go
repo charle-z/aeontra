@@ -63,10 +63,15 @@ var (
 var safeIdentifier = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 
 type StoreConfig struct {
-	Root       string
-	QuotaBytes int64
-	DefaultTTL time.Duration
-	Now        func() time.Time
+	Root           string
+	QuotaBytes     int64
+	DefaultTTL     time.Duration
+	Now            func() time.Time
+	TaskGoalOwners []TaskGoalOwner
+	// DeferTaskGoalCleanup lets the application restore cross-store task pins
+	// individually before the first expiry sweep. Callers must reconcile pins
+	// and invoke Cleanup before exposing the store to task work.
+	DeferTaskGoalCleanup bool
 }
 
 type Record struct {
@@ -98,12 +103,14 @@ type RequestBodyReference struct {
 }
 
 type ResponseSubmission struct {
-	RuntimeID        string
-	TurnID           TurnID
-	ExpectedSequence uint64
-	RequestDigest    string
-	Payload          json.RawMessage
-	UsedToolIDs      []string
+	ControllerID      string
+	ControlGeneration uint64
+	RuntimeID         string
+	TurnID            TurnID
+	ExpectedSequence  uint64
+	RequestDigest     string
+	Payload           json.RawMessage
+	UsedToolIDs       []string
 }
 
 type Store struct {
@@ -177,13 +184,25 @@ func OpenStore(cfg StoreConfig) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	if err := store.ensureControlSchema(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if !cfg.DeferTaskGoalCleanup {
+		if err := store.ReconcileTaskGoalPins(context.Background(), cfg.TaskGoalOwners, 0); err != nil {
+			_ = db.Close()
+			return nil, errors.New("model task goal references are unavailable or inconsistent")
+		}
+	}
 	if err := os.Chmod(path, 0o600); err != nil {
 		_ = db.Close()
 		return nil, errors.New("model turn database permissions could not be secured")
 	}
-	if err := store.Cleanup(context.Background()); err != nil {
-		_ = db.Close()
-		return nil, err
+	if !cfg.DeferTaskGoalCleanup {
+		if err := store.Cleanup(context.Background()); err != nil {
+			_ = db.Close()
+			return nil, err
+		}
 	}
 	store.lastCleanup = store.now().UTC()
 	return store, nil
@@ -430,6 +449,20 @@ func (s *Store) Respond(ctx context.Context, submission ResponseSubmission) (Rec
 	if record.Status != StatusAwaitingModel && record.Status != StatusDisconnected {
 		return Record{}, ErrTurnConflict
 	}
+	control, err := readRuntimeControl(ctx, tx, submission.RuntimeID)
+	if err != nil {
+		return Record{}, err
+	}
+	if control != nil {
+		if err := requireControlledRuntimeActive(ctx, tx, submission.RuntimeID, now); err != nil {
+			return Record{}, err
+		}
+		if control.Phase != "owned" || control.ControllerID != submission.ControllerID || control.Generation != submission.ControlGeneration {
+			return Record{}, ErrRuntimeControlConflict
+		}
+	} else if submission.ControllerID != "" || submission.ControlGeneration != 0 {
+		return Record{}, ErrRuntimeControlConflict
+	}
 	var offered []string
 	if err := json.Unmarshal([]byte(offeredJSON), &offered); err != nil {
 		return Record{}, errors.New("offered tool metadata is invalid")
@@ -448,7 +481,7 @@ func (s *Store) Respond(ctx context.Context, submission ResponseSubmission) (Rec
 	if _, err := tx.ExecContext(ctx, `INSERT INTO turn_bodies(body_ref,kind,content,content_bytes,created_at,expires_at) VALUES(?,?,?,?,?,?)`, responseRef, "response", payload, len(payload), now.UnixNano(), record.ExpiresAt.UnixNano()); err != nil {
 		return Record{}, errors.New("model response persistence failed")
 	}
-	result, err := tx.ExecContext(ctx, `UPDATE model_turns SET response_digest=?,response_ref=?,status='responded',responded_at=? WHERE turn_id=? AND runtime_id=? AND sequence=? AND request_digest=? AND status IN ('awaiting_model','disconnected')`, responseDigest, responseRef, now.UnixNano(), submission.TurnID, submission.RuntimeID, submission.ExpectedSequence, submission.RequestDigest)
+	result, err := tx.ExecContext(ctx, `UPDATE model_turns SET response_digest=?,response_ref=?,response_controller_id=?,response_control_generation=?,status='responded',responded_at=? WHERE turn_id=? AND runtime_id=? AND sequence=? AND request_digest=? AND status IN ('awaiting_model','disconnected')`, responseDigest, responseRef, submission.ControllerID, submission.ControlGeneration, now.UnixNano(), submission.TurnID, submission.RuntimeID, submission.ExpectedSequence, submission.RequestDigest)
 	if err != nil {
 		return Record{}, errors.New("model response compare-and-swap failed")
 	}
@@ -657,7 +690,8 @@ func (s *Store) cleanupLocked(ctx context.Context, tx *sql.Tx, now time.Time) er
 	if _, err := tx.ExecContext(ctx, `DELETE FROM turn_bodies WHERE expires_at<=?`, now.UnixNano()); err != nil {
 		return errors.New("model body cleanup failed")
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM runtime_bodies WHERE expires_at<=?`, now.UnixNano()); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM runtime_bodies WHERE expires_at<=?
+		AND NOT EXISTS (SELECT 1 FROM runtime_goal_pins p WHERE p.body_ref=runtime_bodies.body_ref)`, now.UnixNano()); err != nil {
 		return errors.New("runtime body cleanup failed")
 	}
 	return nil

@@ -85,6 +85,9 @@ func newProjectAssociationHardeningFixture(t *testing.T, checkoutState ProjectCh
 	if err := os.Mkdir(legacy, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Mkdir(filepath.Join(legacy, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	inspector := pathProjectInspector{states: map[string]ProjectCheckoutState{legacy: checkoutState}}
 	workspaces, err := OpenWorkspaceRegistryWithRoots(state, roots)
 	if err != nil {

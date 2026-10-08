@@ -18,6 +18,14 @@ func (s *Store) ensureRuntimeSchema() error {
 			expires_at INTEGER NOT NULL
 		) WITHOUT ROWID`,
 		`CREATE INDEX IF NOT EXISTS runtime_bodies_expiry ON runtime_bodies(expires_at)`,
+		`CREATE TABLE IF NOT EXISTS runtime_goal_pins (
+			owner_digest TEXT NOT NULL,
+			body_ref TEXT NOT NULL,
+			content_digest TEXT NOT NULL,
+			created_at INTEGER NOT NULL,
+			PRIMARY KEY(owner_digest,body_ref)
+		) WITHOUT ROWID`,
+		`CREATE INDEX IF NOT EXISTS runtime_goal_pins_body ON runtime_goal_pins(body_ref)`,
 		`CREATE TRIGGER IF NOT EXISTS runtime_bodies_immutable BEFORE UPDATE OF kind,content,content_digest,content_bytes,created_at,expires_at ON runtime_bodies
 		BEGIN
 			SELECT RAISE(ABORT, 'runtime body is immutable');

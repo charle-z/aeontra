@@ -1,10 +1,11 @@
 # Signed versioned Edge bundles
 
-P15 distributes the Parrot Edge as one indivisible release rooted at
+Aeontra distributes the Parrot Edge as one indivisible release rooted at
 `/opt/mcp-devbox/releases/<RELEASE>`. `/opt/mcp-devbox/current` is an atomic symlink
-to the active release; compatibility paths under `/usr/local` and
-`/opt/mcp-devbox/opencode-provider` point into that release and are managed only by
-the package/updater.
+to the active release. Compatibility paths under `/usr/local` are managed only by the
+package/updater. Version-5 and version-7 Codex-only releases remove the historical OpenCode, provider,
+Node and model-turn-driver links; retained signed v4 releases remain available for an
+explicit rollback.
 
 ## Trust and manifest contract
 
@@ -13,26 +14,40 @@ the package/updater.
 public trust key, release, commit and expected catalog hash are compiled into packaged
 executables; an unstamped local build cannot validate a production bundle.
 
-The current version-2 manifest binds:
+The version-5 manifest binds:
 
 - release, exact 40-character Git commit, bundle protocol and architecture;
 - the deterministic exterior MCP catalog hash;
-- SHA-256 hashes for `mcp-edge`, `model-turn-driver`, the reviewed Node 24.18.0 runtime,
-  `mcp-autopilot-worker`, the privileged updater, OpenCode and its lockfile, provider `index.js`, provider
-  `htb-actions.js`, provider `dev-actions.js`, provider `package.json`, and the
-  packaged Edge systemd unit.
+- SHA-256 hashes for `mcp-edge`, `mcp-autopilot-worker`, the privileged updater,
+  bundled GitHub CLI, pinned stock Codex and its exact pin manifest, the neutral Edge
+  systemd unit and its onboarding path unit.
 
-The verifier retains the exact signed version-1 component layout so an installed
-version-2 updater can still verify and roll back to p15.0.4 or an earlier signed P15
-release. Version 1 never accepts `dev-actions.js` as an unsigned extra authority;
-version 2 requires and hashes it. Other manifest versions fail closed.
+Version 7 retains the version-5 components and additionally signs a pinned Docker CLI
+and Buildx plugin. They are mounted read-only only inside the selected Codex Linux
+workcell; the optional user-owned rootless socket is validated separately. Version 5
+remains a valid rollback layout. Version 6 is reserved for the Windows bundle and is
+not a Linux manifest.
+
+The verifier retains all exact signed historical layouts. Version 1 predates
+`dev-actions.js`; version 2 adds and hashes it; version 3 adds the bundled GitHub CLI;
+version 4 adds and hashes Codex plus its pin manifest while retaining the OpenCode
+rollback harness; version 5 removes the OpenCode-only components and changes the active
+unit to `mcp-devbox-edge@.service`; version 7 adds the signed container clients. An installed v4 updater cannot validate v5. The
+transition therefore installs one v4 bridge built from the v5-aware source before the
+v5 release. Likewise, a device still running a v5 updater built before version 7 must
+first receive a v5 bridge built from version-7-aware source before it can consume the
+signed v7 bundle. Other manifest versions fail closed.
+
+The official updater extracts only known component paths and then checks the exact
+file set against the authenticated v5 or v7 manifest. A v5 archive cannot carry
+unsigned v7 clients as extra files.
 
 Every component must be a regular non-symlink file below the release root. Unknown,
 missing, extra or malformed manifest fields fail closed. The Edge verifies the bundle
 before polling for a new runtime, so a partial or mixed installation never discovers
 missing tools after work has started.
 
-Safe failure codes are intentionally closed:
+The updater returns this closed set of safe failure codes:
 
 | Code | Meaning |
 |---|---|
@@ -46,10 +61,25 @@ configuration.
 
 ## Release generation
 
-The release pipeline stages the fixed layout, then invokes `mcp-bundle-manifest` with
-an absolute release root, the exact release/commit/protocol/catalog/architecture and
-an absolute raw Ed25519 private-key file. The command creates new manifest/signature
-files only; it refuses overwrite. Debian packaging and the privileged updater consume
+Release identifiers use one of two closed formats:
+
+- `p15.x.y` identifies the historical line and the final compatibility bridge;
+- `vMAJOR.MINOR.PATCH` identifies public Aeontra releases and follows stable SemVer
+  numeric components without prerelease or build suffixes.
+
+The `stable` tag is a mutable machine channel, not a bundle version. It contains only
+the signed channel document and signature. The channel names one immutable release,
+and the updater downloads that release's signed archive. Existing clients therefore
+continue to use `update stable` across the version-name transition.
+
+The release pipeline stages the selected fixed layout, then invokes
+`mcp-bundle-manifest` with an absolute release root, manifest version, the exact
+release/commit/protocol/catalog/architecture and an absolute raw Ed25519 private-key
+file. The command creates new manifest/signature files only; it refuses overwrite.
+`bridge-v3` retains the historical OpenCode unit and omits Codex; `codex-v4` is the
+rollback-compatible updater bridge; `codex-v5` contains only the active Codex harness
+and the neutral Edge unit; `codex-v7` adds pinned Docker and Buildx clients to that
+same harness. Debian packaging and the privileged updater consume
 this already signed staged directory and never accept caller-provided URLs, paths,
 hashes or scripts.
 
@@ -66,3 +96,16 @@ The official channel signature proves artifact identity; a separate durable serv
 control signature proves that the paired device was actually assigned the closed
 `update stable`, rollback or repair operation. Edge verifies both boundaries before
 the privileged fixed unit can run.
+
+## Codex-only transition
+
+The v4-to-v5 transition uses this order:
+
+1. publish and install one `codex-v4` bridge from the exact v5-aware source commit;
+2. verify that its updater, active Codex runtime and retained v4 rollback layout work;
+3. publish one `codex-v5` release from the same green source line and advance `stable`;
+4. update the real Edge, verify the neutral unit and absence of OpenCode components;
+5. roll back once to the retained v4 bridge, then update forward to v5 and repeat the
+   Codex runtime acceptance.
+
+Keep the v4 bridge until every supported device has crossed the manifest boundary.

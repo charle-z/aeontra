@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 const (
@@ -59,6 +60,7 @@ func TestDecodeDeploymentResponseSupportsDirectAndWrappedShapes(t *testing.T) {
 		{raw: `{"deployment_uuid":"dep1","status":"queued"}`, want: "dep1"},
 		{raw: `{"uuid":"dep2","status":"queued"}`, want: "dep2"},
 		{raw: `{"deployments":[{"deployment_uuid":"dep3","status":"queued"}]}`, want: "dep3"},
+		{raw: `[{"deployment_uuid":"dep4","status":"queued"}]`, want: "dep4"},
 	}
 	for _, tc := range cases {
 		got := decodeDeploymentResponse([]byte(tc.raw))
@@ -68,6 +70,42 @@ func TestDecodeDeploymentResponseSupportsDirectAndWrappedShapes(t *testing.T) {
 	}
 	if got := decodeDeploymentResponse([]byte(`{"message":"no deployment"}`)); got.DeploymentUUID != "" {
 		t.Fatalf("unexpected deployment: %+v", got)
+	}
+}
+
+func TestStopAndWaitUsesCoolifyPostEndpoint(t *testing.T) {
+	t.Parallel()
+	stopRequests := 0
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/applications/backend1/stop":
+			stopRequests++
+			_, _ = w.Write([]byte(`{"message":"Application stopping request queued."}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/applications/backend1":
+			_, _ = w.Write([]byte(`{"status":"exited:stopped"}`))
+		default:
+			http.Error(w, "unexpected method or path", http.StatusMethodNotAllowed)
+		}
+	}))
+	defer ts.Close()
+
+	client, err := NewClient(validClientConfig(ts.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.http = ts.Client()
+	if err := client.stopAndWait(context.Background(), "backend1"); err != nil {
+		t.Fatal(err)
+	}
+	if stopRequests != 1 {
+		t.Fatalf("stop requests = %d, want 1", stopRequests)
+	}
+}
+
+func TestDeploymentWaitBudgetCoversCleanBuild(t *testing.T) {
+	t.Parallel()
+	if coolifyDeploymentWaitTimeout < 20*time.Minute {
+		t.Fatalf("deployment wait timeout = %s, want at least 20m", coolifyDeploymentWaitTimeout)
 	}
 }
 
@@ -97,6 +135,30 @@ func TestTopologyReadsRepositoryBranchesDomainsAndFrontBackend(t *testing.T) {
 	}
 	if topology.FrontDomain != FrontTemporaryOrigin || topology.FrontBackendURL != BackendOrigin || topology.BackendDomains != FrontPublicOrigin+","+BackendOrigin {
 		t.Fatalf("topology=%+v", topology)
+	}
+}
+
+func TestManagedRepositoryAcceptsAeontraAndCompatibilitySlugOnly(t *testing.T) {
+	t.Parallel()
+	for _, repository := range []string{
+		"charle-z/aeontra",
+		"https://github.com/charle-z/aeontra.git",
+		"charle-z/mcp-devbox",
+		"https://github.com/charle-z/mcp-devbox.git",
+	} {
+		if !managedRepositoryMatches(repository) {
+			t.Errorf("managed repository rejected %q", repository)
+		}
+	}
+	for _, repository := range []string{
+		"other/aeontra",
+		"charle-z/aeontra-extra",
+		"https://github.com/charle-z/third.git",
+		"",
+	} {
+		if managedRepositoryMatches(repository) {
+			t.Errorf("managed repository accepted %q", repository)
+		}
 	}
 }
 
