@@ -125,7 +125,8 @@ import zipfile
 import ssl
 from pip._vendor import urllib3
 
-assert ssl.OPENSSL_VERSION_INFO[:3] >= (3, 6, 5), ssl.OPENSSL_VERSION
+# OpenSSL 3 encodes its patch in the legacy tuple's fourth field.
+assert ssl.OPENSSL_VERSION_NUMBER >= 0x30600050, ssl.OPENSSL_VERSION
 ssl.create_default_context()
 print('python_tls=ready')
 assert urllib3.__version__ == '2.8.0', urllib3.__version__
