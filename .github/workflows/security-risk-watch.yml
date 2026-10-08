@@ -42,7 +42,7 @@ jobs:
         id: inventory
         run: |
           set -euo pipefail
-          mkdir -p artifacts
+          mkdir -p artifacts/monitored
           cp security/monitored-images.json artifacts/monitored-images.json
           jq -e '
             .schema_version == 1 and
@@ -56,10 +56,9 @@ jobs:
           ' security/monitored-images.json >/dev/null
           revision="$(jq -er '.workcell.revision' security/monitored-images.json)"
           expected_recipe="$(jq -er '.workcell.recipe_sha256' security/monitored-images.json)"
-          committed_recipe="$(git show "$revision:Dockerfile.sandbox-workcell" | sha256sum | cut -d ' ' -f 1)"
-          checked_out_recipe="$(sha256sum Dockerfile.sandbox-workcell | cut -d ' ' -f 1)"
+          git show "$revision:Dockerfile.sandbox-workcell" > artifacts/monitored/Dockerfile.sandbox-workcell
+          committed_recipe="$(sha256sum artifacts/monitored/Dockerfile.sandbox-workcell | cut -d ' ' -f 1)"
           test "$committed_recipe" = "$expected_recipe"
-          test "$checked_out_recipe" = "$expected_recipe"
           {
             echo "repository=$(jq -er '.workcell.repository' security/monitored-images.json)"
             echo "index_digest=$(jq -er '.workcell.index_digest' security/monitored-images.json)"
@@ -155,7 +154,7 @@ jobs:
           test -n "$VERIFIED_IMAGE_ID"
           go run ./cmd/grype-gate --report artifacts/sandbox-workcell-grype.json --minimum high \
             --accepted-risk security/accepted-risks/http-cache-semantics-20261003.json \
-            --image-id "$VERIFIED_IMAGE_ID" --annotation-file Dockerfile.sandbox-workcell
+            --image-id "$VERIFIED_IMAGE_ID" --annotation-file artifacts/monitored/Dockerfile.sandbox-workcell
 
       - name: Retain bounded scan and identity evidence even on failure
         if: always()

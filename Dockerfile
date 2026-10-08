@@ -60,7 +60,7 @@ LABEL org.opencontainers.image.title="Aeontra" \
 COPY --from=build /usr/local/go /usr/local/go
 
 RUN apk upgrade --no-cache \
-	&& apk add --no-cache ca-certificates curl git libstdc++ nodejs-22 \
+	&& apk add --no-cache ca-certificates curl git libstdc++ nodejs-22 libssl3=3.6.5-r1 libcrypto3=3.6.5-r1 \
 	&& test "$(node --version)" = v22.23.2 \
 	&& test ! -e /usr/local/lib/node_modules/npm \
 	&& test ! -e /usr/lib/node_modules/npm \

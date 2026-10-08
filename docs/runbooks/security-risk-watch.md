@@ -21,8 +21,11 @@ discover production state or automatically update this inventory.
 
 The workflow validates the index-to-amd64-manifest mapping, manifest-to-OCI-config
 digest, pulled image ID, revision label and Linux/amd64 platform. It verifies the
-workcell Dockerfile SHA-256 both in the recorded source revision and in the monitor's
-checkout. Only then does it add the local `mcp-sandbox-workcell:ci` tag used by the
+workcell Dockerfile SHA-256 in the recorded immutable source revision. A newer
+recipe on `main` does not describe an older deployed image. The accepted-risk policy
+still comes from the current monitor checkout so a revoked or changed approval is
+never restored from historical Git. Only then does it add the local
+`mcp-sandbox-workcell:ci` tag used by the
 existing corrected-zlib VEX. An old or otherwise mismatched image cannot receive that
 tag through this workflow. The accepted-risk policy independently binds the report's
 image ID, exact recipe and package finding.
@@ -64,6 +67,15 @@ steps and a private runner-temporary Docker configuration. Credentials are remov
 before analysis and on every terminal path; the workcell is never launched and receives
 no token. A private package must grant the repository read access. A login succeeding
 does not prove that the exact private digest can be read.
+
+The current source recipe selects `libssl3=3.6.5-r1` and `libcrypto3=3.6.5-r1` to
+repair the OpenSSL findings. Its CI policy rebinds the existing bundled-npm exception
+to that reviewed recipe without changing the package, advisories, location, severity
+or expiry. This source change does not update the deployed-image inventory: replace
+its identities only after protected publication and a verified rollout. Scans of an
+older image must still report its remaining OpenSSL findings as blocking. Until the
+replacement image and inventory are verified, the changed policy recipe binding also
+rejects the old workcell; it never inherits approval for a different recipe.
 
 ## Operator acceptance and maintenance
 

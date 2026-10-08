@@ -11,6 +11,8 @@ RUN apk add --no-cache \
       jq=1.8.2-r1 \
       ld-linux-2.44=2.44-r6 \
       libcrypt1-2.44=2.44-r6 \
+      libcrypto3=3.6.5-r1 \
+      libssl3=3.6.5-r1 \
       nodejs-24=24.19.0-r0 \
       npm=12.0.2-r0 \
       py3.14-pip=26.2.1-r2 \
