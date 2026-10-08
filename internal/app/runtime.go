@@ -380,6 +380,10 @@ func buildTaskJournal(root string) (*taskjournal.Journal, error) {
 }
 
 func buildToolService(cfg config.Config, pol *policy.Policy, logger *audit.Logger, primary, brainRoot, stateRoot string) (*tools.Service, error) {
+	assetLibrary, err := buildAssetLibrary(pol.Roots())
+	if err != nil {
+		return nil, err
+	}
 	maintainerProfile, err := loadMaintainerProfile()
 	if err != nil {
 		return nil, err
@@ -388,6 +392,7 @@ func buildToolService(cfg config.Config, pol *policy.Policy, logger *audit.Logge
 		WithTestCommand(cfg.TestCommand).
 		WithSandboxRunner(buildSandboxRunner(cfg, primary)).
 		WithValidationRunner(buildValidationRunnerFromEnv()).
+		WithAssetLibrary(assetLibrary).
 		WithMaintainerProfile(maintainerProfile)
 
 	privileged, err := loadPrivilegedConfig()

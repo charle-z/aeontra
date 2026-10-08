@@ -359,6 +359,7 @@ routes. This is the recommended deployment for a marketing domain.
 | `MCP_DEVBOX_STATE_ROOT` | all durable server state | Recommended in production; sensitive path | user-configuration state keyed by primary-root digest; absolute path disjoint from every repository root | `/state`; persistent volume outside the repository jail | Missing uses the private user-level default. Relative, root, NUL, or repository-overlapping paths fail startup. |
 | `MCP_DEVBOX_TASK_ROOT` | durable task journal | Optional; sensitive path | none outside image; image `/state/tasks`; absolute path | `/state/tasks`; `/state` volume | Missing disables the task journal. Invalid path or open failure fails startup. |
 | `MCP_DEVBOX_BRAIN_ROOT` | Brain | Required to enable Brain; sensitive path | unset/disabled; absolute and disjoint from repo roots | `/brain`; dedicated volume | Missing leaves Brain tools registered but unavailable. Invalid source, permissions, overlap, Git, or index state fails startup. |
+| `MCP_DEVBOX_ASSET_LIBRARY` | reviewed raster assets | Optional; sensitive operator-owned path | unset/disabled; absolute regular Linux JSON manifest outside all repository roots, same-UID private parent and file | `/state/assets/library.json`; parent `0700`, file `0600` or `0400` | Missing leaves asset tools unavailable. Invalid entries, ownership, permissions, symlink or overlap fail startup. The manifest is loaded once; MCP cannot change it. |
 | `MCP_DEVBOX_MAINTAINER_PROFILE` | repository-maintainer operations | Optional; not secret | unset/disabled or exact `charle-z-production` | maintainer-controlled platform env only | Missing is the portable default: fixed Front Door, production backend, Brain deployment, and official Edge-release maintenance operations fail closed. Unsupported values fail startup. Third-party operators must leave it unset. |
 | `MCP_DEVBOX_OBSERVABILITY` | structured events | Optional; not secret | library default `stderr`; image `file`; `off`, `stderr`, `file`, `both` | `file`; platform env | Missing uses the applicable default. Invalid mode fails startup. |
 | `MCP_DEVBOX_OBSERVABILITY_PATH` | JSONL sink | Required only for an explicit path; sensitive path | in file/both mode defaults to `<state>/logs/observability.jsonl`; absolute path | `/state/logs/observability.jsonl`; `/state` volume | Invalid, unsafe, or unwritable path fails startup. |
@@ -477,7 +478,7 @@ because they appear in source.
 | `/state/results` | bounded redacted `result_ref` payloads | persistent when result continuity matters | sensitive operational data; expire/clean by store policy |
 | `/state/logs` | audit and observability segments | persistent; private fixed rotation | back up when audit retention requires it |
 | `/state/telemetry` | content-free aggregate SQLite metrics | persistent but reconstructability is limited | retain per operational policy; never treat it as request-content evidence |
-| `/state/model-turns` | durable model-turn coordination | persistent | private control-plane state; never expose to repository tools |
+| `/state/model-turns` | durable model-turn coordination and optional controller generations | persistent; additive controller table, response columns and admission trigger | private control-plane state; preserve in a consistent pre-rollout backup and never expose to repository tools |
 | `/state/edge` | paired Edge/control operations | persistent; oldest terminal operations are reclaimed within the fixed page budget | private authority state; queued and leased operations are never reclaimed; back up and protect separately |
 | `<edge-state>/project-runtime/<workspace-id>` | per-workspace toolchain homes and mutable runtime state, including a pre-created `home` directory | persistent until an administrator-controlled exact workspace cleanup; owner-only | outside the source tree; `project_toolbox_cleanup` removes the toolbox record/container but does not remove these roots; never expose the path to an MCP client; validate ownership and symlink ancestry |
 | `<edge-state>/project-cache/<workspace-id>` | package-manager and compiler caches | disposable but persistent between runs when retained | outside the source tree; reclaim only through an administrator-controlled exact workspace cleanup; no general cache purge is implicit |
@@ -489,7 +490,7 @@ because they appear in source.
 | `/opt/mcp-devbox/releases/<release>` and `/opt/mcp-devbox/current` | signed immutable Edge releases and active link | root-owned package/updater state | replace only through the signed installer/updater; source release and installed release require separate evidence |
 | `/opt/mcp-devbox/current/codex/codex` | pinned stock Codex CLI used by the active signed harness | immutable component hashed by the Edge manifest | mounted read-only at `/mcp-codex` only inside the selected trusted Linux workcell |
 | `/opt/mcp-devbox/current/codex/container-tools/` | Docker CLI 29.8.1 and Buildx 0.37.1 in Linux manifest v7 | immutable components hashed by the signed Edge manifest | mounted read-only inside the selected Codex Linux workcell; no container daemon or host socket is bundled |
-| `/state/workqueue/queue.db` | durable control-plane jobs, task groups, development objectives, capability/source/environment digests, versioned Git or test evidence criteria, receipts, leases, fences and opaque worker bindings | private SQLite schema version 3; v1/v2 migrate transactionally and older readers fail closed on v3, `0600`, single active writer | never contains prompts, source bodies, host paths, commands or credentials |
+| `/state/workqueue/queue.db` | durable control-plane jobs, task groups, development objectives, capability/source/environment digests, versioned evidence and declared objective contracts, receipts, leases, fences and opaque worker bindings | private SQLite schema version 4; v1/v2/v3 migrate transactionally and older readers fail closed on v4, `0600`, single active writer | never contains prompts, source bodies, host paths, commands or credentials |
 | `~/.local/state/mcp-edge/project-worktrees.db` | Edge-private managed worktree identity, ownership and fence registry | private SQLite, `0600` | paths remain local and are never returned by public task tools |
 | `<edge-state>/worktree-test-profile.json` | one optional operator-owned managed-worktree test profile | private regular file, owner UID, exact `0600`, canonical JSON with version `1`, profile ID, fixed argv and timeout; absent by default | never writable through a public MCP tool; only its ID, digest and timeout are returned to a task start |
 | `/opt/mcp-devbox/current/codex/pin.json` | official tag, asset, archive SHA-256, binary SHA-256 and provider contract | immutable component hashed by the Edge manifest | server-owned input; a runtime request cannot replace the executable, pin or provider URL |
@@ -497,6 +498,28 @@ because they appear in source.
 No secret store, OAuth store, Edge identity, local Git credential, Docker socket, or
 host-private state path should be exposed as a repository alias or normal agent-writable
 mount.
+
+## Reviewed asset library
+
+`MCP_DEVBOX_ASSET_LIBRARY` enables three optional image tools. Its JSON object has
+`version: 1` and a nonempty `assets` array of at most 256 entries; the entire file is
+limited to 512 KiB. Each entry requires `id`, `title`, `url`, `sha256`, `mime`,
+`max_bytes`, `license`, `license_url`, `attribution`, `provenance`, `reviewed_by` and
+`reviewed_at` (an ISO date). IDs use lowercase letters, digits, `_` and `-`; hashes
+are 64 lowercase hexadecimal characters. Unknown fields are rejected.
+
+Sources must be direct, credential-free public HTTPS URLs on port 443, without query
+strings or fragments. Only `image/png` and `image/jpeg` are supported. `max_bytes`
+cannot exceed 8 MiB, and decoded images are bounded to 4096 pixels per dimension and
+16 megapixels. The operator reviews source, license and attribution before adding an
+entry. The server verifies pinned bytes, not legal rights.
+
+Keep the library outside every repository root in a same-UID, owner-private directory.
+Recommended modes are `0700` for its parent and `0600` or `0400` for the file; no group
+or other access is accepted. Symlink ancestry is rejected. Mount and persist the
+manifest as operator configuration; a changed library requires a normal restart.
+MCP cannot add entries or reload it. An unset library keeps the tools disabled.
+Materialization currently targets only Linux backend repositories, not Edge workspaces.
 
 ## Secret handling
 

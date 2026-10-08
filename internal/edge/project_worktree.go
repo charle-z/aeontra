@@ -45,10 +45,11 @@ func normalizeProjectWorktreeRequest(kind OperationKind, request OperationReques
 		}
 		base.WorktreeID, base.WorkJobID, base.WorkLeaseID, base.WorkFence = request.WorktreeID, request.WorkJobID, request.WorkLeaseID, request.WorkFence
 	case OperationProjectWorktreeStatus:
-		if !projectWorktreeIDPattern.MatchString(request.WorktreeID) {
+		if !projectWorktreeIDPattern.MatchString(request.WorktreeID) || !validWorktreeAncestorCommits(request.WorktreeAncestorCommits) {
 			return OperationRequest{}, errors.New("project worktree status request is invalid")
 		}
 		base.WorktreeID = request.WorktreeID
+		base.WorktreeAncestorCommits = request.WorktreeAncestorCommits
 	case OperationProjectWorktreeList:
 		if request.WorktreeLimit < 1 || request.WorktreeLimit > 100 {
 			return OperationRequest{}, errors.New("project worktree list request is invalid")
@@ -70,16 +71,20 @@ func normalizeProjectWorktreeRequest(kind OperationKind, request OperationReques
 }
 
 func emptyProjectWorktreeRequestFields(request OperationRequest) bool {
-	return request.WorktreeID == "" && request.WorktreeBaseCommit == "" && request.WorktreeRole == "" && request.WorkJobID == "" && request.WorkLeaseID == "" && request.WorkFence == 0 && request.WorktreeLimit == 0 && request.TestProfileID == "" && request.TestProfileDigest == ""
+	return len(request.WorktreeAncestorCommits) == 0 && request.WorktreeID == "" && request.WorktreeBaseCommit == "" && request.WorktreeRole == "" && request.WorkJobID == "" && request.WorkLeaseID == "" && request.WorkFence == 0 && request.WorktreeLimit == 0 && request.TestProfileID == "" && request.TestProfileDigest == ""
 }
 
 func hasProjectWorktreeResult(result OperationResult) bool {
-	return result.WorktreeID != "" || result.WorktreeState != "" || result.WorktreeRole != "" || result.WorktreeBaseCommit != "" || result.WorktreeBranch != "" ||
+	return len(result.WorktreeAncestorCommits) != 0 || result.WorktreeAncestorsVerified || result.WorktreeID != "" || result.WorktreeState != "" || result.WorktreeRole != "" || result.WorktreeBaseCommit != "" || result.WorktreeBranch != "" ||
 		result.WorktreeEvidenceKnown || result.WorktreeHeadCommit != "" || result.WorktreeClean || result.WorktreeCommitsAheadBase != 0 || result.WorktreeChangedPathCount != 0 ||
 		result.WorkJobID != "" || result.WorkLeaseID != "" || result.WorkFence != 0 || result.WorktreeCreatedAt != "" || result.WorktreeUpdatedAt != "" || len(result.Worktrees) != 0
 }
 
 func validProjectWorktreeResultForKind(kind OperationKind, result OperationResult) bool {
+	if !validWorktreeAncestorCommits(result.WorktreeAncestorCommits) || (len(result.WorktreeAncestorCommits) != 0) != result.WorktreeAncestorsVerified ||
+		(kind != OperationProjectWorktreeStatus && (result.WorktreeAncestorsVerified || len(result.WorktreeAncestorCommits) != 0)) {
+		return false
+	}
 	if kind == OperationProjectWorktreeList {
 		if len(result.Worktrees) > 100 || result.WorktreeID != "" || result.WorktreeState != "" || result.WorktreeRole != "" || result.WorktreeBaseCommit != "" || result.WorktreeBranch != "" || result.WorkJobID != "" || result.WorkLeaseID != "" || result.WorkFence != 0 {
 			return false
@@ -122,10 +127,25 @@ func validProjectWorktreeResultForKind(kind OperationKind, result OperationResul
 	metadata := result
 	metadata.WorktreeID, metadata.WorktreeState, metadata.WorktreeRole, metadata.WorktreeBaseCommit, metadata.WorktreeBranch = "", "", "", "", ""
 	metadata.WorktreeEvidenceKnown, metadata.WorktreeHeadCommit, metadata.WorktreeClean = false, "", false
+	metadata.WorktreeAncestorCommits, metadata.WorktreeAncestorsVerified = nil, false
 	metadata.WorktreeCommitsAheadBase, metadata.WorktreeChangedPathCount = 0, 0
 	metadata.WorkJobID, metadata.WorkLeaseID, metadata.WorkFence = "", "", 0
 	metadata.WorktreeCreatedAt, metadata.WorktreeUpdatedAt = "", ""
 	return validProjectOperationResult(metadata)
+}
+
+func validWorktreeAncestorCommits(commits []string) bool {
+	if len(commits) > 4 {
+		return false
+	}
+	seen := make(map[string]bool)
+	for _, commit := range commits {
+		if !projectWorktreeCommitPattern.MatchString(commit) || seen[commit] {
+			return false
+		}
+		seen[commit] = true
+	}
+	return true
 }
 
 func validProjectWorktreeSummary(item ProjectWorktreeSummary) bool {

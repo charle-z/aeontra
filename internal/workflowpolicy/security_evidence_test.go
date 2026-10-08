@@ -215,6 +215,26 @@ func TestSandboxWorkcellSmokeVerifiesPatchedZlib(t *testing.T) {
 	}
 }
 
+func TestSandboxWorkcellSmokeVerifiesRuntimeOpenSSLVersion(t *testing.T) {
+	content, err := os.ReadFile("../../scripts/test-sandbox-workcell-toolchains.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(content)
+	for _, required := range []string{
+		"ssl.OPENSSL_VERSION_NUMBER >= 0x30600050",
+		"ssl.create_default_context()",
+		"python_tls=ready",
+	} {
+		if !strings.Contains(text, required) {
+			t.Errorf("runtime TLS smoke must contain %q", required)
+		}
+	}
+	if strings.Contains(text, "ssl.OPENSSL_VERSION_INFO[:3]") {
+		t.Error("OpenSSL 3 patch version is not the third legacy tuple component")
+	}
+}
+
 func TestSandboxWorkcellSmokeVerifiesPipForItsPython(t *testing.T) {
 	content, err := os.ReadFile("../../scripts/test-sandbox-workcell-toolchains.sh")
 	if err != nil {

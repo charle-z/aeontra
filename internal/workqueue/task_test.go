@@ -42,7 +42,7 @@ func TestSchemaOneMigratesToDurableTaskGroupsAndObjectives(t *testing.T) {
 	}
 	defer store.Close()
 	var version int
-	if err := store.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 3 {
+	if err := store.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != schemaVersion {
 		t.Fatalf("version=%d err=%v", version, err)
 	}
 	tasks, err := store.Tasks(10)
@@ -205,7 +205,7 @@ func TestSchemaThreeMigrationPreservesLegacyTasksWithoutAcceptanceContract(t *te
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	var version int
-	if err := store.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 3 {
+	if err := store.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != schemaVersion {
 		t.Fatalf("version=%d err=%v", version, err)
 	}
 	var ignoredExtension string
@@ -448,7 +448,7 @@ func TestTaskTestAcceptanceReceiptIsDurableImmutableAndContractBound(t *testing.
 	}
 	defer store.Close()
 	var version int
-	if err := store.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 3 {
+	if err := store.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != schemaVersion {
 		t.Fatalf("schema version=%d err=%v", version, err)
 	}
 	persisted, found, err := store.Task(task.ID)

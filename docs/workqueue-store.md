@@ -20,7 +20,7 @@ The control plane opens one private root and stores:
 ```
 
 The root is a real non-symlink directory with private permissions. `queue.db` is SQLite
-schema version 3, mode `0600`, WAL, `synchronous=FULL`, foreign keys, bounded pages and
+schema version 4, mode `0600`, WAL, `synchronous=FULL`, foreign keys, bounded pages and
 one database connection. A non-blocking advisory lock allows exactly one active
 control-plane writer and releases automatically when the process exits. `Writers`
 values other than one fail closed. Redis and additional resident queue services are not
@@ -31,6 +31,11 @@ A v2 binary must reject a v3 database instead of operating while unaware of obje
 state. Take a private backup before rollback and stop coordination; recovery under an
 older binary requires restoring a compatible pre-upgrade backup rather than editing
 SQLite manually.
+
+Schema 4 additionally stores the opt-in declared objective contract and immutable
+objective receipt. Its migration preserves existing v3 records with empty defaults.
+A schema-3 binary rejects the new version; rollback requires the consistent pre-upgrade
+backup. Ordinary tasks retain their previous evidence and manual-review behavior.
 
 The persisted controller identity must match on reopen. A second controller identity, future schema, unsafe symlink/layout, corrupt database, row overflow or storage above 64 MiB blocks opening.
 
@@ -147,6 +152,38 @@ caller key is a retry-correlation token; the Edge cleanup operation key is serve
 from the task and worker. Cleanup removes the registered worktree but deliberately
 preserves its Git branch, Git evidence receipt and durable task record. The task remains
 semantically pending for review.
+
+## Declared task objective acceptance
+
+The optional `objective_contract` pins explicit source criteria and declares that the
+operator-owned `test_profile_id` checks the worker goals. Every criterion is required
+on the wire; zero change minima and dirty source are allowed when selected. Legacy
+Git/test evidence contracts do not become semantic acceptance implicitly.
+
+Acceptance requires successful runtime completion, a fresh passing exact-source test
+receipt and current Git evidence matching the declared criteria. The immutable objective
+receipt binds the goal hashes, profile, test receipt and source facts. All workers must
+be accepted for task acceptance. Status revalidates existing worktrees; after managed
+cleanup, retained acceptance describes the recorded tested source rather than later
+changes to its branch. See ADR 0009 and `docs/tools.md` for the public contract.
+
+## Reviewed task integration
+
+An opt-in version-1 integration contract selects exact committed HEADs from two to
+four workers of one completed same-project/same-target task and the exact canonical
+base. A separate single reviewer/integrator requires a clean declared objective and
+an operator-owned test profile. Schema 4 also retains the contract, server-captured
+source identity/receipt pins and immutable integration receipt with empty legacy
+defaults. Creation and cleanup markers share the store transaction; active source
+pins prevent cleanup while integration still needs them.
+
+Source status is revalidated at launch, replay and acceptance. The Edge checks selected
+commit ancestry with fixed read-only Git commands and rereads the integrator's exact
+HEAD/clean state afterward. Acceptance combines that proof with current objective/test
+evidence. Failed or missing ancestry, stale sources and receipt conflicts require
+reconciliation. No publication or automatic conflict resolution is implied. After
+managed cleanup, a receipt records the tested integrated source rather than observing
+future edits to the preserved branch.
 
 ## Durable development objectives
 

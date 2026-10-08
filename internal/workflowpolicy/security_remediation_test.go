@@ -71,6 +71,26 @@ func TestBackendRuntimeKeepsNodeWithoutNPM(t *testing.T) {
 	}
 }
 
+func TestWolfiRuntimesSelectFixedOpenSSL(t *testing.T) {
+	for _, name := range []string{"Dockerfile", "Dockerfile.site", "Dockerfile.front-door", "Dockerfile.front-door-coordinator", "Dockerfile.validation-runner", "Dockerfile.sandbox-workcell"} {
+		t.Run(name, func(t *testing.T) {
+			content, err := os.ReadFile("../../" + name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			runtime := string(content)
+			if start := strings.LastIndex(runtime, "\nFROM "); start >= 0 {
+				runtime = runtime[start:]
+			}
+			for _, required := range []string{"libssl3=3.6.5-r1", "libcrypto3=3.6.5-r1"} {
+				if !strings.Contains(runtime, required) {
+					t.Errorf("final runtime must select the corrected OpenSSL package %q", required)
+				}
+			}
+		})
+	}
+}
+
 func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 	files := map[string]string{
 		"go.mod":                            "../../go.mod",

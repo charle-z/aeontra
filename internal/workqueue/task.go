@@ -46,6 +46,9 @@ type TaskSpec struct {
 	GoalHash                string
 	AcceptanceContract      *TaskAcceptanceContract
 	TestAcceptanceContract  *TaskTestAcceptanceContract
+	ObjectiveContract       *TaskObjectiveContract
+	IntegrationContract     *TaskIntegrationContract
+	IntegrationPins         []TaskIntegrationSourcePin
 	WorkerGoalHashes        []string
 	WorkerGoalRefs          []string
 	Pool                    string
@@ -67,6 +70,10 @@ type TaskGroup struct {
 	ExecutionTimeoutSeconds int                         `json:"execution_timeout_seconds"`
 	AcceptanceContract      *TaskAcceptanceContract     `json:"git_evidence_contract,omitempty"`
 	TestAcceptanceContract  *TaskTestAcceptanceContract `json:"-"`
+	ObjectiveContract       *TaskObjectiveContract      `json:"objective_contract,omitempty"`
+	IntegrationContract     *TaskIntegrationContract    `json:"integration_contract,omitempty"`
+	IntegrationPins         []TaskIntegrationSourcePin  `json:"-"`
+	IntegrationReceipt      *TaskIntegrationReceipt     `json:"-"`
 	State                   TaskState                   `json:"state"`
 	Workers                 []TaskWorker                `json:"workers"`
 	CreatedAt               time.Time                   `json:"created_at"`
@@ -140,6 +147,7 @@ type TaskWorker struct {
 	WorktreeCleaned       bool                       `json:"-"`
 	AcceptanceReceipt     *TaskAcceptanceReceipt     `json:"-"`
 	TestAcceptanceReceipt *TaskTestAcceptanceReceipt `json:"-"`
+	ObjectiveReceipt      *TaskObjectiveReceipt      `json:"-"`
 	Summary               string                     `json:"summary,omitempty"`
 	GoalHash              string                     `json:"-"`
 	GoalRef               string                     `json:"-"`
@@ -281,10 +289,28 @@ func (s *Store) CreateTask(spec TaskSpec) (TaskGroup, bool, error) {
 		return TaskGroup{}, false, errors.New("workqueue: task identity unavailable")
 	}
 	now := s.clock().UTC()
+	if err := validateTaskIntegrationSourcesTx(tx, TaskGroup{Project: spec.Project, Target: spec.Target, BaseCommit: spec.BaseCommit, IntegrationContract: spec.IntegrationContract, IntegrationPins: spec.IntegrationPins}); err != nil {
+		return TaskGroup{}, false, err
+	}
 	contractVersion, minimumCommits, minimumChangedPaths, testProfileID, testProfileDigest := taskAcceptanceColumns(spec.AcceptanceContract, spec.TestAcceptanceContract)
-	if _, err := tx.Exec(`INSERT INTO task_groups(task_id,idempotency_key,project_alias,target_alias,base_commit,goal_hash,pool,profile,worker_count,execution_timeout_seconds,acceptance_contract_version,acceptance_min_commits_ahead,acceptance_min_changed_paths,test_profile_id,test_profile_digest,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		taskID, spec.IdempotencyKey, spec.Project, spec.Target, spec.BaseCommit, spec.GoalHash, spec.Pool, spec.Profile, spec.WorkerCount, spec.ExecutionTimeoutSeconds, contractVersion, minimumCommits, minimumChangedPaths, testProfileID, testProfileDigest, now.UnixNano(), now.UnixNano()); err != nil {
+	objectiveJSON := ""
+	if spec.ObjectiveContract != nil {
+		encoded, err := json.Marshal(spec.ObjectiveContract)
+		if err != nil {
+			return TaskGroup{}, false, errors.New("workqueue: objective contract encoding failed")
+		}
+		objectiveJSON = string(encoded)
+	}
+	if _, err := tx.Exec(`INSERT INTO task_groups(task_id,idempotency_key,project_alias,target_alias,base_commit,goal_hash,pool,profile,worker_count,execution_timeout_seconds,acceptance_contract_version,acceptance_min_commits_ahead,acceptance_min_changed_paths,test_profile_id,test_profile_digest,objective_contract,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		taskID, spec.IdempotencyKey, spec.Project, spec.Target, spec.BaseCommit, spec.GoalHash, spec.Pool, spec.Profile, spec.WorkerCount, spec.ExecutionTimeoutSeconds, contractVersion, minimumCommits, minimumChangedPaths, testProfileID, testProfileDigest, objectiveJSON, now.UnixNano(), now.UnixNano()); err != nil {
 		return TaskGroup{}, false, errors.New("workqueue: task persistence failed")
+	}
+	if spec.IntegrationContract != nil {
+		contract, _ := json.Marshal(spec.IntegrationContract)
+		pins, _ := json.Marshal(spec.IntegrationPins)
+		if _, err := tx.Exec(`UPDATE task_groups SET integration_contract=?,integration_pins=?,integration_source_task=? WHERE task_id=?`, string(contract), string(pins), spec.IntegrationContract.SourceTaskID, taskID); err != nil {
+			return TaskGroup{}, false, errors.New("workqueue: integration pins persistence failed")
+		}
 	}
 	for ordinal := 0; ordinal < spec.WorkerCount; ordinal++ {
 		jobID, err := randomID("wj_")
@@ -604,6 +630,15 @@ func (s *Store) MarkTaskWorkerWorktreeCleaned(taskID string, ordinal int, leaseI
 	if task.TestAcceptanceContract != nil && worker.State == StateSucceeded && worker.TestAcceptanceReceipt == nil {
 		return errors.New("workqueue: task cleanup evidence is incomplete")
 	}
+	if task.ObjectiveContract != nil && worker.State == StateSucceeded && worker.ObjectiveReceipt == nil {
+		return errors.New("workqueue: task objective receipt is required before cleanup")
+	}
+	if task.IntegrationContract != nil && worker.State == StateSucceeded && task.IntegrationReceipt == nil {
+		return errors.New("workqueue: integration receipt is required before cleanup")
+	}
+	if required, err := taskRequiredByIntegration(tx, taskID); err != nil || required {
+		return errors.New("workqueue: task is pinned by a pending integration")
+	}
 	if _, err := tx.Exec(`UPDATE task_workers SET worktree_cleaned=1 WHERE task_id=? AND ordinal=? AND worktree_cleaned=0`, taskID, ordinal); err != nil {
 		return errors.New("workqueue: task cleanup marker persistence failed")
 	}
@@ -874,7 +909,8 @@ func validateTaskSpec(spec TaskSpec) error {
 		!taskCommitPattern.MatchString(spec.BaseCommit) || !payloadHashPattern.MatchString(spec.GoalHash) || !poolPattern.MatchString(spec.Pool) ||
 		!profilePattern.MatchString(spec.Profile) || spec.WorkerCount < 1 || spec.WorkerCount > MaxTaskWorkers || spec.ExecutionTimeoutSeconds < 1 || spec.ExecutionTimeoutSeconds > 86400 || len(spec.WorkerGoalHashes) != spec.WorkerCount || len(spec.WorkerGoalRefs) != spec.WorkerCount ||
 		ValidateTaskAcceptanceContract(spec.AcceptanceContract) != nil || ValidateTaskTestAcceptanceContract(spec.TestAcceptanceContract) != nil ||
-		(spec.AcceptanceContract != nil && spec.TestAcceptanceContract != nil) {
+		(spec.AcceptanceContract != nil && spec.TestAcceptanceContract != nil) || ValidateTaskObjectiveContract(spec.ObjectiveContract) != nil ||
+		(spec.ObjectiveContract != nil && (spec.TestAcceptanceContract == nil || spec.AcceptanceContract != nil)) || !validTaskIntegrationSpec(spec) {
 		return errors.New("workqueue: task specification is invalid")
 	}
 	for index, hash := range spec.WorkerGoalHashes {
@@ -910,14 +946,39 @@ func taskByID(scanner interface {
 	var task TaskGroup
 	var createdAt, updatedAt int64
 	var contractVersion, minimumCommits, minimumChangedPaths int
-	var testProfileID, testProfileDigest string
-	err := scanner.QueryRow(`SELECT task_id,idempotency_key,project_alias,target_alias,base_commit,goal_hash,pool,profile,worker_count,execution_timeout_seconds,acceptance_contract_version,acceptance_min_commits_ahead,acceptance_min_changed_paths,test_profile_id,test_profile_digest,created_at,updated_at FROM task_groups WHERE task_id=?`, taskID).Scan(
-		&task.ID, &task.IdempotencyKey, &task.Project, &task.Target, &task.BaseCommit, &task.GoalHash, &task.Pool, &task.Profile, &task.WorkerCount, &task.ExecutionTimeoutSeconds, &contractVersion, &minimumCommits, &minimumChangedPaths, &testProfileID, &testProfileDigest, &createdAt, &updatedAt)
+	var testProfileID, testProfileDigest, objectiveJSON, integrationJSON, integrationPinsJSON, integrationReceiptJSON, integrationSourceTask string
+	err := scanner.QueryRow(`SELECT task_id,idempotency_key,project_alias,target_alias,base_commit,goal_hash,pool,profile,worker_count,execution_timeout_seconds,acceptance_contract_version,acceptance_min_commits_ahead,acceptance_min_changed_paths,test_profile_id,test_profile_digest,objective_contract,created_at,updated_at FROM task_groups WHERE task_id=?`, taskID).Scan(
+		&task.ID, &task.IdempotencyKey, &task.Project, &task.Target, &task.BaseCommit, &task.GoalHash, &task.Pool, &task.Profile, &task.WorkerCount, &task.ExecutionTimeoutSeconds, &contractVersion, &minimumCommits, &minimumChangedPaths, &testProfileID, &testProfileDigest, &objectiveJSON, &createdAt, &updatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return TaskGroup{}, false, nil
 	}
 	if err != nil {
 		return TaskGroup{}, false, errors.New("workqueue: task read failed")
+	}
+	if err := scanner.QueryRow(`SELECT integration_contract,integration_pins,integration_receipt,integration_source_task FROM task_groups WHERE task_id=?`, taskID).Scan(&integrationJSON, &integrationPinsJSON, &integrationReceiptJSON, &integrationSourceTask); err != nil {
+		return TaskGroup{}, false, errors.New("workqueue: integration state unavailable")
+	}
+	if integrationJSON != "" {
+		var contract TaskIntegrationContract
+		if err := decodeTaskObjectiveRecord(integrationJSON, &contract); err != nil {
+			return TaskGroup{}, false, err
+		}
+		task.IntegrationContract = &contract
+		if integrationSourceTask != contract.SourceTaskID {
+			return TaskGroup{}, false, errors.New("workqueue: integration source index conflicts")
+		}
+		if err := decodeTaskObjectiveRecord(integrationPinsJSON, &task.IntegrationPins); err != nil {
+			return TaskGroup{}, false, err
+		}
+	} else if integrationPinsJSON != "" || integrationReceiptJSON != "" || integrationSourceTask != "" {
+		return TaskGroup{}, false, errors.New("workqueue: orphan integration evidence")
+	}
+	if integrationReceiptJSON != "" {
+		var receipt TaskIntegrationReceipt
+		if err := decodeTaskObjectiveRecord(integrationReceiptJSON, &receipt); err != nil {
+			return TaskGroup{}, false, err
+		}
+		task.IntegrationReceipt = &receipt
 	}
 	switch contractVersion {
 	case 0:
@@ -940,8 +1001,15 @@ func taskByID(scanner interface {
 	default:
 		return TaskGroup{}, false, errors.New("workqueue: task acceptance contract is unsupported")
 	}
+	if objectiveJSON != "" {
+		var contract TaskObjectiveContract
+		if err := decodeTaskObjectiveRecord(objectiveJSON, &contract); err != nil {
+			return TaskGroup{}, false, err
+		}
+		task.ObjectiveContract = &contract
+	}
 	task.CreatedAt, task.UpdatedAt = time.Unix(0, createdAt).UTC(), time.Unix(0, updatedAt).UTC()
-	rows, err := scanner.Query(`SELECT tw.ordinal,j.job_id,j.state,j.reason,j.cancel_requested,j.attempt,j.fence,COALESCE(j.lease_id,''),COALESCE(j.lease_holder,''),COALESCE(j.lease_until,0),tw.operation_id,tw.worktree_id,tw.workspace_id,tw.runtime_id,tw.worktree_cleaned,tw.acceptance_receipt,tw.test_acceptance_receipt,COALESCE(j.summary,''),j.payload_hash,tw.goal_ref,j.updated_at FROM task_workers tw JOIN jobs j ON j.job_id=tw.job_id WHERE tw.task_id=? ORDER BY tw.ordinal`, taskID)
+	rows, err := scanner.Query(`SELECT tw.ordinal,j.job_id,j.state,j.reason,j.cancel_requested,j.attempt,j.fence,COALESCE(j.lease_id,''),COALESCE(j.lease_holder,''),COALESCE(j.lease_until,0),tw.operation_id,tw.worktree_id,tw.workspace_id,tw.runtime_id,tw.worktree_cleaned,tw.acceptance_receipt,tw.test_acceptance_receipt,tw.objective_receipt,COALESCE(j.summary,''),j.payload_hash,tw.goal_ref,j.updated_at FROM task_workers tw JOIN jobs j ON j.job_id=tw.job_id WHERE tw.task_id=? ORDER BY tw.ordinal`, taskID)
 	if err != nil {
 		return TaskGroup{}, false, errors.New("workqueue: task workers unavailable")
 	}
@@ -949,8 +1017,8 @@ func taskByID(scanner interface {
 	for rows.Next() {
 		var worker TaskWorker
 		var leaseUntil, workerUpdatedAt int64
-		var receiptJSON, testReceiptJSON string
-		if err := rows.Scan(&worker.Ordinal, &worker.JobID, &worker.State, &worker.Reason, &worker.CancelRequested, &worker.Attempt, &worker.Fence, &worker.LeaseID, &worker.LeaseHolder, &leaseUntil, &worker.OperationID, &worker.WorktreeID, &worker.WorkspaceID, &worker.RuntimeID, &worker.WorktreeCleaned, &receiptJSON, &testReceiptJSON, &worker.Summary, &worker.GoalHash, &worker.GoalRef, &workerUpdatedAt); err != nil {
+		var receiptJSON, testReceiptJSON, objectiveReceiptJSON string
+		if err := rows.Scan(&worker.Ordinal, &worker.JobID, &worker.State, &worker.Reason, &worker.CancelRequested, &worker.Attempt, &worker.Fence, &worker.LeaseID, &worker.LeaseHolder, &leaseUntil, &worker.OperationID, &worker.WorktreeID, &worker.WorkspaceID, &worker.RuntimeID, &worker.WorktreeCleaned, &receiptJSON, &testReceiptJSON, &objectiveReceiptJSON, &worker.Summary, &worker.GoalHash, &worker.GoalRef, &workerUpdatedAt); err != nil {
 			return TaskGroup{}, false, errors.New("workqueue: task worker read failed")
 		}
 		if receiptJSON != "" {
@@ -966,6 +1034,13 @@ func taskByID(scanner interface {
 				return TaskGroup{}, false, errors.New("workqueue: task test acceptance receipt is corrupt")
 			}
 			worker.TestAcceptanceReceipt = &receipt
+		}
+		if objectiveReceiptJSON != "" {
+			var receipt TaskObjectiveReceipt
+			if err := decodeTaskObjectiveRecord(objectiveReceiptJSON, &receipt); err != nil {
+				return TaskGroup{}, false, err
+			}
+			worker.ObjectiveReceipt = &receipt
 		}
 		worker.UpdatedAt = time.Unix(0, workerUpdatedAt).UTC()
 		if worker.UpdatedAt.After(task.UpdatedAt) {
@@ -993,7 +1068,8 @@ func taskByIDTx(tx *sql.Tx, taskID string) (TaskGroup, bool, error) {
 func taskMatchesSpec(task TaskGroup, spec TaskSpec) bool {
 	if task.IdempotencyKey != spec.IdempotencyKey || task.Project != spec.Project || task.Target != spec.Target || task.BaseCommit != spec.BaseCommit ||
 		task.GoalHash != spec.GoalHash || task.Pool != spec.Pool || task.Profile != spec.Profile || task.WorkerCount != spec.WorkerCount || task.ExecutionTimeoutSeconds != spec.ExecutionTimeoutSeconds ||
-		!sameAcceptanceContract(task.AcceptanceContract, spec.AcceptanceContract) || !sameTaskTestAcceptanceContract(task.TestAcceptanceContract, spec.TestAcceptanceContract) {
+		!sameAcceptanceContract(task.AcceptanceContract, spec.AcceptanceContract) || !sameTaskTestAcceptanceContract(task.TestAcceptanceContract, spec.TestAcceptanceContract) || !SameTaskObjectiveContract(task.ObjectiveContract, spec.ObjectiveContract) ||
+		!SameTaskIntegrationContract(task.IntegrationContract, spec.IntegrationContract) || TaskIntegrationDigest(task.IntegrationPins) != TaskIntegrationDigest(spec.IntegrationPins) {
 		return false
 	}
 	for index, worker := range task.Workers {
@@ -1013,8 +1089,12 @@ func validTask(task TaskGroup) bool {
 	for _, worker := range task.Workers {
 		workerRefs = append(workerRefs, worker.GoalRef)
 	}
-	if !taskIDPattern.MatchString(task.ID) || validateTaskSpec(TaskSpec{IdempotencyKey: task.IdempotencyKey, Project: task.Project, Target: task.Target, BaseCommit: task.BaseCommit, GoalHash: task.GoalHash, AcceptanceContract: task.AcceptanceContract, TestAcceptanceContract: task.TestAcceptanceContract, WorkerGoalHashes: workerHashes, WorkerGoalRefs: workerRefs, Pool: task.Pool, Profile: task.Profile, WorkerCount: task.WorkerCount, ExecutionTimeoutSeconds: task.ExecutionTimeoutSeconds}) != nil ||
+	if !taskIDPattern.MatchString(task.ID) || validateTaskSpec(TaskSpec{IdempotencyKey: task.IdempotencyKey, Project: task.Project, Target: task.Target, BaseCommit: task.BaseCommit, GoalHash: task.GoalHash, AcceptanceContract: task.AcceptanceContract, TestAcceptanceContract: task.TestAcceptanceContract, ObjectiveContract: task.ObjectiveContract, IntegrationContract: task.IntegrationContract, IntegrationPins: task.IntegrationPins, WorkerGoalHashes: workerHashes, WorkerGoalRefs: workerRefs, Pool: task.Pool, Profile: task.Profile, WorkerCount: task.WorkerCount, ExecutionTimeoutSeconds: task.ExecutionTimeoutSeconds}) != nil ||
 		task.CreatedAt.IsZero() || task.UpdatedAt.Before(task.CreatedAt) {
+		return false
+	}
+	if !validTaskIntegrationSpec(TaskSpec{BaseCommit: task.BaseCommit, WorkerCount: task.WorkerCount, ObjectiveContract: task.ObjectiveContract, TestAcceptanceContract: task.TestAcceptanceContract, IntegrationContract: task.IntegrationContract, IntegrationPins: task.IntegrationPins}) ||
+		(task.IntegrationReceipt != nil && !validTaskIntegrationReceipt(task, *task.IntegrationReceipt)) {
 		return false
 	}
 	for ordinal, worker := range task.Workers {
@@ -1039,6 +1119,15 @@ func validTask(task TaskGroup) bool {
 			return false
 		}
 		if worker.TestAcceptanceReceipt != nil && !validTaskTestAcceptanceReceipt(task, worker, *worker.TestAcceptanceReceipt) {
+			return false
+		}
+		if worker.ObjectiveReceipt != nil && !validTaskObjectiveReceipt(task, worker, *worker.ObjectiveReceipt) {
+			return false
+		}
+		if worker.WorktreeCleaned && task.ObjectiveContract != nil && worker.State == StateSucceeded && worker.ObjectiveReceipt == nil {
+			return false
+		}
+		if worker.WorktreeCleaned && task.IntegrationContract != nil && worker.State == StateSucceeded && task.IntegrationReceipt == nil {
 			return false
 		}
 	}

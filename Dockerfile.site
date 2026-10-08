@@ -25,7 +25,7 @@ LABEL org.opencontainers.image.title="Aeontra public site" \
 	org.opencontainers.image.source="https://github.com/charle-z/aeontra"
 
 RUN apk upgrade --no-cache \
-	&& apk add --no-cache ca-certificates curl \
+	&& apk add --no-cache ca-certificates curl libssl3=3.6.5-r1 libcrypto3=3.6.5-r1 \
 	&& addgroup -S -g 10001 aeontra \
 	&& adduser -S -D -H -u 10001 -G aeontra aeontra \
 	&& (find / -xdev -perm /6000 -type f -exec chmod a-s {} + 2>/dev/null || true)

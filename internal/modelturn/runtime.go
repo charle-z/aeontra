@@ -56,6 +56,7 @@ var (
 )
 
 type Runtime struct {
+	Control                 *RuntimeControl     `json:"control,omitempty"`
 	RuntimeID               string              `json:"runtime_id"`
 	DeviceID                string              `json:"device_id,omitempty"`
 	WorkspaceID             string              `json:"workspace_id,omitempty"`
@@ -547,6 +548,10 @@ func (s *Store) runtimeLocked(ctx context.Context, runtimeID string) (Runtime, e
 		return Runtime{}, phaseErr
 	}
 	runtime.Phases = phases
+	runtime.Control, err = readRuntimeControl(ctx, s.db, runtimeID)
+	if err != nil {
+		return Runtime{}, err
+	}
 	var turnID sql.NullString
 	var status sql.NullString
 	var sequence, turnCreatedAt sql.NullInt64
