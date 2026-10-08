@@ -13,8 +13,8 @@ no image execution, no deployment credentials, and no resident monitoring agent.
 `security/monitored-images.json` identifies one verified `deployed-workcell` with
 the corrected `py3.14-pip=26.2.1-r2` recipe. The protected publication, independent
 registry hash checks and private runner rollout are recorded in
-[the dated rollout evidence](../baselines/2026-10-03-workcell-rollout.md).
-The previous candidate was not deployed and remains historical Git evidence.
+[the dated rollout evidence](../baselines/2026-10-08-workcell-rollout.md).
+Earlier rollouts remain in their dated evidence; the inventory tracks this deployed image.
 A passing run means only that the inventoried immutable image was scanned; it
 makes no all-production or seven-image coverage claim. The monitor does not
 discover production state or automatically update this inventory.
@@ -68,14 +68,12 @@ before analysis and on every terminal path; the workcell is never launched and r
 no token. A private package must grant the repository read access. A login succeeding
 does not prove that the exact private digest can be read.
 
-The current source recipe selects `libssl3=3.6.5-r1` and `libcrypto3=3.6.5-r1` to
+The deployed recipe selects `libssl3=3.6.5-r1` and `libcrypto3=3.6.5-r1` to
 repair the OpenSSL findings. Its CI policy rebinds the existing bundled-npm exception
 to that reviewed recipe without changing the package, advisories, location, severity
-or expiry. This source change does not update the deployed-image inventory: replace
-its identities only after protected publication and a verified rollout. Scans of an
-older image must still report its remaining OpenSSL findings as blocking. Until the
-replacement image and inventory are verified, the changed policy recipe binding also
-rejects the old workcell; it never inherits approval for a different recipe.
+or expiry. Its inventory was updated only after protected publication and verified
+activation. Scans of an older image still report its remaining OpenSSL findings as
+blocking; an older recipe does not inherit approval for this recipe.
 
 ## Operator acceptance and maintenance
 
