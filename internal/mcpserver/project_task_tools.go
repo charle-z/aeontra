@@ -35,17 +35,24 @@ type edgeOperationIdempotencyLookup interface {
 }
 
 type projectTaskStartParams struct {
-	Alias               string                            `json:"alias"`
-	Target              string                            `json:"target"`
-	Goals               []string                          `json:"goals"`
-	TimeoutSeconds      int                               `json:"timeout_seconds"`
-	IdempotencyKey      string                            `json:"idempotency_key"`
-	GitEvidenceContract *workqueue.TaskAcceptanceContract `json:"git_evidence_contract,omitempty"`
-	TestProfileID       string                            `json:"test_profile_id,omitempty"`
+	Alias               string                             `json:"alias"`
+	Target              string                             `json:"target"`
+	Goals               []string                           `json:"goals"`
+	TimeoutSeconds      int                                `json:"timeout_seconds"`
+	IdempotencyKey      string                             `json:"idempotency_key"`
+	GitEvidenceContract *workqueue.TaskAcceptanceContract  `json:"git_evidence_contract,omitempty"`
+	TestProfileID       string                             `json:"test_profile_id,omitempty"`
+	ObjectiveContract   *workqueue.TaskObjectiveContract   `json:"objective_contract,omitempty"`
+	IntegrationContract *workqueue.TaskIntegrationContract `json:"integration_contract,omitempty"`
 }
 
 type projectTaskIDParams struct {
 	TaskID string `json:"task_id"`
+}
+
+type projectTaskStatusParams struct {
+	TaskID         string `json:"task_id"`
+	IncludeMetrics bool   `json:"include_metrics,omitempty"`
 }
 
 type projectTaskListParams struct {
@@ -76,34 +83,40 @@ type projectTaskCleanupParams struct {
 }
 
 type projectTaskWorkerView struct {
-	Ordinal                int                    `json:"ordinal"`
-	State                  string                 `json:"state"`
-	Attention              string                 `json:"attention,omitempty"`
-	LifecycleState         workqueue.State        `json:"lifecycle_state"`
-	RuntimeState           string                 `json:"runtime_state,omitempty"`
-	AcceptanceState        string                 `json:"acceptance_state"`
-	ReconciliationReason   string                 `json:"reconciliation_reason,omitempty"`
-	LastRuntimePhase       modelturn.RuntimePhase `json:"last_runtime_phase,omitempty"`
-	LastRuntimePhaseAt     *time.Time             `json:"last_runtime_phase_at,omitempty"`
-	GitEvidenceState       string                 `json:"git_evidence_state,omitempty"`
-	TestEvidenceState      string                 `json:"test_evidence_state,omitempty"`
-	TestProfileID          string                 `json:"test_profile_id,omitempty"`
-	WorktreeID             string                 `json:"worktree_id,omitempty"`
-	WorkspaceID            string                 `json:"workspace_id,omitempty"`
-	RuntimeID              string                 `json:"runtime_id,omitempty"`
-	Branch                 string                 `json:"branch,omitempty"`
-	BaseCommit             string                 `json:"base_commit"`
-	HeadCommit             string                 `json:"head_commit,omitempty"`
-	GitEvidenceKnown       bool                   `json:"git_evidence_known,omitempty"`
-	Clean                  *bool                  `json:"clean,omitempty"`
-	CommitsAheadBase       *int                   `json:"commits_ahead_base,omitempty"`
-	ChangedPathCount       *int                   `json:"changed_path_count,omitempty"`
-	GitEvidenceRecordedAt  *time.Time             `json:"git_evidence_recorded_at,omitempty"`
-	TestEvidenceRecordedAt *time.Time             `json:"test_evidence_recorded_at,omitempty"`
-	TurnSequence           uint64                 `json:"turn_sequence,omitempty"`
-	ActiveTurnCreatedAt    *time.Time             `json:"active_turn_created_at,omitempty"`
-	ModelWaitSeconds       *int64                 `json:"model_wait_seconds,omitempty"`
-	Summary                string                 `json:"summary,omitempty"`
+	Role                   string                               `json:"role,omitempty"`
+	Efficiency             *modelturn.RuntimeEfficiencySnapshot `json:"efficiency,omitempty"`
+	EfficiencyState        string                               `json:"efficiency_state,omitempty"`
+	Control                *modelturn.RuntimeControl            `json:"control,omitempty"`
+	Ordinal                int                                  `json:"ordinal"`
+	State                  string                               `json:"state"`
+	Attention              string                               `json:"attention,omitempty"`
+	LifecycleState         workqueue.State                      `json:"lifecycle_state"`
+	RuntimeState           string                               `json:"runtime_state,omitempty"`
+	AcceptanceState        string                               `json:"acceptance_state"`
+	ReconciliationReason   string                               `json:"reconciliation_reason,omitempty"`
+	LastRuntimePhase       modelturn.RuntimePhase               `json:"last_runtime_phase,omitempty"`
+	LastRuntimePhaseAt     *time.Time                           `json:"last_runtime_phase_at,omitempty"`
+	GitEvidenceState       string                               `json:"git_evidence_state,omitempty"`
+	TestEvidenceState      string                               `json:"test_evidence_state,omitempty"`
+	TestProfileID          string                               `json:"test_profile_id,omitempty"`
+	ObjectiveEvidenceState string                               `json:"objective_evidence_state,omitempty"`
+	ObjectiveRecordedAt    *time.Time                           `json:"objective_recorded_at,omitempty"`
+	WorktreeID             string                               `json:"worktree_id,omitempty"`
+	WorkspaceID            string                               `json:"workspace_id,omitempty"`
+	RuntimeID              string                               `json:"runtime_id,omitempty"`
+	Branch                 string                               `json:"branch,omitempty"`
+	BaseCommit             string                               `json:"base_commit"`
+	HeadCommit             string                               `json:"head_commit,omitempty"`
+	GitEvidenceKnown       bool                                 `json:"git_evidence_known,omitempty"`
+	Clean                  *bool                                `json:"clean,omitempty"`
+	CommitsAheadBase       *int                                 `json:"commits_ahead_base,omitempty"`
+	ChangedPathCount       *int                                 `json:"changed_path_count,omitempty"`
+	GitEvidenceRecordedAt  *time.Time                           `json:"git_evidence_recorded_at,omitempty"`
+	TestEvidenceRecordedAt *time.Time                           `json:"test_evidence_recorded_at,omitempty"`
+	TurnSequence           uint64                               `json:"turn_sequence,omitempty"`
+	ActiveTurnCreatedAt    *time.Time                           `json:"active_turn_created_at,omitempty"`
+	ModelWaitSeconds       *int64                               `json:"model_wait_seconds,omitempty"`
+	Summary                string                               `json:"summary,omitempty"`
 }
 
 type projectTaskContinuation struct {
@@ -118,6 +131,8 @@ type projectTaskHandoff struct {
 }
 
 type projectTaskView struct {
+	IntegrationContract  *workqueue.TaskIntegrationContract    `json:"integration_contract,omitempty"`
+	IntegrationState     string                                `json:"integration_state,omitempty"`
 	TaskID               string                                `json:"task_id"`
 	Alias                string                                `json:"alias"`
 	Target               string                                `json:"target"`
@@ -127,6 +142,7 @@ type projectTaskView struct {
 	WorkerCount          int                                   `json:"worker_count"`
 	GitEvidenceContract  *workqueue.TaskAcceptanceContract     `json:"git_evidence_contract,omitempty"`
 	TestEvidenceContract *workqueue.TaskTestAcceptanceContract `json:"test_evidence_contract,omitempty"`
+	ObjectiveContract    *workqueue.TaskObjectiveContract      `json:"objective_contract,omitempty"`
 	Continuation         *projectTaskContinuation              `json:"continuation,omitempty"`
 	AttentionOrder       []int                                 `json:"attention_order,omitempty"`
 	Handoff              *projectTaskHandoff                   `json:"handoff,omitempty"`
@@ -197,25 +213,33 @@ func (s *Server) addProjectTaskTools(projectSchema map[string]any) {
 		"minimum_commits_ahead_per_worker": map[string]any{"type": "integer", "minimum": 1, "maximum": 10000},
 		"minimum_changed_paths_per_worker": map[string]any{"type": "integer", "minimum": 1, "maximum": 10000},
 	}, []string{"version", "minimum_commits_ahead_per_worker", "minimum_changed_paths_per_worker"})
+	objectiveContract := closedObject(map[string]any{
+		"version":                          map[string]any{"type": "integer", "minimum": 1, "maximum": 1},
+		"minimum_commits_ahead_per_worker": map[string]any{"type": "integer", "minimum": 0, "maximum": 10000},
+		"minimum_changed_paths_per_worker": map[string]any{"type": "integer", "minimum": 0, "maximum": 10000},
+		"require_clean":                    map[string]any{"type": "boolean"},
+	}, []string{"version", "minimum_commits_ahead_per_worker", "minimum_changed_paths_per_worker", "require_clean"})
 	s.addDirectTool(toolDef{
-		Name: "project_task_start", Description: "Start or reuse one durable group of up to four stock Codex workers. Each worker receives one explicit bounded goal, one server-owned fenced Git worktree, one registered workspace and one independent model runtime; workers never share a writer checkout. Optional Git evidence or operator-owned test profile evidence is pinned at creation; neither proves natural-language goal satisfaction.",
+		Name: "project_task_start", Description: "Start or reuse one durable group of up to four stock Codex workers on independent fenced worktrees. Optional Git or test evidence stays separate from goal acceptance. An opt-in objective_contract declares that the pinned operator-owned test_profile_id evaluates each goal, with explicit source criteria. Acceptance verifies this declared contract, not arbitrary natural-language intent. Zero change minima and dirty trees remain available; no contract is required for normal work. Optional integration_contract selects two to four exact committed inputs from one completed task for one responsible reviewer/integrator on an exact canonical base, with explicit clean objective and test profile; source workers are preserved and publication is separate.",
 		InputSchema: closedObject(map[string]any{
 			"alias": projectSchema["alias"], "target": projectSchema["target"],
 			"goals":                 map[string]any{"type": "array", "minItems": 1, "maxItems": workqueue.MaxTaskWorkers, "items": map[string]any{"type": "string", "minLength": 1, "maxLength": modelturn.MaxGoalBodyBytes}},
 			"timeout_seconds":       map[string]any{"type": "integer", "minimum": 1, "maximum": int(modelturn.MaxTurnTTL / time.Second)},
 			"idempotency_key":       stringSchema("caller-generated key for this exact task group", `^[A-Za-z0-9][A-Za-z0-9._:-]{7,117}$`, 118),
 			"git_evidence_contract": gitEvidenceContract,
+			"objective_contract":    objectiveContract,
+			"integration_contract":  projectTaskIntegrationSchema(),
 			"test_profile_id":       stringSchema("optional operator-owned Edge test profile; no caller command, environment or working directory", `^[a-z0-9][a-z0-9._-]{0,63}$`, 64),
-		}, []string{"alias", "target", "goals", "timeout_seconds", "idempotency_key"}), Version: "3", Annotations: startHints,
+		}, []string{"alias", "target", "goals", "timeout_seconds", "idempotency_key"}), Version: "4", Annotations: startHints,
 	}, s.handleProjectTaskStart)
-	s.addDirectTool(toolDef{Name: "project_task_status", Description: "Reconcile and return one durable multiworker task without exposing leases, fences, paths, prompts or credentials. Runtime completion stays separate from semantic acceptance. An opt-in Git evidence contract may produce a durable verified Git receipt for an exact task/worker/worktree/workspace/base/branch/lease/fence and clean committed-change predicate; `acceptance_state` remains pending because this contract does not evaluate tests or natural-language goals. Receipts are revalidated before cleanup and remain available afterward. Missing or stale evidence requires reconciliation.", InputSchema: closedObject(map[string]any{"task_id": taskID}, []string{"task_id"}), Version: "3", Annotations: readHints}, s.handleProjectTaskStatus)
+	s.addDirectTool(toolDef{Name: "project_task_status", Description: "Reconcile one durable task without exposing leases, fences, paths, prompts or credentials. Runtime completion, Git evidence, test evidence and declared objective acceptance are separate. Only an opt-in objective_contract with exact passing operator-owned tests and matching source criteria can become accepted; legacy tasks remain pending for review. Live evidence is revalidated, and immutable objective receipts survive managed cleanup. Stale or unavailable evidence requires reconciliation. Optional include_metrics adds bounded content-free timing and observed retry/turn measurements; missing data stays unknown. It never estimates tokens, cost or duplicate work.", InputSchema: closedObject(map[string]any{"task_id": taskID, "include_metrics": map[string]any{"type": "boolean"}}, []string{"task_id"}), Version: "4", Annotations: readHints}, s.handleProjectTaskStatus)
 	s.addDirectTool(toolDef{Name: "project_task_list", Description: "List up to 20 recent durable tasks for one project and Edge target, including retained terminal tasks, so a new chat can recover a lost task ID. This is local metadata only; use project_task_status for live reconciliation.", InputSchema: closedObject(map[string]any{"alias": projectSchema["alias"], "target": projectSchema["target"], "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 20}}, []string{"alias", "target"}), Version: "1", Annotations: readHints}, s.handleProjectTaskList)
 	testWorkerSchema := closedObject(map[string]any{"task_id": taskID, "ordinal": map[string]any{"type": "integer", "minimum": 0, "maximum": workqueue.MaxTaskWorkers - 1}}, []string{"task_id", "ordinal"})
 	s.addDirectTool(toolDef{Name: "project_task_test_start", Description: "Start or reuse the single operator-owned test profile pinned when this task was created, on one completed worker's exact managed worktree. The Edge runs it as a durable asynchronous process; no caller argv, environment or working directory is accepted. This does not accept the natural-language task goal.", InputSchema: testWorkerSchema, Version: "1", Annotations: startHints}, s.handleProjectTaskTestStart)
 	s.addDirectTool(toolDef{Name: "project_task_test_status", Description: "Read one worker's durable test process and revalidate its pinned worktree, lease, fence, profile, source digest and exit status. A zero exit can record a bounded test receipt, but semantic task acceptance remains pending. This tool never stops a process.", InputSchema: testWorkerSchema, Version: "1", Annotations: readHints}, s.handleProjectTaskTestStatus)
 	s.addDirectTool(toolDef{Name: "project_task_test_stop", Description: "Request a bounded stop of the test process owned by this exact task worker, including after the worker lease changes. Stopping never counts as a passed test.", InputSchema: testWorkerSchema, Version: "1", Annotations: cancelHints}, s.handleProjectTaskTestStop)
 	s.addDirectTool(toolDef{Name: "project_task_cancel", Description: "Request cancellation of every nonterminal worker in one durable task. Repeated cancellation is idempotent.", InputSchema: closedObject(map[string]any{"task_id": taskID}, []string{"task_id"}), Version: "1", Annotations: cancelHints}, s.handleProjectTaskCancel)
-	s.addDirectTool(toolDef{Name: "project_task_cleanup", Description: "Remove only terminal worker worktrees after exact lease and fence validation. A succeeded worker with an opt-in Git or test evidence contract requires a durable, revalidated receipt before cleanup; neither receipt is semantic goal acceptance. Worker branches and durable evidence remain. The caller idempotency key correlates retries; Edge cleanup identity is server-derived.", InputSchema: closedObject(map[string]any{"task_id": taskID, "idempotency_key": stringSchema("caller retry-correlation key; Edge operation identity is server-derived per task and worker", `^[A-Za-z0-9][A-Za-z0-9._:-]{7,95}$`, 96)}, []string{"task_id", "idempotency_key"}), Version: "3", Annotations: cleanupHints}, s.handleProjectTaskCleanup)
+	s.addDirectTool(toolDef{Name: "project_task_cleanup", Description: "Remove only terminal worker worktrees after exact lease and fence validation. Succeeded workers with opt-in evidence or declared objective contracts require durable, freshly revalidated receipts. Cleanup retains worker branches and evidence; it does not infer undeclared goal acceptance. Confirmed Edge cleanup can recover a lost journal marker without replaying the effect. The caller idempotency key correlates retries; Edge cleanup identity is server-derived.", InputSchema: closedObject(map[string]any{"task_id": taskID, "idempotency_key": stringSchema("caller retry-correlation key; Edge operation identity is server-derived per task and worker", `^[A-Za-z0-9][A-Za-z0-9._:-]{7,95}$`, 96)}, []string{"task_id", "idempotency_key"}), Version: "4", Annotations: cleanupHints}, s.handleProjectTaskCleanup)
 }
 
 func (s *Server) handleProjectTaskStart(arguments json.RawMessage) (string, error) {
@@ -231,16 +255,18 @@ func (s *Server) handleProjectTaskStart(arguments json.RawMessage) (string, erro
 	params.IdempotencyKey = strings.TrimSpace(params.IdempotencyKey)
 	if len(params.Goals) < 1 || len(params.Goals) > workqueue.MaxTaskWorkers || params.TimeoutSeconds < 1 || time.Duration(params.TimeoutSeconds)*time.Second > modelturn.MaxTurnTTL || len(params.IdempotencyKey) < 8 || len(params.IdempotencyKey) > 118 ||
 		workqueue.ValidateTaskAcceptanceContract(params.GitEvidenceContract) != nil ||
+		workqueue.ValidateTaskObjectiveContract(params.ObjectiveContract) != nil ||
+		(params.ObjectiveContract != nil && (params.TestProfileID == "" || params.GitEvidenceContract != nil)) ||
 		(params.TestProfileID != "" && !projectTaskTestProfileIDPattern.MatchString(params.TestProfileID)) ||
-		(params.TestProfileID != "" && params.GitEvidenceContract != nil) {
+		(params.TestProfileID != "" && params.GitEvidenceContract != nil) || !validProjectTaskIntegrationParams(params) {
 		return "", modelturn.ErrInvalidRequest
 	}
-	bodies, hashes, err := projectTaskGoalBodies(params.Goals)
+	bodies, hashes, err := projectTaskGoalBodies(projectTaskIntegrationGoals(params))
 	if err != nil {
 		return "", err
 	}
 	groupHash := projectTaskGroupHash(hashes)
-	startLock := s.projectTaskStartLock(params.IdempotencyKey)
+	startLock := s.projectTaskStartLock("start:" + params.IdempotencyKey)
 	startLock.Lock()
 	locked := true
 	defer func() {
@@ -248,11 +274,21 @@ func (s *Server) handleProjectTaskStart(arguments json.RawMessage) (string, erro
 			startLock.Unlock()
 		}
 	}()
+	if params.IntegrationContract != nil {
+		sourceLock := s.projectTaskSourceLock(params.IntegrationContract.SourceTaskID)
+		sourceLock.Lock()
+		defer sourceLock.Unlock()
+	}
 	if existing, found, lookupErr := s.workQueue.TaskByIdempotencyKey(params.IdempotencyKey); lookupErr != nil {
 		return "", lookupErr
 	} else if found {
 		if !projectTaskRequestMatches(existing, params, hashes, groupHash) {
 			return "", errors.New("workqueue: task idempotency key conflicts")
+		}
+		if existing.IntegrationContract != nil && !existing.Workers[0].WorktreeCleaned {
+			if err := s.revalidateProjectTaskIntegrationSources(context.Background(), existing); err != nil {
+				return "", err
+			}
 		}
 		if !terminalProjectTask(existing.State) {
 			if s.modelTurns == nil {
@@ -288,6 +324,13 @@ func (s *Server) handleProjectTaskStart(arguments json.RawMessage) (string, erro
 			return "", err
 		}
 		return "", errors.New("project task base snapshot failed")
+	}
+	if params.IntegrationContract != nil && snapshot.Result.SnapshotHead != params.IntegrationContract.ExpectedBaseCommit {
+		return "", errors.New("project task integration base changed")
+	}
+	integrationPins, err := s.captureProjectTaskIntegrationPins(context.Background(), params.IntegrationContract, params.Alias, params.Target)
+	if err != nil {
+		return "", err
 	}
 	var testContract *workqueue.TaskTestAcceptanceContract
 	if params.TestProfileID != "" {
@@ -330,8 +373,8 @@ func (s *Server) handleProjectTaskStart(arguments json.RawMessage) (string, erro
 	}
 	task, created, err := s.workQueue.CreateTask(workqueue.TaskSpec{
 		IdempotencyKey: params.IdempotencyKey, Project: params.Alias, Target: params.Target, BaseCommit: snapshot.Result.SnapshotHead,
-		GoalHash: groupHash, AcceptanceContract: params.GitEvidenceContract, TestAcceptanceContract: testContract, WorkerGoalHashes: hashes, WorkerGoalRefs: goalRefs, Pool: "edge." + params.Target + ".runtime", Profile: "codex.worker",
-		WorkerCount: len(params.Goals), ExecutionTimeoutSeconds: params.TimeoutSeconds,
+		GoalHash: groupHash, AcceptanceContract: params.GitEvidenceContract, TestAcceptanceContract: testContract, ObjectiveContract: params.ObjectiveContract, WorkerGoalHashes: hashes, WorkerGoalRefs: goalRefs, Pool: "edge." + params.Target + ".runtime", Profile: "codex.worker",
+		WorkerCount: len(params.Goals), ExecutionTimeoutSeconds: params.TimeoutSeconds, IntegrationContract: params.IntegrationContract, IntegrationPins: integrationPins,
 	})
 	if err != nil {
 		cleanupErr := s.modelTurns.UnpinTaskGoalReferences(context.Background(), ownerDigest, goalPins)
@@ -391,7 +434,7 @@ func projectTaskRequestMatches(task workqueue.TaskGroup, params projectTaskStart
 		task.BaseCommit == "" || task.GoalHash != groupHash || task.WorkerCount != len(hashes) || task.ExecutionTimeoutSeconds != params.TimeoutSeconds ||
 		task.Pool != "edge."+params.Target+".runtime" || task.Profile != "codex.worker" || len(task.Workers) != len(hashes) ||
 		!sameProjectTaskAcceptanceContract(task.AcceptanceContract, params.GitEvidenceContract) ||
-		!sameProjectTaskTestProfile(task.TestAcceptanceContract, params.TestProfileID) {
+		!sameProjectTaskTestProfile(task.TestAcceptanceContract, params.TestProfileID) || !workqueue.SameTaskObjectiveContract(task.ObjectiveContract, params.ObjectiveContract) || !workqueue.SameTaskIntegrationContract(task.IntegrationContract, params.IntegrationContract) {
 		return false
 	}
 	for index, worker := range task.Workers {
@@ -421,11 +464,18 @@ func (s *Server) projectTaskStartLock(key string) *sync.Mutex {
 	return &s.taskStartLocks[int(digest[0])%len(s.taskStartLocks)]
 }
 
+// Source retention is a separate lock domain: task start holds its idempotency
+// lock before acquiring a source lock, so the two must never share a mutex.
+func (s *Server) projectTaskSourceLock(taskID string) *sync.Mutex {
+	digest := sha256.Sum256([]byte(taskID))
+	return &s.taskSourceLocks[int(digest[0])%len(s.taskSourceLocks)]
+}
+
 func (s *Server) handleProjectTaskStatus(arguments json.RawMessage) (string, error) {
 	if s.workQueue == nil {
 		return "", errWorkQueueUnavailable
 	}
-	var params projectTaskIDParams
+	var params projectTaskStatusParams
 	if err := decodeClosed(arguments, &params); err != nil {
 		return "", err
 	}
@@ -465,7 +515,11 @@ func (s *Server) handleProjectTaskStatus(arguments json.RawMessage) (string, err
 		setProjectTaskHandoff(&view)
 		return marshalToolValue(view, nil)
 	}
-	return marshalToolValue(s.projectTaskStatusView(context.Background(), task), nil)
+	view := s.projectTaskStatusView(context.Background(), task)
+	if params.IncludeMetrics {
+		s.attachProjectTaskEfficiency(context.Background(), &view)
+	}
+	return marshalToolValue(view, nil)
 }
 
 func (s *Server) handleProjectTaskList(arguments json.RawMessage) (string, error) {
@@ -529,6 +583,12 @@ func (s *Server) handleProjectTaskCleanup(arguments json.RawMessage) (string, er
 	if !validProjectTaskCleanupIdempotencyKey(params.IdempotencyKey) {
 		return "", errors.New("project task cleanup idempotency key is invalid")
 	}
+	cleanupLock := s.projectTaskSourceLock(params.TaskID)
+	cleanupLock.Lock()
+	defer cleanupLock.Unlock()
+	if required, err := s.workQueue.TaskRequiredByIntegration(params.TaskID); err != nil || required {
+		return "", errors.New("project task is pinned by a pending integration")
+	}
 	task, found, err := s.workQueue.Task(params.TaskID)
 	if err != nil || !found {
 		return "", errors.New("project task not found")
@@ -543,6 +603,32 @@ func (s *Server) handleProjectTaskCleanup(arguments json.RawMessage) (string, er
 	device, err := resolver.ResolveActiveDeviceName(task.Target)
 	if err != nil {
 		return "", err
+	}
+	if task.ObjectiveContract != nil {
+		// Recover a confirmed cleanup effect before demanding live evidence from
+		// its now-removed source. The durable marker is still written below.
+		statusTask := task
+		statusTask.Workers = append([]workqueue.TaskWorker(nil), task.Workers...)
+		for index, worker := range task.Workers {
+			if worker.WorktreeCleaned || worker.ObjectiveReceipt == nil {
+				continue
+			}
+			key := projectTaskWorktreeCleanupOperationKey(task.ID, worker.Ordinal)
+			request := edge.OperationRequest{Alias: task.Project, TargetAlias: task.Target, Profile: "linux-workcell", WorktreeID: worker.WorktreeID, WorkJobID: worker.JobID, WorkLeaseID: worker.LeaseID, WorkFence: worker.Fence, IdempotencyKey: key}
+			if succeededTaskCleanupAlreadyExists(device.ID, s.edgeOperations, key, request) {
+				statusTask.Workers[index].WorktreeCleaned = true
+			}
+		}
+		view := s.projectTaskStatusView(context.Background(), statusTask)
+		for index, worker := range task.Workers {
+			if worker.State == workqueue.StateSucceeded && !worker.WorktreeCleaned && view.Workers[index].AcceptanceState != "accepted" {
+				return "", errors.New("project task objective evidence changed or is unavailable")
+			}
+		}
+		task, found, err = s.workQueue.Task(task.ID)
+		if err != nil || !found {
+			return "", errors.New("project task objective checkpoint unavailable")
+		}
 	}
 	for _, worker := range task.Workers {
 		if worker.WorktreeID == "" || worker.WorktreeCleaned {
@@ -783,6 +869,14 @@ func (s *Server) reconcileProjectTaskGoalPins(ctx context.Context) error {
 }
 
 func (s *Server) reconcileProjectTaskWorker(ctx context.Context, task workqueue.TaskGroup, worker workqueue.TaskWorker, device edge.Device, wait bool) error {
+	if task.IntegrationContract != nil && worker.RuntimeID == "" && !worker.CancelRequested {
+		if err := s.revalidateProjectTaskIntegrationSources(ctx, task); err != nil {
+			return err
+		}
+		if err := s.verifyProjectTaskIntegrationBase(ctx, task, device); err != nil {
+			return err
+		}
+	}
 	if worker.WorktreeID != "" && worker.Attempt > 1 {
 		if err := s.claimProjectTaskWorktree(ctx, task, worker, device, wait); err != nil {
 			return err
@@ -1002,7 +1096,11 @@ func projectTaskRuntimeOutcome(runtime modelturn.Runtime) (workqueue.State, stri
 }
 
 func projectTaskPublicView(task workqueue.TaskGroup, cleaned bool) projectTaskView {
-	view := projectTaskView{TaskID: task.ID, Alias: task.Project, Target: task.Target, BaseCommit: task.BaseCommit, State: projectTaskSemanticState(task.State), LifecycleState: task.State, WorkerCount: task.WorkerCount, GitEvidenceContract: task.AcceptanceContract, TestEvidenceContract: task.TestAcceptanceContract, CreatedAt: task.CreatedAt, UpdatedAt: task.UpdatedAt, Cleaned: cleaned, Workers: make([]projectTaskWorkerView, 0, len(task.Workers))}
+	view := projectTaskView{TaskID: task.ID, Alias: task.Project, Target: task.Target, BaseCommit: task.BaseCommit, State: projectTaskSemanticState(task.State), LifecycleState: task.State, WorkerCount: task.WorkerCount, GitEvidenceContract: task.AcceptanceContract, TestEvidenceContract: task.TestAcceptanceContract, ObjectiveContract: task.ObjectiveContract, CreatedAt: task.CreatedAt, UpdatedAt: task.UpdatedAt, Cleaned: cleaned, Workers: make([]projectTaskWorkerView, 0, len(task.Workers))}
+	view.IntegrationContract = task.IntegrationContract
+	if task.IntegrationContract != nil {
+		view.IntegrationState = "pending"
+	}
 	for _, worker := range task.Workers {
 		branch := ""
 		if strings.HasPrefix(worker.WorktreeID, "wt_") {
@@ -1010,6 +1108,9 @@ func projectTaskPublicView(task workqueue.TaskGroup, cleaned bool) projectTaskVi
 		}
 		state, runtimeState, acceptanceState := projectTaskWorkerSemanticState(worker)
 		item := projectTaskWorkerView{Ordinal: worker.Ordinal, State: state, LifecycleState: worker.State, RuntimeState: runtimeState, AcceptanceState: acceptanceState, WorktreeID: worker.WorktreeID, WorkspaceID: worker.WorkspaceID, RuntimeID: worker.RuntimeID, Branch: branch, BaseCommit: task.BaseCommit, Summary: worker.Summary}
+		if task.IntegrationContract != nil {
+			item.Role = "reviewer_integrator"
+		}
 		if task.TestAcceptanceContract != nil {
 			item.TestProfileID = task.TestAcceptanceContract.ProfileID
 			item.TestEvidenceState = "not_started"
@@ -1019,6 +1120,17 @@ func projectTaskPublicView(task workqueue.TaskGroup, cleaned bool) projectTaskVi
 		}
 		if worker.WorktreeCleaned && worker.TestAcceptanceReceipt != nil {
 			applyTaskTestReceipt(&item, *worker.TestAcceptanceReceipt)
+		}
+		if worker.WorktreeCleaned && worker.ObjectiveReceipt != nil {
+			applyTaskObjectiveReceipt(&item, *worker.ObjectiveReceipt)
+		}
+		if task.IntegrationContract != nil && worker.WorktreeCleaned {
+			if task.IntegrationReceipt != nil {
+				view.IntegrationState = "verified"
+			} else {
+				item.State, item.AcceptanceState, item.ReconciliationReason = "reconciliation_required", "reconciliation_required", "integration_receipt_missing"
+				view.IntegrationState = "unavailable"
+			}
 		}
 		view.Workers = append(view.Workers, item)
 	}
@@ -1105,6 +1217,9 @@ func (s *Server) projectTaskStatusView(ctx context.Context, task workqueue.TaskG
 				item.State, item.RuntimeState, item.AcceptanceState = "reconciliation_required", string(modelturn.RuntimeStateCompleted), "reconciliation_required"
 				item.ReconciliationReason = "acceptance_receipt_missing"
 			}
+			if worker.ObjectiveReceipt != nil {
+				applyTaskObjectiveReceipt(item, *worker.ObjectiveReceipt)
+			}
 			continue
 		}
 		if worker.RuntimeID == "" {
@@ -1120,6 +1235,7 @@ func (s *Server) projectTaskStatusView(ctx context.Context, task workqueue.TaskG
 			continue
 		}
 		item.RuntimeState = string(runtime.State)
+		item.Control = runtime.Control
 		item.TurnSequence = runtime.LastSequence
 		item.ActiveTurnCreatedAt = runtime.ActiveTurnCreatedAt
 		for _, phase := range runtime.Phases {
@@ -1229,6 +1345,7 @@ func (s *Server) projectTaskStatusView(ctx context.Context, task workqueue.TaskG
 			}
 			item.TestEvidenceState = testView.TestEvidenceState
 			item.TestProfileID = testView.ProfileID
+			observedHead := item.HeadCommit
 			if testView.HeadCommit != "" {
 				item.HeadCommit = testView.HeadCommit
 			}
@@ -1240,8 +1357,12 @@ func (s *Server) projectTaskStatusView(ctx context.Context, task workqueue.TaskG
 					item.ReconciliationReason = "test_evidence_unavailable"
 				}
 			}
+			if task.ObjectiveContract != nil && !worker.WorktreeCleaned {
+				s.evaluateProjectTaskObjective(task, worker, item, observedHead)
+			}
 		}
 	}
+	s.applyProjectTaskIntegrationStatus(ctx, task, &view)
 	view.State = projectTaskViewSemanticState(view.Workers)
 	finalizeProjectTaskView(&view, time.Now().UTC())
 	return view
@@ -1295,6 +1416,8 @@ func projectTaskCheckpointRevision(view projectTaskView) string {
 	for index := range view.Workers {
 		view.Workers[index].Summary = ""
 		view.Workers[index].ModelWaitSeconds = nil
+		view.Workers[index].Efficiency = nil
+		view.Workers[index].EfficiencyState = ""
 	}
 	payload, _ := json.Marshal(view) // This fixed view contains only JSON-supported fields.
 	digest := sha256.Sum256(payload)
@@ -1314,6 +1437,8 @@ func setProjectTaskContinuation(view *projectTaskView) {
 		case worker.State == "failed":
 			worker.Attention = "inspect_failure"
 		case worker.State == "cancelled":
+			worker.Attention = "none"
+		case worker.State == "accepted":
 			worker.Attention = "none"
 		case worker.TestEvidenceState == "failed":
 			worker.Attention = "inspect_failure"
@@ -1341,7 +1466,7 @@ func setProjectTaskContinuation(view *projectTaskView) {
 			}
 		}
 	}
-	if view.State == "cancelled" && state == "wait" {
+	if (view.State == "cancelled" || view.State == "accepted") && state == "wait" {
 		state = "none"
 	}
 	view.Continuation = &projectTaskContinuation{State: state}
@@ -1351,6 +1476,13 @@ func setProjectTaskContinuation(view *projectTaskView) {
 }
 
 func projectTaskViewSemanticState(workers []projectTaskWorkerView) string {
+	allAccepted := len(workers) > 0
+	for _, worker := range workers {
+		allAccepted = allAccepted && worker.State == "accepted"
+	}
+	if allAccepted {
+		return "accepted"
+	}
 	allPending, anyPending, anyFailed, anyReconciliation, anyRunning, anyCancelled := len(workers) > 0, false, false, false, false, false
 	for _, worker := range workers {
 		anyFailed = anyFailed || worker.State == "failed"

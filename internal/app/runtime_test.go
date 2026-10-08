@@ -24,7 +24,7 @@ func clearRuntimeEnv(t *testing.T) {
 		sandboxRunnerURLEnv, sandboxRunnerTokenEnv, sandboxWorkspaceIDEnv,
 		validationRunnerURLEnv, validationRunnerTokenEnv,
 		privilegedTasksEnv, privilegedServicesEnv, privilegedTimeoutEnv,
-		maintainerProfileEnv,
+		maintainerProfileEnv, assetLibraryEnv,
 		developmentRunnerProfileEnv, developmentRunnerRepositoryEnv, developmentRunnerWorkflowRefEnv,
 		developmentRunnerWorkflowSHAEnv, developmentRunnerGenerationEnv, developmentRunnerCalibrationEnv,
 		githubTokenEnv, githubOSSTokenEnv, githubOwnerEnv, githubOwnerTypeEnv, githubDefaultVisibilityEnv,

@@ -103,12 +103,14 @@ type RequestBodyReference struct {
 }
 
 type ResponseSubmission struct {
-	RuntimeID        string
-	TurnID           TurnID
-	ExpectedSequence uint64
-	RequestDigest    string
-	Payload          json.RawMessage
-	UsedToolIDs      []string
+	ControllerID      string
+	ControlGeneration uint64
+	RuntimeID         string
+	TurnID            TurnID
+	ExpectedSequence  uint64
+	RequestDigest     string
+	Payload           json.RawMessage
+	UsedToolIDs       []string
 }
 
 type Store struct {
@@ -179,6 +181,10 @@ func OpenStore(cfg StoreConfig) (*Store, error) {
 		return nil, err
 	}
 	if err := store.ensureRuntimeSchema(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if err := store.ensureControlSchema(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -443,6 +449,20 @@ func (s *Store) Respond(ctx context.Context, submission ResponseSubmission) (Rec
 	if record.Status != StatusAwaitingModel && record.Status != StatusDisconnected {
 		return Record{}, ErrTurnConflict
 	}
+	control, err := readRuntimeControl(ctx, tx, submission.RuntimeID)
+	if err != nil {
+		return Record{}, err
+	}
+	if control != nil {
+		if err := requireControlledRuntimeActive(ctx, tx, submission.RuntimeID, now); err != nil {
+			return Record{}, err
+		}
+		if control.Phase != "owned" || control.ControllerID != submission.ControllerID || control.Generation != submission.ControlGeneration {
+			return Record{}, ErrRuntimeControlConflict
+		}
+	} else if submission.ControllerID != "" || submission.ControlGeneration != 0 {
+		return Record{}, ErrRuntimeControlConflict
+	}
 	var offered []string
 	if err := json.Unmarshal([]byte(offeredJSON), &offered); err != nil {
 		return Record{}, errors.New("offered tool metadata is invalid")
@@ -461,7 +481,7 @@ func (s *Store) Respond(ctx context.Context, submission ResponseSubmission) (Rec
 	if _, err := tx.ExecContext(ctx, `INSERT INTO turn_bodies(body_ref,kind,content,content_bytes,created_at,expires_at) VALUES(?,?,?,?,?,?)`, responseRef, "response", payload, len(payload), now.UnixNano(), record.ExpiresAt.UnixNano()); err != nil {
 		return Record{}, errors.New("model response persistence failed")
 	}
-	result, err := tx.ExecContext(ctx, `UPDATE model_turns SET response_digest=?,response_ref=?,status='responded',responded_at=? WHERE turn_id=? AND runtime_id=? AND sequence=? AND request_digest=? AND status IN ('awaiting_model','disconnected')`, responseDigest, responseRef, now.UnixNano(), submission.TurnID, submission.RuntimeID, submission.ExpectedSequence, submission.RequestDigest)
+	result, err := tx.ExecContext(ctx, `UPDATE model_turns SET response_digest=?,response_ref=?,response_controller_id=?,response_control_generation=?,status='responded',responded_at=? WHERE turn_id=? AND runtime_id=? AND sequence=? AND request_digest=? AND status IN ('awaiting_model','disconnected')`, responseDigest, responseRef, submission.ControllerID, submission.ControlGeneration, now.UnixNano(), submission.TurnID, submission.RuntimeID, submission.ExpectedSequence, submission.RequestDigest)
 	if err != nil {
 		return Record{}, errors.New("model response compare-and-swap failed")
 	}
