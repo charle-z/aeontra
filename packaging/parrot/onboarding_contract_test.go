@@ -39,6 +39,16 @@ func TestParrotOnboardingScriptIsSyntacticallyValid(t *testing.T) {
 	}
 }
 
+func TestOnboardingCLIUsesSignedPreflightSource(t *testing.T) {
+	cli := readRepositoryFile(t, "cmd/mcp-edge/onboard_unix.go")
+	if strings.Contains(cli, "/usr/local/libexec/mcp-devbox/onboarding-preflight") {
+		t.Fatal("signed Edge onboarding still depends on the separately installed, potentially stale package helper")
+	}
+	if !strings.Contains(cli, "parrot.OnboardingPreflight") {
+		t.Fatal("onboarding must execute the reviewed preflight embedded in the signed Edge binary")
+	}
+}
+
 func TestParrotOnboardingContractIncludesRealProductionRequirements(t *testing.T) {
 	script := readRepositoryFile(t, "packaging/parrot/onboarding-preflight.sh")
 	for _, expected := range []string{
