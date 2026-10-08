@@ -108,6 +108,37 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
+func TestFetchIdentifiesClient(t *testing.T) {
+	entry, body := fixture(t)
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if got := r.Header.Get("User-Agent"); got != "Aeontra/1.0 (https://aeontra.com; asset validation)" {
+			t.Fatalf("unidentified asset client: %q", got)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{entry.MIME}}, Body: io.NopCloser(bytes.NewReader(body))}, nil
+	})}
+	if _, err := fetch(context.Background(), entry, client); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFetchReportsStatusWithoutSourceContent(t *testing.T) {
+	entry, _ := fixture(t)
+	for _, code := range []int{302, 403, 429, 500} {
+		t.Run(fmt.Sprint(code), func(t *testing.T) {
+			client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: code, Body: io.NopCloser(strings.NewReader("private origin response"))}, nil
+			})}
+			_, err := fetch(context.Background(), entry, client)
+			if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("HTTP %d", code)) {
+				t.Fatalf("missing actionable status: %v", err)
+			}
+			if strings.Contains(err.Error(), entry.URL) || strings.Contains(err.Error(), "private origin response") {
+				t.Fatalf("origin content leaked: %v", err)
+			}
+		})
+	}
+}
+
 func TestFetchVerifiesActualBytesAndBounds(t *testing.T) {
 	entry, body := fixture(t)
 	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {

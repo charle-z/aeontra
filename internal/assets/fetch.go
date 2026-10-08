@@ -47,13 +47,14 @@ func fetch(ctx context.Context, entry Entry, client *http.Client) (Download, err
 	}
 	request.Header.Set("Accept", entry.MIME)
 	request.Header.Set("Accept-Encoding", "identity")
+	request.Header.Set("User-Agent", "Aeontra/1.0 (https://aeontra.com; asset validation)")
 	response, err := client.Do(request)
 	if err != nil {
 		return Download{}, errors.New("asset download unavailable")
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return Download{}, errors.New("asset download requires a direct successful response")
+		return Download{}, fmt.Errorf("asset source returned HTTP %d; a direct 200 response is required", response.StatusCode)
 	}
 	media, params, err := mime.ParseMediaType(response.Header.Get("Content-Type"))
 	if err != nil || media != entry.MIME || len(params) != 0 || response.Header.Get("Content-Encoding") != "" || response.ContentLength > entry.MaxBytes {

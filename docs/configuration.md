@@ -514,6 +514,10 @@ cannot exceed 8 MiB, and decoded images are bounded to 4096 pixels per dimension
 16 megapixels. The operator reviews source, license and attribution before adding an
 entry. The server verifies pinned bytes, not legal rights.
 
+Downloads identify the client as `Aeontra/1.0 (https://aeontra.com; asset validation)`.
+Origins must return HTTP 200 directly; redirects remain disabled. Rejected HTTP
+responses report their status code without returning their body or source URL.
+
 Keep the library outside every repository root in a same-UID, owner-private directory.
 Recommended modes are `0700` for its parent and `0600` or `0400` for the file; no group
 or other access is accepted. Symlink ancestry is rejected. Mount and persist the
