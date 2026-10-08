@@ -64,6 +64,11 @@ out, the paired identity remains available: diagnose with `mcp-edge doctor`, the
 onboarding without creating another code. Completion reports bundle validation and
 service activation; local doctor and remote capability checks remain separate.
 
+The CLI executes the full preflight embedded in its verified signed binary, with a
+45-second deadline. Updating the signed bundle also updates this check; an older
+Debian package helper cannot select an obsolete harness. The installer retains the
+same reviewed preflight source for its initial package checks.
+
 ## 5. Verify
 
 Run the local read-only checks:
