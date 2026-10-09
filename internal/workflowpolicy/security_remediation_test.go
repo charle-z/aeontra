@@ -71,6 +71,22 @@ func TestBackendRuntimeKeepsNodeWithoutNPM(t *testing.T) {
 	}
 }
 
+func TestWolfiRuntimesSelectFixedGlibc(t *testing.T) {
+	for _, name := range []string{"Dockerfile", "Dockerfile.site", "Dockerfile.front-door", "Dockerfile.front-door-coordinator", "Dockerfile.validation-runner", "Dockerfile.sandbox-workcell"} {
+		t.Run(name, func(t *testing.T) {
+			content, err := os.ReadFile("../../" + name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, pkg := range []string{"glibc-2.44", "glibc-2.44-locale-posix", "ld-linux-2.44", "libcrypt1-2.44"} {
+				if !strings.Contains(string(content), pkg+"=2.44-r8") {
+					t.Errorf("runtime must select the corrected package %s=2.44-r8", pkg)
+				}
+			}
+		})
+	}
+}
+
 func TestWolfiRuntimesSelectFixedOpenSSL(t *testing.T) {
 	for _, name := range []string{"Dockerfile", "Dockerfile.site", "Dockerfile.front-door", "Dockerfile.front-door-coordinator", "Dockerfile.validation-runner", "Dockerfile.sandbox-workcell"} {
 		t.Run(name, func(t *testing.T) {

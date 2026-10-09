@@ -146,12 +146,12 @@ func TestSandboxWorkcellPinsReviewedToolchains(t *testing.T) {
 	text := string(content)
 	for _, required := range []string{
 		"FROM cgr.dev/chainguard/wolfi-base@sha256:6a8dca4c2153cfc11d559cfa6172c187b896423d833f3d48a4c1c44ab55596d7",
-		"go-1.26=1.26.7-r0",
-		"glibc-2.44=2.44-r6",
-		"glibc-2.44-dev=2.44-r6",
-		"glibc-2.44-locale-posix=2.44-r6",
-		"ld-linux-2.44=2.44-r6",
-		"libcrypt1-2.44=2.44-r6",
+		"go-1.26=1.26.9-r0",
+		"glibc-2.44=2.44-r8",
+		"glibc-2.44-dev=2.44-r8",
+		"glibc-2.44-locale-posix=2.44-r8",
+		"ld-linux-2.44=2.44-r8",
+		"libcrypt1-2.44=2.44-r8",
 		"nodejs-24=24.19.0-r0",
 		"npm=12.0.2-r0",
 		"py3.14-pip=26.2.1-r2",

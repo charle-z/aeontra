@@ -402,6 +402,14 @@ by digest. This update does not add scanner exceptions or change job permissions
 triggers or vulnerability thresholds. See the
 [official release history](https://go.dev/doc/devel/release#go1.26.9).
 
+The same acceptance run found four glibc advisories on revision `2.44-r6`:
+GHSA-fmf4-pr35-46c2, GHSA-gwqp-9qgw-c5pv, GHSA-h8x4-734c-9753 and
+GHSA-qghr-qhfc-4hxp. Wolfi-based runtimes now explicitly select the corrected
+`2.44-r8` library packages. The sandbox workcell also selects matching development
+headers and `go-1.26=1.26.9-r0`. These revisions were available in the official
+Chainguard APK index. Unknown-severity findings still fail the existing gate;
+they are not downgraded or exempted.
+
 ## Structured observability — P7
 
 P7 adds `internal/observability` with a closed JSONL schema and a 70% package
