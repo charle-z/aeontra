@@ -20,11 +20,124 @@ func TestBundleUnitWaitHonorsCancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	started := time.Now()
-	if waitBundleUnitInactive(ctx, "mcp-devbox-edge-repair.service", time.Minute) {
-		t.Fatal("cancelled bundle wait reported inactive")
+	if code := waitBundleUnitCompletion(ctx, "mcp-devbox-edge-repair.service", time.Minute); code != "cancelled" {
+		t.Fatalf("cancelled bundle wait returned %q", code)
 	}
 	if elapsed := time.Since(started); elapsed > time.Second {
 		t.Fatalf("cancelled bundle wait took %s", elapsed)
+	}
+}
+
+func TestBundleRecoveryWaitsForActivatingOneshot(t *testing.T) {
+	previous := queryBundleUnit
+	t.Cleanup(func() { queryBundleUnit = previous })
+	queries := 0
+	queryBundleUnit = func(_ context.Context, args ...string) (string, error) {
+		queries++
+		if args[0] == "is-active" {
+			return "activating", errors.New("is-active exits nonzero while oneshot activates")
+		}
+		if queries == 1 {
+			return "LoadState=loaded\nActiveState=activating\nResult=success\n", nil
+		}
+		return "LoadState=loaded\nActiveState=inactive\nResult=success\n", nil
+	}
+	if code := waitBundleUnitCompletion(context.Background(), "mcp-devbox-bundle-updater.service", 3*time.Second); code != "" {
+		t.Fatalf("successful oneshot returned %q", code)
+	}
+	if queries != 2 {
+		t.Fatalf("recovery completed before oneshot finished: queries=%d", queries)
+	}
+}
+
+func TestBundleRecoveryRequiresSuccessfulAuthoritativeUnitState(t *testing.T) {
+	previous := queryBundleUnit
+	t.Cleanup(func() { queryBundleUnit = previous })
+	for _, test := range []struct {
+		name, output, code string
+		err                error
+	}{
+		{"success", "LoadState=loaded\nActiveState=inactive\nResult=success\n", "", nil},
+		{"failed", "LoadState=loaded\nActiveState=failed\nResult=exit-code\n", "updater_failed", nil},
+		{"inactive-failure", "LoadState=loaded\nActiveState=inactive\nResult=timeout\n", "updater_failed", nil},
+		{"missing-unit", "LoadState=not-found\nActiveState=inactive\nResult=success\n", "updater_state_unavailable", nil},
+		{"query-failure", "", "updater_state_unavailable", errors.New("bus unavailable")},
+		{"missing-result", "LoadState=loaded\nActiveState=inactive\n", "updater_state_unavailable", nil},
+		{"duplicate", "LoadState=loaded\nActiveState=inactive\nResult=success\nResult=success\n", "updater_state_unavailable", nil},
+		{"unknown-state", "LoadState=loaded\nActiveState=unknown\nResult=success\n", "updater_state_unavailable", nil},
+		{"unfinished", "LoadState=loaded\nActiveState=activating\nResult=success\n", "updater_timeout", nil},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			queryBundleUnit = func(_ context.Context, args ...string) (string, error) {
+				if !reflect.DeepEqual(args, []string{"show", "--property=LoadState", "--property=ActiveState", "--property=Result", "mcp-devbox-bundle-updater.service"}) {
+					t.Fatalf("unexpected unit query: %v", args)
+				}
+				return test.output, test.err
+			}
+			if code := waitBundleUnitCompletion(context.Background(), "mcp-devbox-bundle-updater.service", 20*time.Millisecond); code != test.code {
+				t.Fatalf("completion code = %q, want %q", code, test.code)
+			}
+		})
+	}
+}
+
+func TestInterruptedBundleStartPreservesExclusiveReceipt(t *testing.T) {
+	previous := startBundleUnit
+	t.Cleanup(func() { startBundleUnit = previous })
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	starts := 0
+	startBundleUnit = func(_ context.Context, unit string) error {
+		starts++
+		if unit != "mcp-devbox-bundle-updater.service" {
+			t.Fatalf("unexpected unit %q", unit)
+		}
+		// The root oneshot can survive a restart of the Edge that called it.
+		cancel()
+		return context.Canceled
+	}
+	root := t.TempDir()
+	operation := edge.Operation{ID: "eo_0123456789abcdef0123456789abcdef", Kind: edge.OperationBundleUpdate}
+	if _, code := executeBundleControl(ctx, root, operation); code != "cancelled" {
+		t.Fatalf("interrupted start code = %q", code)
+	}
+	receipt, err := readBundleReceipt(root)
+	if err != nil || receipt.OperationID != operation.ID || receipt.Kind != operation.Kind {
+		t.Fatalf("restart lost the updater receipt: %+v, %v", receipt, err)
+	}
+	other := edge.Operation{ID: "eo_abcdef0123456789abcdef0123456789", Kind: edge.OperationBundleUpdate}
+	if _, code := executeBundleControl(context.Background(), root, other); code != "updater_busy" {
+		t.Fatalf("interrupted update admitted another operation: %q", code)
+	}
+	if starts != 1 {
+		t.Fatalf("updater dispatched %d times", starts)
+	}
+}
+
+func TestBundleStartFailureStillFailsAndReleasesReceipt(t *testing.T) {
+	previous := startBundleUnit
+	t.Cleanup(func() { startBundleUnit = previous })
+	startBundleUnit = func(context.Context, string) error { return errors.New("unit failed") }
+	root := t.TempDir()
+	operation := edge.Operation{ID: "eo_0123456789abcdef0123456789abcdef", Kind: edge.OperationBundleUpdate}
+	if _, code := executeBundleControl(context.Background(), root, operation); code != "updater_failed" {
+		t.Fatalf("unit failure code = %q", code)
+	}
+	if _, err := readBundleReceipt(root); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("definitive start failure retained its receipt: %v", err)
+	}
+}
+
+func TestBundleCancelledBeforeStartDoesNotCreateReceipt(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	root := t.TempDir()
+	operation := edge.Operation{ID: "eo_0123456789abcdef0123456789abcdef", Kind: edge.OperationBundleUpdate}
+	if _, code := executeBundleControl(ctx, root, operation); code != "cancelled" {
+		t.Fatalf("cancelled start returned %q", code)
+	}
+	if _, err := readBundleReceipt(root); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("unstarted operation created a receipt: %v", err)
 	}
 }
 
