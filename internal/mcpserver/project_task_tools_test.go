@@ -37,6 +37,64 @@ type projectTaskEdgeStore struct {
 
 type inactiveProjectTaskEdgeStore struct{ *projectTaskEdgeStore }
 
+type taskSnapshotFailureStore struct {
+	*projectTaskEdgeStore
+	state    edge.OperationState
+	unborn   bool
+	mismatch bool
+}
+
+func (s *taskSnapshotFailureStore) WaitOperation(ctx context.Context, id string, timeout time.Duration) (edge.Operation, error) {
+	op, err := s.projectTaskEdgeStore.WaitOperation(ctx, id, timeout)
+	if op.Kind == edge.OperationProjectSnapshot {
+		op.State = s.state
+		if s.state == edge.OperationFailed {
+			op.SafeCode = "project_repository_mismatch"
+		}
+		if s.unborn {
+			op.Result.SnapshotHead = ""
+			op.Result.SnapshotUnborn = true
+		}
+		if s.mismatch {
+			op.Result.ProjectAlias = "another"
+		}
+	}
+	return op, err
+}
+
+func TestProjectTaskSnapshotFailureReturnsRecoverableContext(t *testing.T) {
+	for _, tc := range []struct {
+		state    edge.OperationState
+		unborn   bool
+		mismatch bool
+		reason   string
+		next     string
+	}{
+		{edge.OperationFailed, false, false, "project_repository_mismatch", "project_status"},
+		{edge.OperationQueued, false, false, "snapshot_pending", "edge_operation_status"},
+		{edge.OperationSucceeded, true, false, "initial_commit_required", "project_exec"},
+		{edge.OperationSucceeded, false, true, "snapshot_binding_mismatch", "project_status"},
+	} {
+		t.Run(tc.reason, func(t *testing.T) {
+			server, _, _ := developmentServer(t)
+			store := &taskSnapshotFailureStore{projectTaskEdgeStore: newProjectTaskEdgeStore(), state: tc.state, unborn: tc.unborn, mismatch: tc.mismatch}
+			server.WithEdgeStore(store)
+			body, err := server.table["project_task_start"].handler(json.RawMessage(`{"alias":"project","target":"parrot","goals":["Inspect README."],"timeout_seconds":600,"idempotency_key":"snapshot-diagnostic-01"}`))
+			if err == nil || !strings.Contains(body, `"reason":"`+tc.reason+`"`) || !strings.Contains(body, `"next_tool":"`+tc.next+`"`) || !strings.Contains(body, `"operation_id":"eo_`) {
+				t.Fatalf("diagnostic=%s err=%v", body, err)
+			}
+			if len(store.operations) != 1 {
+				t.Fatal("failed snapshot started other effects")
+			}
+			for _, forbidden := range []string{"workspace_id", "device_id", "body_ref", "/home/"} {
+				if strings.Contains(body, forbidden) {
+					t.Fatalf("diagnostic leaked %s", forbidden)
+				}
+			}
+		})
+	}
+}
+
 func (*inactiveProjectTaskEdgeStore) DeviceActive(string) bool { return false }
 
 func newProjectTaskEdgeStore() *projectTaskEdgeStore {

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM golang:1.26.6-alpine3.24@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS build
+FROM golang:1.26.9-alpine3.24@sha256:cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 COPY cmd/mcp-front-door-coordinator ./cmd/mcp-front-door-coordinator
@@ -14,7 +14,7 @@ RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
 
 FROM cgr.dev/chainguard/wolfi-base:latest@sha256:1d95114038f76513a9ace6fca107d5582b08c65981f81f61cb56bf7fd2ef216d
 RUN apk upgrade --no-cache \
-    && apk add --no-cache ca-certificates curl su-exec libssl3=3.6.5-r1 libcrypto3=3.6.5-r1 \
+    && apk add --no-cache ca-certificates curl su-exec glibc-2.44=2.44-r8 glibc-2.44-locale-posix=2.44-r8 ld-linux-2.44=2.44-r8 libcrypt1-2.44=2.44-r8 libssl3=3.6.5-r1 libcrypto3=3.6.5-r1 \
     && addgroup -S -g 10003 mcpcoord \
     && adduser -S -D -H -u 10003 -G mcpcoord mcpcoord \
     && mkdir -p /coordinator-state \

@@ -176,7 +176,9 @@ func (s *Server) addEdgeControlTools() {
 	}
 	s.addDirectTool(toolDef{Name: "workspace_autopilot_status", Description: "Return only durable non-sensitive state and progress metadata for one local autopilot job.", InputSchema: closedObject(map[string]any{"workspace_id": stringSchema("opaque authorized workspace id", `^ws_[a-f0-9]{32}$`, 35)}, []string{"workspace_id"}), Version: "1", Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}}, s.handleAutopilotStatus)
 	deviceSchema := map[string]any{"device_id": stringSchema("opaque active Edge device id", `^ed_[a-f0-9]{32}$`, 35)}
-	s.addDirectTool(toolDef{Name: "edge_bundle_status", Description: "Return signed-bundle and service compatibility metadata from one paired Edge.", InputSchema: closedObject(deviceSchema, []string{"device_id"}), Version: "1", Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}}, func(arguments json.RawMessage) (string, error) {
+	healthSchema := closedObject(map[string]any{"device_id": deviceSchema["device_id"], "target": projectSchema["target"]}, nil)
+	healthSchema["oneOf"] = []any{map[string]any{"required": []string{"device_id"}}, map[string]any{"required": []string{"target"}}}
+	s.addDirectTool(toolDef{Name: "edge_bundle_status", Description: "Return signed-bundle and service compatibility metadata from one paired Edge. Supply either the human target alias or its legacy device_id, not both.", InputSchema: healthSchema, Version: "1", Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}}, func(arguments json.RawMessage) (string, error) {
 		return s.handleDeviceOperation(arguments, edge.OperationBundleStatus, false)
 	})
 	s.addDirectTool(toolDef{Name: "edge_bundle_update", Description: "Request only the official signed stable bundle through the restricted privileged updater.", InputSchema: closedObject(map[string]any{"device_id": deviceSchema["device_id"], "release": map[string]any{"type": "string", "enum": []string{"stable"}}}, []string{"device_id", "release"}), Version: "1", Annotations: writeHints}, func(arguments json.RawMessage) (string, error) {
@@ -188,7 +190,7 @@ func (s *Server) addEdgeControlTools() {
 	s.addDirectTool(toolDef{Name: "edge_repair", Description: "Restore only official signed MCP Devbox components, links, permissions, unit and Edge health.", InputSchema: closedObject(deviceSchema, []string{"device_id"}), Version: "1", Annotations: writeHints}, func(arguments json.RawMessage) (string, error) {
 		return s.handleDeviceOperation(arguments, edge.OperationEdgeRepair, false)
 	})
-	s.addDirectTool(toolDef{Name: "edge_onboarding_status", Description: "Return safe paired, service, bundle, provider, driver, Bubblewrap, rootless, workspace-count and blocker metadata.", InputSchema: closedObject(deviceSchema, []string{"device_id"}), Version: "1", Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}}, func(arguments json.RawMessage) (string, error) {
+	s.addDirectTool(toolDef{Name: "edge_onboarding_status", Description: "Return safe paired, service, bundle, provider, driver, Bubblewrap, rootless, workspace-count and blocker metadata. Supply either the human target alias or its legacy device_id, not both.", InputSchema: healthSchema, Version: "1", Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}}, func(arguments json.RawMessage) (string, error) {
 		return s.handleDeviceOperation(arguments, edge.OperationOnboardingStatus, false)
 	})
 }
@@ -287,6 +289,7 @@ func (s *Server) handleProjectSnapshot(arguments json.RawMessage) (string, error
 
 type deviceOperationParams struct {
 	DeviceID string `json:"device_id"`
+	Target   string `json:"target,omitempty"`
 	Release  string `json:"release,omitempty"`
 }
 
@@ -297,6 +300,24 @@ func (s *Server) handleDeviceOperation(arguments json.RawMessage, kind edge.Oper
 	var params deviceOperationParams
 	if err := decodeClosed(arguments, &params); err != nil {
 		return "", err
+	}
+	health := kind == edge.OperationBundleStatus || kind == edge.OperationOnboardingStatus
+	if params.Target != "" {
+		if !health || params.DeviceID != "" {
+			return "", errors.New("supply exactly one health target or device_id")
+		}
+		resolver, ok := s.edgeDevices.(edgeDeviceAliasRegistry)
+		if !ok {
+			return "", errors.New("edge target alias resolution is unavailable")
+		}
+		device, err := resolver.ResolveActiveDeviceName(params.Target)
+		if err != nil {
+			return "", err
+		}
+		params.DeviceID = device.ID
+	}
+	if params.DeviceID == "" {
+		return "", errors.New("supply exactly one health target or device_id")
 	}
 	if !s.edgeDevices.DeviceActive(params.DeviceID) {
 		return "", errors.New("active edge device not found")

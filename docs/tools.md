@@ -37,6 +37,7 @@ do not replace server-side enforcement.
 | `project_task_list` | 1/0/1/0 | List up to 20 recent task IDs and bounded lifecycle metadata for one project/Edge target, including retained terminal tasks. It reads the indexed local journal without polling the Edge or starting a worker. A new chat can find a lost task ID, then call `project_task_status` for current runtime and acceptance evidence. It does not return goals, prompts, leases, paths or credentials. |
 | `project_development_start` | 0/1/1/1 | Stage and pin one exact scoped argv command, relative cwd, non-secret environment, stdin, timeout and optional extra capability requirements before any Edge effect. Return a durable `dr_` request immediately. The existing coordinator inspects the registered workspace and measured capabilities, executes only a supported registered route, and binds command acceptance to the exact source, environment, private body and captured process. Registered Linux source fingerprinting is Git-selected and finitely bounded; leaf symlink text is included without following targets, while directories/gitlinks and special files fail inspection. An isolated runner requires an explicit administrator-registered profile; private or dirty source is not moved. Capability requirements never grant execution authority. |
 | `project_development_status` | 1/0/1/0 | Read only durable request and objective metadata. No Edge polling, dispatch, raw command body, environment, paths or output is returned. `command_verified` means the exact command had a known zero exit and its source/environment bindings were revalidated; it does not establish a natural-language goal. Code failure, source drift, a requirement explicitly unsupported by every available provisioner, or a requirement missing from the selected calibrated runner template reports `awaiting_reasoning`. Unavailable provisioning, unknown or pending runner calibration, and unverified receipts remain pending. |
+| `project_development_list` | 1/0/1/0 | Recover command request IDs by alias and active Edge target. Return up to 100 newest metadata records (default 20), including awaiting-reasoning and unexpired retained terminal requests. `list_complete=false` means more matching records exist. Filtering includes current device binding before limiting; it never polls the Edge, dispatches work, touches revisions or exposes private bodies. |
 | `project_development_cancel` | 0/1/1/0 | Persist cancellation for one exact request. The existing coordinator recovers lost start acknowledgments and stops only the process captured from its authenticated original operation. A failed stop enters durable, identity-bound read-only reconciliation; journal retention or a lost observation acknowledgment cannot replay the stop. The result may remain `cancelling` until terminal evidence is observed; cancellation cannot create passing command evidence. |
 | `project_task_test_start` | 0/0/1/1 | Start or reuse one pinned operator-owned test profile after the worker runtime succeeds. The Edge runs fixed argv asynchronously in that worker's exact managed worktree. The caller cannot supply argv, environment, stdin or cwd. |
 | `project_task_test_status` | 1/0/1/0 | Observe one durable test process and revalidate its identity, profile and selected source-content digest. A passing terminal result records an immutable receipt; status never stops the process. Nonzero, unknown, stopped, stale and unavailable results do not pass. |
@@ -246,6 +247,15 @@ materialization. See [configuration.md](configuration.md) for manifest bounds.
 
 ### Development-environment v2 semantics
 
+For a complete start/find/recover/publish sequence, use the
+[linear development runbook](runbooks/linear-development.md). Read-only health
+queries accept exactly one human `target` or legacy `device_id`; signed update,
+rollback and repair operations keep their existing `device_id` contract.
+Process listings always contain `processes`, including an empty array, without
+single-process stdout, stdin or exit fields. Task snapshot failures include the
+original operation ID, bounded reason and next observation tool before any worker
+is started.
+
 Project and process tools distinguish ordinary development state from a boundary
 failure. `project_status` may report `ready` or `dirty` when the registered workspace
 identity is valid. `unavailable`, `timeout`, `identity_mismatch`, `corrupt` and
@@ -402,7 +412,7 @@ session. See `docs/runbooks/brain-operations.md`.
 
 | Tool | R/D/I/O | Effect |
 |---|---:|---|
-| `brain_search` | 1/0/1/0 | BM25 search over bounded quoted plain-text terms; at most 20 short redacted matches. |
+| `brain_search` | 1/0/1/0 | Find an exact note slug first, then BM25 matches over bounded quoted plain-text terms; at most 20 short redacted matches, without duplicates or FTS operator interpretation. |
 | `brain_read` | 1/0/1/0 | Read one strict slug with trust metadata and at most 128 backlinks. |
 | `brain_write` | 0/0/0/0 | Create/update only agent-owned `working/` Markdown with provenance and review date; curated/path/timestamps are not inputs. |
 | `brain_index` | 0/0/1/0 | Return index status or transactionally rebuild only the disposable cache from Markdown truth. |

@@ -56,7 +56,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          go-version: "1.26.6"
+          go-version: "1.26.9"
           cache: true
 
       - name: Initialize CodeQL
@@ -99,7 +99,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          go-version: "1.26.6"
+          go-version: "1.26.9"
           cache: true
 
       - name: Build local image
@@ -331,10 +331,7 @@ jobs:
         run: test -s sandbox-workcell-grype.json
 
       - name: Enforce sandbox workcell vulnerability threshold
-        run: |
-          image_id="$(docker image inspect mcp-sandbox-workcell:ci --format '{{.Id}}')"
-          go run ./cmd/grype-gate --report sandbox-workcell-grype.json --minimum high --annotation-file Dockerfile.sandbox-workcell \
-            --accepted-risk security/accepted-risks/http-cache-semantics-20261003.json --image-id "$image_id"
+        run: go run ./cmd/grype-gate --report sandbox-workcell-grype.json --minimum high --annotation-file Dockerfile.sandbox-workcell
 
       - name: Retain SBOM and vulnerability evidence
         if: always()

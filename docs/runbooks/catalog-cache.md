@@ -91,9 +91,15 @@ Do not classify this as a client cache problem.
 ### Commit, hash, and count all match but the client lacks tools
 
 The server is current. Run the authenticated routing smoke. If it lists and invokes the
-full catalog, reselect or reconnect the app once so the client initializes and requests
-`tools/list` again. Record the client/version behavior as a compatibility limitation
-rather than redeploying repeatedly.
+full catalog, open the ChatGPT connection settings and use **Refresh** after the server
+has restarted. Confirm the updated tools and metadata, then start a new conversation
+and rerun the affected tool checks. This is the documented
+[OpenAI connection refresh procedure](https://developers.openai.com/plugins/deploy/connect-chatgpt).
+If that client does not expose Refresh, reconnect or reselect the app once and verify
+its loaded schema rather than assuming success. Do not delete OAuth registration as
+a first step. Record the client/version and any remaining missing tools or fields.
+The server cannot replace tools already loaded into a conversation or force a closed
+ChatGPT turn to continue. Repeated deployments do not fix client schema hydration.
 
 ### OAuth asks for login after every deployment
 

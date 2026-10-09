@@ -320,10 +320,30 @@ func (s *Server) handleProjectTaskStart(arguments json.RawMessage) (string, erro
 		snapshot, err = s.edgeOperations.WaitOperation(context.Background(), snapshot.ID, 180*time.Second)
 	}
 	if err != nil || snapshot.State != edge.OperationSucceeded || snapshot.Result.SnapshotHead == "" || snapshot.Result.ProjectAlias != params.Alias || snapshot.Result.ProjectTarget != params.Target {
-		if err != nil {
-			return "", err
+		reason, next := "snapshot_unavailable", "project_status"
+		switch {
+		case snapshot.State == edge.OperationFailed && snapshot.SafeCode != "":
+			reason = snapshot.SafeCode
+		case snapshot.State == edge.OperationCancelled:
+			reason = "snapshot_cancelled"
+		case snapshot.State != edge.OperationSucceeded && snapshot.ID != "":
+			reason, next = "snapshot_pending", "edge_operation_status"
+		case snapshot.Result.ProjectAlias != params.Alias || snapshot.Result.ProjectTarget != params.Target:
+			reason = "snapshot_binding_mismatch"
+		case snapshot.Result.SnapshotUnborn:
+			reason, next = "initial_commit_required", "project_exec"
+		case snapshot.Result.SnapshotHead == "":
+			reason = "snapshot_head_unavailable"
 		}
-		return "", errors.New("project task base snapshot failed")
+		diagnostic, encodeErr := marshalToolValue(struct {
+			Alias          string              `json:"alias"`
+			Target         string              `json:"target"`
+			OperationID    string              `json:"operation_id,omitempty"`
+			OperationState edge.OperationState `json:"operation_state,omitempty"`
+			Reason         string              `json:"reason"`
+			NextTool       string              `json:"next_tool"`
+		}{params.Alias, params.Target, snapshot.ID, snapshot.State, reason, next}, nil)
+		return diagnostic, errors.Join(errors.New("project task base snapshot failed"), err, encodeErr)
 	}
 	if params.IntegrationContract != nil && snapshot.Result.SnapshotHead != params.IntegrationContract.ExpectedBaseCommit {
 		return "", errors.New("project task integration base changed")

@@ -71,6 +71,22 @@ func TestBackendRuntimeKeepsNodeWithoutNPM(t *testing.T) {
 	}
 }
 
+func TestWolfiRuntimesSelectFixedGlibc(t *testing.T) {
+	for _, name := range []string{"Dockerfile", "Dockerfile.site", "Dockerfile.front-door", "Dockerfile.front-door-coordinator", "Dockerfile.validation-runner", "Dockerfile.sandbox-workcell"} {
+		t.Run(name, func(t *testing.T) {
+			content, err := os.ReadFile("../../" + name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, pkg := range []string{"glibc-2.44", "glibc-2.44-locale-posix", "ld-linux-2.44", "libcrypt1-2.44"} {
+				if !strings.Contains(string(content), pkg+"=2.44-r8") {
+					t.Errorf("runtime must select the corrected package %s=2.44-r8", pkg)
+				}
+			}
+		})
+	}
+}
+
 func TestWolfiRuntimesSelectFixedOpenSSL(t *testing.T) {
 	for _, name := range []string{"Dockerfile", "Dockerfile.site", "Dockerfile.front-door", "Dockerfile.front-door-coordinator", "Dockerfile.validation-runner", "Dockerfile.sandbox-workcell"} {
 		t.Run(name, func(t *testing.T) {
@@ -102,6 +118,8 @@ func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 		"Dockerfile.validation-runner":      "../../Dockerfile.validation-runner",
 		"Dockerfile.front-door":             "../../Dockerfile.front-door",
 		"Dockerfile.front-door-coordinator": "../../Dockerfile.front-door-coordinator",
+		"Dockerfile.sandbox-runner":         "../../Dockerfile.sandbox-runner",
+		"test/opencode-e2e/Dockerfile":      "../../test/opencode-e2e/Dockerfile",
 	}
 	contents := make(map[string]string, len(files))
 	for name, path := range files {
@@ -112,16 +130,16 @@ func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 		contents[name] = string(content)
 	}
 
-	if !strings.Contains(contents["go.mod"], "go 1.26.6") {
-		t.Error("go.mod must require the Go 1.26.6 security release")
+	if !strings.Contains(contents["go.mod"], "go 1.26.9") {
+		t.Error("go.mod must require the Go 1.26.9 security release")
 	}
 	for _, workflow := range []string{"ci.yml", "security.yml", "fuzz.yml"} {
-		if !strings.Contains(contents[workflow], `go-version: "1.26.6"`) {
-			t.Errorf("%s must use Go 1.26.6", workflow)
+		if !strings.Contains(contents[workflow], `go-version: "1.26.9"`) {
+			t.Errorf("%s must use Go 1.26.9", workflow)
 		}
 	}
-	for _, dockerfile := range []string{"Dockerfile", "Dockerfile.site", "Dockerfile.validation-runner", "Dockerfile.front-door", "Dockerfile.front-door-coordinator"} {
-		if !strings.Contains(contents[dockerfile], "golang:1.26.6-") {
+	for _, dockerfile := range []string{"Dockerfile", "Dockerfile.site", "Dockerfile.validation-runner", "Dockerfile.front-door", "Dockerfile.front-door-coordinator", "Dockerfile.sandbox-runner", "test/opencode-e2e/Dockerfile"} {
+		if !strings.Contains(contents[dockerfile], "golang:1.26.9-") {
 			t.Errorf("%s must use the fixed versioned Go base", dockerfile)
 		}
 	}
