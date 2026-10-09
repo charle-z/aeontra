@@ -615,13 +615,17 @@ func (s *Store) Search(ctx context.Context, query string, topK int) ([]SearchRes
 	err = s.withIndex(func(index *Index) error {
 		queryContext, cancel := boundedContext(ctx, indexQueryTimeout)
 		defer cancel()
-		rows, err := index.db.QueryContext(queryContext, `SELECT
+		rows, err := index.db.QueryContext(queryContext, `WITH matches AS (
+			SELECT slug,0.0 AS score,0 AS exact FROM notes WHERE slug=?
+			UNION ALL
+			SELECT slug,bm25(notes_fts,0.0,5.0,1.0),1 FROM notes_fts
+			WHERE notes_fts MATCH ? AND slug<>?
+		) SELECT
 			n.slug,n.trust,n.title,n.note_type,n.author,n.updated,n.review_by,n.expired,
-			n.provenance,n.body,bm25(notes_fts,0.0,5.0,1.0) AS score
-		FROM notes_fts JOIN notes n ON n.slug=notes_fts.slug
-		WHERE notes_fts MATCH ?
-		ORDER BY score ASC, CASE n.trust WHEN 'curated' THEN 0 ELSE 1 END, n.slug ASC
-		LIMIT ?`, ftsQuery, topK)
+			n.provenance,n.body,matches.score
+		FROM matches JOIN notes n ON n.slug=matches.slug
+		ORDER BY matches.exact ASC, matches.score ASC, CASE n.trust WHEN 'curated' THEN 0 ELSE 1 END, n.slug ASC
+		LIMIT ?`, strings.TrimSpace(query), ftsQuery, strings.TrimSpace(query), topK)
 		if err != nil {
 			return errors.New("brain: SQLite search failed")
 		}

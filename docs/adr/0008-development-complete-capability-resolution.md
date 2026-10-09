@@ -380,6 +380,10 @@ durable provisioning and command acceptance are implemented.
 
 `project_development_start`, `project_development_status` and
 `project_development_cancel` connect exact commands to the existing coordinator.
+`project_development_list` recovers forgotten request IDs from the same journal,
+scoped to project, target and current device identity. Its bounded newest-first
+inventory includes requests awaiting reasoning and retained terminal metadata;
+it does not dispatch, touch fairness timestamps or expose command bodies.
 The registered Linux workcell can provision official Go and Rust toolchains into
 its runtime root and recover the original process after a lost acknowledgement.
 Workcell inventory distinguishes a missing executable from a failed version

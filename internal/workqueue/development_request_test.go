@@ -48,6 +48,70 @@ func TestDevelopmentRequestInitialBindingAndIdempotentReplay(t *testing.T) {
 	}
 }
 
+func TestProjectDevelopmentRequestsFilterBeforeLimitAndIncludeRecoveryStates(t *testing.T) {
+	store := openTestStore(t, Config{ControllerID: "development-recovery-list"})
+	var requests []DevelopmentRequest
+	for i := 0; i < 6; i++ {
+		request := developmentRequestFixture()
+		request.ID = fmt.Sprintf("dr_%032x", i+1)
+		request.KeyDigest = modelturn.IdempotencyDigest(fmt.Sprintf("recovery-list-%d", i))
+		if i < 3 {
+			request.Alias = "other"
+		}
+		if _, _, err := store.SaveDevelopmentRequest(request); err != nil {
+			t.Fatal(err)
+		}
+		requests = append(requests, request)
+	}
+	awaiting := requests[3]
+	awaiting.Revision++
+	awaiting.State = DevelopmentRequestActive
+	if _, _, err := store.SaveDevelopmentRequest(awaiting); err != nil {
+		t.Fatal(err)
+	}
+	awaiting.Revision++
+	awaiting.State = DevelopmentRequestAwaitingReasoning
+	awaiting.Reason = DevelopmentRequestReasonCodeFailure
+	if _, _, err := store.SaveDevelopmentRequest(awaiting); err != nil {
+		t.Fatal(err)
+	}
+	terminal := requests[4]
+	terminal.Revision++
+	terminal.State = DevelopmentRequestFailed
+	terminal.Reason = DevelopmentRequestReasonOperationFailed
+	if _, _, err := store.SaveDevelopmentRequest(terminal); err != nil {
+		t.Fatal(err)
+	}
+	listed, complete, err := store.ProjectDevelopmentRequests("aeontra", "parrot", requests[0].DeviceID, 2)
+	if err != nil || complete || len(listed) != 2 || listed[0].ID != terminal.ID || listed[1].ID != awaiting.ID {
+		t.Fatalf("bounded recovery=%+v complete=%v err=%v", listed, complete, err)
+	}
+	listed, complete, err = store.ProjectDevelopmentRequests("aeontra", "parrot", requests[0].DeviceID, 100)
+	if err != nil || !complete || len(listed) != 3 {
+		t.Fatalf("complete=%v list=%+v err=%v", complete, listed, err)
+	}
+	for _, request := range listed {
+		if request.Alias != "aeontra" {
+			t.Fatal("scope crossed")
+		}
+	}
+	listed, complete, err = store.ProjectDevelopmentRequests("aeontra", "parrot", "ed_"+strings.Repeat("f", 32), 2)
+	if err != nil || !complete || len(listed) != 0 {
+		t.Fatal("device generation crossed", listed, err)
+	}
+	for _, limit := range []int{0, -1, MaxListResults + 1} {
+		if _, _, err := store.ProjectDevelopmentRequests("aeontra", "parrot", requests[0].DeviceID, limit); err == nil {
+			t.Fatal("invalid limit accepted")
+		}
+	}
+	if _, err := store.db.Exec(`UPDATE development_requests SET record_digest=? WHERE request_id=?`, "sha256:"+strings.Repeat("f", 64), awaiting.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.ProjectDevelopmentRequests("aeontra", "parrot", requests[0].DeviceID, 100); err == nil {
+		t.Fatal("tampered record accepted")
+	}
+}
+
 func TestDevelopmentRequestCASSetOnceFieldsAndNonterminalOwners(t *testing.T) {
 	store := openTestStore(t, Config{ControllerID: "controller-development-request-cas"})
 	initial := developmentRequestFixture()

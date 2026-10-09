@@ -276,5 +276,22 @@ func (s *Server) runProjectProcessOperation(target string, kind edge.OperationKi
 	} else if operation.State == edge.OperationFailed || operation.State == edge.OperationCancelled {
 		view.Reason = operation.SafeCode
 	}
+	if kind == edge.OperationProjectProcessList {
+		// A list has no individual exit, output or stdin state. Keep its empty
+		// collection explicit so clients can distinguish no processes from a
+		// missing result without interpreting zero-valued single-process fields.
+		processes := append([]edge.BackgroundProcessSummary{}, result.BackgroundProcesses...)
+		return marshalToolValue(struct {
+			OperationID    string                          `json:"operation_id"`
+			OperationState edge.OperationState             `json:"operation_state"`
+			Alias          string                          `json:"alias"`
+			Repository     string                          `json:"repository,omitempty"`
+			Target         string                          `json:"target"`
+			Profile        string                          `json:"profile,omitempty"`
+			Mode           string                          `json:"mode,omitempty"`
+			Reason         string                          `json:"reason,omitempty"`
+			Processes      []edge.BackgroundProcessSummary `json:"processes"`
+		}{view.OperationID, view.OperationState, view.Alias, view.Repository, view.Target, view.Profile, view.Mode, view.Reason, processes}, err)
+	}
 	return marshalToolValue(view, err)
 }

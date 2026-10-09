@@ -33,7 +33,7 @@ func TestKnownToolCallIsJournaledWithoutChangingCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if catalog.ToolCount != 193 || catalog.Hash != "sha256:9a5fda515e712a8db0b78f0f9ca6240e6f4b9e6bb72f798ecd805334a480b868" {
+	if catalog.ToolCount != 194 || catalog.Hash != "sha256:ca5585a1435c436a943e6bbf9368ebb69d29adf981a24a5a9a53f477c75cb32c" {
 		t.Fatalf("catalog changed: %+v", catalog)
 	}
 }
