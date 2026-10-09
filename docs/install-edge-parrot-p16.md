@@ -339,6 +339,12 @@ These are test fixtures; production toolbox image policy is unchanged. Their dig
 match the Docker Official Images distribution. Registry failures remain blocking and
 must be diagnosed separately from package or rootless lifecycle failures.
 
+Node and Go build stages also use the official ECR distribution with their existing
+version tags and digests unchanged. This changes the download origin, not the reviewed
+base-image content. Final Wolfi bases, production toolbox policy, signing and security
+thresholds are unchanged. ECR is an external registry with its own availability and
+quota limits; failure to retrieve a pinned manifest still fails the build.
+
 ## Durable job journal
 
 The development workcell persists execution state in the private `journal.db`. `mcp-edge doctor` reports `journal=empty|ready|pending|reconciliation|migration_required|blocked` without exposing task or result identifiers. A transient disconnect may continue locally for the fixed ten-minute offline grace. Completed pending results replay after reconnection without re-execution. Do not delete or edit `journal.db`; use the local `STOP` file before manual reconciliation. Delivered results become eligible for bounded cleanup after seven days, while pending evidence is retained. See `docs/edge-job-journal.md`.
