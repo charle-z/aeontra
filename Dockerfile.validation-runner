@@ -1,11 +1,11 @@
-FROM golang:1.26.6-alpine3.24@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS build
+FROM golang:1.26.9-alpine3.24@sha256:cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd/validation-runner ./cmd/validation-runner
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/validation-runner ./cmd/validation-runner
 
-FROM golang:1.26.6-alpine3.24@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS docker-cli
+FROM golang:1.26.9-alpine3.24@sha256:cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0 AS docker-cli
 ARG DOCKER_CLI_VERSION=29.7.2
 ARG DOCKER_CLI_COMMIT=a7dcaa6fdb6ed04aacbfdc76357fdae01605609e
 ARG DOCKER_CLI_SOURCE_SHA256=225b7ab2a15f5230b482df8461069cd4bce38891266fb9898d4188d0a3cbf54a
@@ -23,7 +23,7 @@ RUN apk add --no-cache ca-certificates \
         -trimpath \
         -ldflags="-s -w -X github.com/docker/cli/cli/version.GitCommit=${DOCKER_CLI_COMMIT} -X github.com/docker/cli/cli/version.Version=${DOCKER_CLI_VERSION}" \
         -o /out/docker ./cmd/docker \
-    && test "$(go version -m /out/docker | sed -n 's/.*go\(1\.[0-9][0-9.]*\).*/go\1/p' | head -1)" = go1.26.6
+    && test "$(go version -m /out/docker | sed -n 's/.*go\(1\.[0-9][0-9.]*\).*/go\1/p' | head -1)" = go1.26.9
 
 FROM cgr.dev/chainguard/wolfi-base:latest@sha256:1d95114038f76513a9ace6fca107d5582b08c65981f81f61cb56bf7fd2ef216d
 RUN apk upgrade --no-cache \

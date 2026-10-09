@@ -293,7 +293,7 @@ bound.
   runner-temporary cache;
 - **Govulncheck:** `golang.org/x/vuln/cmd/govulncheck@v1.6.0`.
 
-Every job checks out independently, uses Go 1.26.6, has a bounded timeout, and remains
+Every job checks out independently, uses Go 1.26.9, has a bounded timeout, and remains
 blocking. Local `govulncheck` now completes with no vulnerabilities. Local `staticcheck`
 initialization was blocked because the production builder HOME is intentionally not
 writable; CI sets `XDG_CACHE_HOME` to `${{ runner.temp }}/staticcheck-cache` instead of
@@ -378,7 +378,7 @@ Exact findings and provenance are versioned in
 - `GHSA-c2c7-rcm5-vvqj` in npm's bundled `picomatch@4.0.3`;
 - 25 Staticcheck findings: three dead declarations and 22 capitalized error strings.
 
-The current remediation pins Go 1.26.6 across the module, Actions, production image, and
+The July remediation pinned Go 1.26.6 across the module, Actions, production image, and
 validation-runner build; removes standalone GNU Wget in favor of the existing
 BusyBox applet; and installs exact `npm@12.0.1`, whose inspected bundled tree contains
 fixed `sigstore@5.0.0` and `picomatch@4.0.5`. A repository policy test locks these
@@ -393,6 +393,14 @@ zero-High/Critical container gate. Fast-forward push runs `29273109759` and
 its successful PR execution. Production serves exact commit
 `539e4d96c95aedd492ac36b428d4159054e183f4` with 62 tools and the unchanged hash.
 P6 closure evidence is versioned in `docs/baselines/2026-07-13-p6.md`.
+
+On 2026-10-09, Govulncheck identified twelve reachable standard-library findings
+in that older toolchain: GO-2026-6599, 6600, 6603, 6604, 6605, 6607, 6608, 6610,
+6611, 6612, 6613 and 6617. The module, Actions and Go image stages now use the
+corrected Go 1.26.9 patch release. Alpine and Debian image indexes remain pinned
+by digest. This update does not add scanner exceptions or change job permissions,
+triggers or vulnerability thresholds. See the
+[official release history](https://go.dev/doc/devel/release#go1.26.9).
 
 ## Structured observability — P7
 

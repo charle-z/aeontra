@@ -102,6 +102,8 @@ func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 		"Dockerfile.validation-runner":      "../../Dockerfile.validation-runner",
 		"Dockerfile.front-door":             "../../Dockerfile.front-door",
 		"Dockerfile.front-door-coordinator": "../../Dockerfile.front-door-coordinator",
+		"Dockerfile.sandbox-runner":         "../../Dockerfile.sandbox-runner",
+		"test/opencode-e2e/Dockerfile":      "../../test/opencode-e2e/Dockerfile",
 	}
 	contents := make(map[string]string, len(files))
 	for name, path := range files {
@@ -112,16 +114,16 @@ func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 		contents[name] = string(content)
 	}
 
-	if !strings.Contains(contents["go.mod"], "go 1.26.6") {
-		t.Error("go.mod must require the Go 1.26.6 security release")
+	if !strings.Contains(contents["go.mod"], "go 1.26.9") {
+		t.Error("go.mod must require the Go 1.26.9 security release")
 	}
 	for _, workflow := range []string{"ci.yml", "security.yml", "fuzz.yml"} {
-		if !strings.Contains(contents[workflow], `go-version: "1.26.6"`) {
-			t.Errorf("%s must use Go 1.26.6", workflow)
+		if !strings.Contains(contents[workflow], `go-version: "1.26.9"`) {
+			t.Errorf("%s must use Go 1.26.9", workflow)
 		}
 	}
-	for _, dockerfile := range []string{"Dockerfile", "Dockerfile.site", "Dockerfile.validation-runner", "Dockerfile.front-door", "Dockerfile.front-door-coordinator"} {
-		if !strings.Contains(contents[dockerfile], "golang:1.26.6-") {
+	for _, dockerfile := range []string{"Dockerfile", "Dockerfile.site", "Dockerfile.validation-runner", "Dockerfile.front-door", "Dockerfile.front-door-coordinator", "Dockerfile.sandbox-runner", "test/opencode-e2e/Dockerfile"} {
+		if !strings.Contains(contents[dockerfile], "golang:1.26.9-") {
 			t.Errorf("%s must use the fixed versioned Go base", dockerfile)
 		}
 	}
