@@ -775,12 +775,20 @@ Redaction is not a substitute for keeping secrets out of inputs and storage.
 ### Temporary container risk acceptance
 
 Container scans retain their original reports. A reviewed risk acceptance is a
-separate gate input, not a corrected or unaffected VEX statement. The current
+separate gate input, not a corrected or unaffected VEX statement. The historical
 approval in `security/accepted-risks/http-cache-semantics-20261003.json` expires
 on 2026-10-17 at 13:24 UTC. It applies only to CVE-2026-93748 / GHSA-ch52-4w7c-c8xp,
 `http-cache-semantics` 4.2.0 at its exact bundled-npm path in the reviewed sandbox
 workcell. The gate verifies the scanned OCI configuration ID against the verified
 image ID and binds the approval to the workcell Dockerfile SHA-256.
+
+New workcell builds install the official `http-cache-semantics` 4.3.0 package
+with a verified archive SHA-256 and run the ordinary High threshold without that
+approval. The historical file remains for the exact deployed image monitored by
+the daily watch; it is not extended or rebound to new images. The upstream
+maintainer disputes CVE-2026-93748, and the advisory currently lists versions
+through 4.2.0. Updating beyond that range is not proof of a new shared-cache
+security guarantee; arbitrary project use still needs correct cache policy.
 
 Accepted findings remain visible as warnings with their owner and expiry. Other
 advisories, package versions or locations, Critical/Unknown severity, an available

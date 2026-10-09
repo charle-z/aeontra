@@ -331,10 +331,7 @@ jobs:
         run: test -s sandbox-workcell-grype.json
 
       - name: Enforce sandbox workcell vulnerability threshold
-        run: |
-          image_id="$(docker image inspect mcp-sandbox-workcell:ci --format '{{.Id}}')"
-          go run ./cmd/grype-gate --report sandbox-workcell-grype.json --minimum high --annotation-file Dockerfile.sandbox-workcell \
-            --accepted-risk security/accepted-risks/http-cache-semantics-20261003.json --image-id "$image_id"
+        run: go run ./cmd/grype-gate --report sandbox-workcell-grype.json --minimum high --annotation-file Dockerfile.sandbox-workcell
 
       - name: Retain SBOM and vulnerability evidence
         if: always()

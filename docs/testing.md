@@ -410,6 +410,15 @@ headers and `go-1.26=1.26.9-r0`. These revisions were available in the official
 Chainguard APK index. Unknown-severity findings still fail the existing gate;
 they are not downgraded or exempted.
 
+The workcell scan also identified CVE-2026-19445 and CVE-2026-19553 in the pinned
+Python 3.14.7 snapshot. It now selects `python-3.14=3.14.8_git20261008-r1`;
+the [Python 3.14.8 release](https://www.python.org/downloads/release/python-3148/)
+lists both corrections. The bundled npm cache library uses the official
+`http-cache-semantics` 4.3.0 archive with its verified SHA-256. The new-image
+gate no longer uses the historical 4.2.0 risk approval. Offline runtime checks
+verify Python's patch version, npm library loading and normal cache behavior.
+Historical monitored-image identities and their expiring approval remain unchanged.
+
 ## Structured observability — P7
 
 P7 adds `internal/observability` with a closed JSONL schema and a 70% package
