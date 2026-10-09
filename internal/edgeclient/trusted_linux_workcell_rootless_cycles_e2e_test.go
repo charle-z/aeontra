@@ -144,7 +144,7 @@ func p12RunRootlessCycle(t *testing.T, endpoint *RootlessContainerEndpoint, runt
 		}
 	}()
 
-	containerfile := "FROM docker.io/library/alpine:3.20\nCOPY fixture.txt /fixture.txt\nCMD [\"/bin/sh\",\"-c\",\"test -f /fixture.txt && echo p12-image-ready\"]\n"
+	containerfile := "FROM public.ecr.aws/docker/library/alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc\nCOPY fixture.txt /fixture.txt\nCMD [\"/bin/sh\",\"-c\",\"test -f /fixture.txt && echo p12-image-ready\"]\n"
 	if err := os.WriteFile(filepath.Join(workspace, "Containerfile"), []byte(containerfile), 0o600); err != nil {
 		t.Fatal(err)
 	}
