@@ -131,7 +131,7 @@ jobs:
           docker run --rm \
             -v "$RUNNER_TEMP/deb-a:/artifacts:ro" \
             -v "$RUNNER_TEMP/legacy-state:/fixtures/legacy-state:ro" \
-            debian:bookworm-slim sh -euxc '
+            public.ecr.aws/docker/library/debian@sha256:a4672c0cb26fbdde88e38fa2dfb6c681942306680e41e4378b28770b6e79ee91 sh -euxc '
               printf "#!/bin/sh\nprintf \"%%s\\\\n\" \"\$*\" >>/tmp/systemctl.log\nif [ \"\${1:-}\" = show ]; then printf \"not-found\\\\n\"; exit 0; fi\nif [ -e /tmp/fail-edge-service ] && [ \"\${1:-}\" = is-active ]; then exit 1; fi\nif [ -e /tmp/fail-disable ] && [ \"\${1:-}\" = disable ]; then exit 1; fi\nexit 0\n" >/usr/bin/systemctl
               chmod 0755 /usr/bin/systemctl
               printf "#!/bin/sh\nexit 0\n" >/usr/bin/loginctl

@@ -1,4 +1,4 @@
-FROM node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03 AS opencode
+FROM public.ecr.aws/docker/library/node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03 AS opencode
 
 WORKDIR /opt/opencode
 COPY test/opencode-e2e/package.json test/opencode-e2e/package-lock.json ./
@@ -8,7 +8,7 @@ RUN npm ci --no-audit --no-fund \
     && install -m 0755 ./node_modules/opencode-linux-x64/bin/opencode /opt/opencode/opencode-1.18.1 \
     && test "$(/opt/opencode/opencode-1.18.1 --version)" = "1.18.1"
 
-FROM golang:1.26.9-bookworm@sha256:d9c68c2c51161e12fd77e4c6320687c9cd86e1af1e3ad6e6cd63ff970641453c AS test-build
+FROM public.ecr.aws/docker/library/golang:1.26.9-bookworm@sha256:d9c68c2c51161e12fd77e4c6320687c9cd86e1af1e3ad6e6cd63ff970641453c AS test-build
 
 WORKDIR /workspace
 COPY go.mod go.sum ./
@@ -27,7 +27,7 @@ RUN BUNDLE_PUBLIC_KEY="$(go run ./cmd/mcp-bundle-keygen --output /tmp/opencode-e
     && rm /tmp/opencode-e2e-release.key \
     && go test -c -tags=opencode_e2e -o /out/mcp-devbox-opencode-e2e ./internal/mcpserver
 
-FROM golang:1.26.9-bookworm@sha256:d9c68c2c51161e12fd77e4c6320687c9cd86e1af1e3ad6e6cd63ff970641453c
+FROM public.ecr.aws/docker/library/golang:1.26.9-bookworm@sha256:d9c68c2c51161e12fd77e4c6320687c9cd86e1af1e3ad6e6cd63ff970641453c
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git ripgrep strace \
