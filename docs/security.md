@@ -712,6 +712,18 @@ acknowledges kill without exiting. The creation time is revalidated on that same
 before termination, and `interrupt` has no forced fallback. The worker-owned Job Object
 kills its contained descendants when the wrapper exits.
 
+An admitted Linux worker can finish before its workload PID can be inspected. It may
+report a known terminal exit only after waiting for its own exact spawned launcher;
+sandbox commands also require valid launcher metadata. No child PID is fabricated.
+Live workloads still require ownership, process-group and start-time attestation before
+signals or stdin control. Readiness and exit receipt races preserve the original exit.
+
+`edge_connectivity_status` reports server-received authenticated contact time from the
+private Edge database. Signature, nonce and active-device checks precede the contact
+write in the existing transaction. Replays, forged signatures and caller timestamps
+cannot refresh contact. This evidence grants no execution authority and does not prove
+host power or readiness. The read performs no Edge RPC and does not change admission.
+
 The process journal also records the owner-bound repository, claim generation, selected
 profile and mode, and workspace binding captured at start. These fields are used for
 authorization after a project alias is released or reassociated; a later Git change

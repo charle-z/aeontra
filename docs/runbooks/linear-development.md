@@ -6,11 +6,18 @@ the [tool contract](../tools.md). This workflow does not grant new access.
 
 ## Find the workspace
 
-1. Read `edge_onboarding_status` or `edge_bundle_status` with `target`.
+1. Read `edge_connectivity_status(target)` first when connectivity is uncertain.
+   This reads server metadata immediately without queueing an operation. A recent
+   authenticated contact does not prove capacity or readiness; no recent contact
+   can mean shutdown, suspended WSL, network failure or a stopped daemon. `unknown`
+   means no usable observation, not an offline diagnosis. Do not enqueue repairs
+   or repeat commands merely because a target has no recent contact.
+2. Read `edge_onboarding_status` or `edge_bundle_status` with `target` when a
+   device-side health probe is needed; unlike connectivity, these await the Edge.
    Legacy clients may supply `device_id` instead; never supply both.
-2. Read `project_registry_list(target)` and select the intended project alias.
+3. Read `project_registry_list(target)` and select the intended project alias.
    A project absent on one target may be registered on another authorized target.
-3. Read `project_status(alias,target)` and `project_git_status(alias,target)`.
+4. Read `project_status(alias,target)` and `project_git_status(alias,target)`.
    Normal dirty state is allowed. Reconcile a diagnosed identity problem before
    writing; do not clone over existing work or release a claim speculatively.
 
@@ -38,6 +45,9 @@ direct workcell/toolbox path until that first commit exists.
   inventory never dispatches or retries work. It includes awaiting-reasoning and
   retained terminal records. `list_complete=false` means the bounded list is not
   exhaustive; increase `limit` up to 100 rather than concluding older work vanished.
+  The exact plain `pwd` command does not require unrelated repository compilers;
+  caller-supplied requirements still apply. Wrapped/local commands, environment
+  overrides and external-runner requests retain conservative source inference.
 - Model tasks: recover with `project_task_list`, then read `project_task_status`
   and follow its current continuation. A completed runtime is not necessarily an
   accepted objective, and the server cannot resume a closed ChatGPT turn itself.

@@ -162,6 +162,11 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
 - **Volumes and paths:** server coordination is under `/state/edge` and
   `/state/model-turns`; the real Edge keeps private state under
   `~/.local/state/mcp-edge`, with workspaces under the configured local roots.
+- **Connectivity metadata:** `edge_connectivity_status` reads the last server-received
+  authenticated device request from the existing private Edge database. It uses a
+  fixed 90-second freshness window and has no poller or device-side operation.
+  Pairing alone has no contact evidence. Older databases migrate additively and
+  initially report `unknown`; the next authenticated request records contact.
 - **Background process state:** the Edge stores private process metadata at
   `~/.local/state/mcp-edge/project-processes.db` and separate redacted logs below
   `~/.local/state/mcp-edge/project-process-logs`. The directory is owner-only and log
