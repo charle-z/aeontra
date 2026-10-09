@@ -31,8 +31,7 @@ func TestSecurityRiskWatchIsDailyBoundedAndIdentityVerified(t *testing.T) {
 		"anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2",
 		"vex: security/vex/sandbox-workcell-zlib.openvex.json", "cache-db: true",
 		"fail-build: false", "severity-cutoff: high", "output-format: json",
-		"--accepted-risk security/accepted-risks/http-cache-semantics-20261003.json",
-		"--image-id \"$VERIFIED_IMAGE_ID\"", "--annotation-file artifacts/monitored/Dockerfile.sandbox-workcell",
+		"test -n \"$VERIFIED_IMAGE_ID\"", "--annotation-file artifacts/monitored/Dockerfile.sandbox-workcell",
 		"db-provenance.json", "if: always()", "retention-days: 7", "if-no-files-found: error",
 	} {
 		if !strings.Contains(text, required) {
@@ -87,11 +86,11 @@ func TestSecurityRiskWatchInventoryMatchesVerifiedWorkcell(t *testing.T) {
 	}
 	w := inventory.Workcell
 	if w.Repository != "ghcr.io/charle-z/aeontra-sandbox-workcell" ||
-		w.IndexDigest != "sha256:fe6574b01c3f2c99aa1460723051d46f2af20b5f425af613e5d2387f5ffde267" ||
-		w.ManifestDigest != "sha256:4ecc2ab3e1e0c35b12d0448864ba4dbc7a42f60e09fe825e3c687154c34e9942" ||
-		w.ImageID != "sha256:0708a6f884e4fcc1af57cb25e126629e977d3117a504123b2d80fb2a24772c07" ||
-		w.Revision != "fcac9ceb0ed2a45e02808e40a6cbc8aa07a4b370" ||
-		w.RecipeSHA256 != "90d871967d9469e07f4b7f231ade595389562e534cb1977d8e73cbadcb443635" {
+		w.IndexDigest != "sha256:a57995ced48e5d50c48b49934e078a4c865dba356e32a2f59ec26b7b27c15223" ||
+		w.ManifestDigest != "sha256:e5368a7ff87330b4b3b42088a0927f9c5036d8e473c68b2ccc51ddf1d008186e" ||
+		w.ImageID != "sha256:1106476e2a9fce831f1f5abd6aafd9cf9770b0771ba065934de4aa03a2444c3d" ||
+		w.Revision != "e73ccea716e518531737db013b4caea3a4a9d298" ||
+		w.RecipeSHA256 != "11ebaa13b523eac95e2471341e4289025571e903b5059446e3d61452b422111f" {
 		t.Fatal("workcell identities differ from the verified protected image release")
 	}
 	// The watch checks the recipe in this exact revision with a full checkout.
@@ -100,9 +99,22 @@ func TestSecurityRiskWatchInventoryMatchesVerifiedWorkcell(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"deployed-workcell", "does not discover production", "Coolify", "no image rebuild", "24 hours", "7 days", "larger transfer", "2026-10-08-workcell-rollout.md"} {
+	for _, required := range []string{"deployed-workcell", "does not discover production", "Coolify", "no image rebuild", "24 hours", "7 days", "larger transfer", "2026-10-09-workcell-rollout.md"} {
 		if !strings.Contains(strings.Join(strings.Fields(string(doc)), " "), required) {
 			t.Errorf("watch runbook missing limitation %q", required)
 		}
+	}
+}
+
+func TestSecurityRiskWatchUsesStrictGateForUpdatedWorkcell(t *testing.T) {
+	content, err := os.ReadFile("../../.github/workflows/security-risk-watch.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(content), "--accepted-risk") || strings.Contains(string(content), "--image-id") {
+		t.Fatal("updated workcell watch must not inherit the historical image exception")
+	}
+	if !strings.Contains(string(content), "--minimum high") {
+		t.Fatal("updated image lost High/Critical threshold")
 	}
 }
