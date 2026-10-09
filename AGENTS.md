@@ -87,6 +87,7 @@ Use this short map before scanning the complete catalog in `docs/tools.md`.
 | Recover a durable task after chat interruption | `project_task_list`, then `project_task_status` for the selected task ID |
 | Recover a durable command after chat interruption | `project_development_list`, then `project_development_status` for the selected request ID |
 | Inspect health of a paired Edge by alias | `edge_onboarding_status` / `edge_bundle_status` with `target` |
+| Check whether an Edge has contacted the server recently | `edge_connectivity_status` with `target`; no device operation is queued |
 | Read one or several files | `read_file` / `read_many_files` |
 | Search code or text | `search_code` |
 | Change existing files | `apply_patch` |

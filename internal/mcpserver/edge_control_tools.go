@@ -178,6 +178,7 @@ func (s *Server) addEdgeControlTools() {
 	deviceSchema := map[string]any{"device_id": stringSchema("opaque active Edge device id", `^ed_[a-f0-9]{32}$`, 35)}
 	healthSchema := closedObject(map[string]any{"device_id": deviceSchema["device_id"], "target": projectSchema["target"]}, nil)
 	healthSchema["oneOf"] = []any{map[string]any{"required": []string{"device_id"}}, map[string]any{"required": []string{"target"}}}
+	s.addDirectTool(toolDef{Name: "edge_connectivity_status", Description: "Read the last authenticated contact for one active paired Edge without dispatching or waiting for the device. Supply target or legacy device_id. Recent contact proves transport activity, not host power, readiness or command capacity; no recent contact cannot distinguish shutdown from network or service failure.", InputSchema: healthSchema, Version: "1", Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}}, s.handleEdgeConnectivityStatus)
 	s.addDirectTool(toolDef{Name: "edge_bundle_status", Description: "Return signed-bundle and service compatibility metadata from one paired Edge. Supply either the human target alias or its legacy device_id, not both.", InputSchema: healthSchema, Version: "1", Annotations: map[string]any{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}}, func(arguments json.RawMessage) (string, error) {
 		return s.handleDeviceOperation(arguments, edge.OperationBundleStatus, false)
 	})

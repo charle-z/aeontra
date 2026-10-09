@@ -26,12 +26,13 @@ place registry credentials in the public MCP container or a launched workcell.
 
 The reference workcell uses a digest-pinned Wolfi base and exact package versions for
 Go, Rust, Node/npm, Python, the C/C++ compiler baseline and common command-line
-utilities. Its three replaced npm transitive packages (`brace-expansion`, `undici`,
-and `ip-address`) are fetched over HTTPS and verified
+utilities. Its four replaced npm transitive packages (`brace-expansion`, `undici`,
+`ip-address`, and `http-cache-semantics`) are fetched over HTTPS and verified
 by SHA-256. The security workflow builds this exact image, emits an SPDX SBOM and
-rejects unaccepted High or Critical Grype findings. The single expiring approval is
-defined in [the security model](../security.md#temporary-container-risk-acceptance);
-it preserves the raw finding and does not declare remediation. Treat any package-version change
+rejects unaccepted High or Critical Grype findings. The historical expiring approval
+in [the security model](../security.md#temporary-container-risk-acceptance) applies
+only to its exact older image and finding; the updated image must pass its own gate.
+Treat any package-version change
 as a reviewed image update and repeat that gate before publishing a new digest.
 
 The fixed L3 capability matrix is deliberately smaller than a general development

@@ -113,6 +113,7 @@ func Open(cfg Config) (*Store, error) {
 		`CREATE TABLE IF NOT EXISTS pairings(code_hash BLOB PRIMARY KEY, expires_at INTEGER NOT NULL, consumed_at INTEGER) WITHOUT ROWID`,
 		`CREATE TABLE IF NOT EXISTS devices(device_id TEXT PRIMARY KEY, name TEXT NOT NULL, public_key BLOB NOT NULL UNIQUE, state TEXT NOT NULL, paired_at INTEGER NOT NULL, revoked_at INTEGER) WITHOUT ROWID`,
 		`CREATE TABLE IF NOT EXISTS nonces(device_id TEXT NOT NULL, nonce_hash BLOB NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY(device_id,nonce_hash)) WITHOUT ROWID`,
+		`CREATE TABLE IF NOT EXISTS edge_device_contact(device_id TEXT PRIMARY KEY, last_contact_at INTEGER NOT NULL, FOREIGN KEY(device_id) REFERENCES devices(device_id)) WITHOUT ROWID`,
 		`CREATE TABLE IF NOT EXISTS edge_tasks(task_id TEXT PRIMARY KEY, device_id TEXT NOT NULL, idempotency_key TEXT NOT NULL, workcell TEXT NOT NULL, objective_json BLOB NOT NULL, restrictions_json BLOB NOT NULL, state TEXT NOT NULL, lease_id TEXT, lease_holder TEXT, lease_until INTEGER, cancel_requested INTEGER NOT NULL DEFAULT 0, attempt_count INTEGER NOT NULL DEFAULT 0, outcome TEXT, result_summary TEXT, result_ref TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, UNIQUE(device_id,idempotency_key), FOREIGN KEY(device_id) REFERENCES devices(device_id))`,
 		`CREATE INDEX IF NOT EXISTS edge_tasks_queue ON edge_tasks(device_id,workcell,state,created_at)`,
 		`CREATE TABLE IF NOT EXISTS edge_workspaces(workspace_id TEXT PRIMARY KEY, device_id TEXT NOT NULL, profile TEXT NOT NULL, mode TEXT NOT NULL, registered_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, FOREIGN KEY(device_id) REFERENCES devices(device_id)) WITHOUT ROWID`,
@@ -287,6 +288,11 @@ func (s *Store) Authenticate(request SignedRequest) (Device, error) {
 	device.PairedAt = time.Unix(paired, 0).UTC()
 	_, _ = tx.Exec(`DELETE FROM nonces WHERE expires_at<=?`, now.Unix())
 	if _, err := tx.Exec(`INSERT INTO nonces(device_id,nonce_hash,expires_at) VALUES(?,?,?)`, request.DeviceID, digest(request.Nonce), now.Add(NonceTTL).Unix()); err != nil {
+		return Device{}, errors.New("edge authentication failed")
+	}
+	// Record server receipt time only after signature and nonce validation, in the
+	// existing transaction. A client timestamp or replay cannot refresh contact.
+	if _, err := tx.Exec(`INSERT INTO edge_device_contact(device_id,last_contact_at) VALUES(?,?) ON CONFLICT(device_id) DO UPDATE SET last_contact_at=excluded.last_contact_at`, request.DeviceID, now.Unix()); err != nil {
 		return Device{}, errors.New("edge authentication failed")
 	}
 	if err := tx.Commit(); err != nil {
