@@ -70,7 +70,7 @@ func runControlOperationWorker(ctx context.Context, stateRoot string, transport 
 		}
 		lease, err := transport.LeaseOperation(ctx, time.Minute)
 		if err != nil {
-			fmt.Fprintln(stderr, "mcp-edge: control operation polling failed safely")
+			logControlOperationFailure(stderr, "polling", "", err)
 			if !waitControlOperation(ctx, 5*time.Second) {
 				return
 			}
@@ -83,23 +83,28 @@ func runControlOperationWorker(ctx context.Context, stateRoot string, transport 
 			continue
 		}
 		result, code, cancelRequested, gateHeld, exclusive, lifecycleErr := executeControlOperationWithProgressAndGate(ctx, stateRoot, transport, processes, tests, browsers, controlGate, *lease)
-		if lifecycleErr != nil {
+		if !controlResultCanComplete(lifecycleErr) {
 			if gateHeld {
 				controlGate.release(exclusive)
 			}
-			fmt.Fprintln(stderr, "mcp-edge: control operation progress failed safely")
+			logControlOperationFailure(stderr, "progress", lease.Operation.ID, lifecycleErr)
 			continue
+		}
+		if lifecycleErr != nil {
+			logControlOperationFailure(stderr, "finalizing", lease.Operation.ID, lifecycleErr)
 		}
 		if cancelRequested {
 			if err = acknowledgeControlOperationCancellation(ctx, stateRoot, transport, *lease); err != nil {
-				fmt.Fprintln(stderr, "mcp-edge: control operation cancellation failed safely")
+				logControlOperationFailure(stderr, "cancellation", lease.Operation.ID, err)
 			}
 			if gateHeld {
 				controlGate.release(exclusive)
 			}
 			continue
 		}
-		if code == "" {
+		// Foreground argv uses an existing registered workspace and creates no
+		// bindings. Its completed result does not require a registry announcement.
+		if code == "" && lease.Operation.Kind != edge.OperationProjectExec {
 			registry, openErr := edgeclient.OpenWorkspaceRegistry(stateRoot)
 			if openErr == nil {
 				workspaces, listErr := registry.List()
@@ -123,7 +128,7 @@ func runControlOperationWorker(ctx context.Context, stateRoot string, transport 
 		}
 		cancel()
 		if err != nil {
-			fmt.Fprintln(stderr, "mcp-edge: control operation completion failed safely")
+			logControlOperationFailure(stderr, "completion", lease.Operation.ID, err)
 		}
 		if gateHeld {
 			controlGate.release(exclusive)

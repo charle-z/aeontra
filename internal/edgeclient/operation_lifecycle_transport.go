@@ -2,7 +2,6 @@ package edgeclient
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 
 	"github.com/charle-z/mcp-devbox/internal/edge"
@@ -16,7 +15,7 @@ func (t *Transport) ReportOperationProgress(ctx context.Context, operationID, le
 		return edge.OperationControl{}, err
 	}
 	if status != http.StatusOK {
-		return edge.OperationControl{}, fmt.Errorf("edge operation progress rejected with HTTP %d", status)
+		return edge.OperationControl{}, &operationHTTPError{phase: "progress", status: status}
 	}
 	return control, nil
 }
@@ -29,7 +28,7 @@ func (t *Transport) CancelOperation(ctx context.Context, operationID, leaseID st
 		return edge.Operation{}, err
 	}
 	if status != http.StatusOK {
-		return edge.Operation{}, fmt.Errorf("edge operation cancellation rejected with HTTP %d", status)
+		return edge.Operation{}, &operationHTTPError{phase: "cancellation", status: status}
 	}
 	return operation, nil
 }

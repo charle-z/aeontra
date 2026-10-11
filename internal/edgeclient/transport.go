@@ -131,7 +131,7 @@ func (t *Transport) LeaseOperation(ctx context.Context, ttl time.Duration) (*edg
 		if status == http.StatusConflict {
 			return nil, errors.New("edge version skew")
 		}
-		return nil, fmt.Errorf("edge operation lease rejected with HTTP %d", status)
+		return nil, &operationHTTPError{phase: "lease", status: status}
 	}
 	t.identityMu.RLock()
 	controlPublicKey := t.identity.ControlPublicKey
@@ -197,7 +197,7 @@ func (t *Transport) CompleteOperation(ctx context.Context, operationID, leaseID 
 		return edge.Operation{}, err
 	}
 	if status != http.StatusOK {
-		return edge.Operation{}, fmt.Errorf("edge operation completion rejected with HTTP %d", status)
+		return edge.Operation{}, &operationHTTPError{phase: "completion", status: status}
 	}
 	return operation, nil
 }
@@ -270,7 +270,7 @@ func (t *Transport) doLimitedWithClient(ctx context.Context, client *http.Client
 	limited := io.LimitReader(response.Body, maxResponse+1)
 	content, err := io.ReadAll(limited)
 	if err != nil || int64(len(content)) > maxResponse {
-		return response.StatusCode, errors.New("edge response is invalid")
+		return response.StatusCode, errEdgeResponseInvalid
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return response.StatusCode, nil
@@ -278,7 +278,7 @@ func (t *Transport) doLimitedWithClient(ctx context.Context, client *http.Client
 	decoder := json.NewDecoder(bytes.NewReader(content))
 	decoder.DisallowUnknownFields()
 	if err := decodeSingleJSON(decoder, output); err != nil {
-		return response.StatusCode, errors.New("edge response is invalid")
+		return response.StatusCode, errEdgeResponseInvalid
 	}
 	return response.StatusCode, nil
 }
