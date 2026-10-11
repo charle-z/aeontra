@@ -4,7 +4,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/edge"
@@ -53,7 +52,7 @@ func executeWindowsControlOperationLifecycle(ctx context.Context, transport wind
 	control, err := transport.ReportOperationProgress(progressCtx, lease.Operation.ID, lease.LeaseID, edge.OperationProgress{Revision: 1, Phase: controlOperationPhase(lease.Operation.Kind)})
 	cancel()
 	if err != nil {
-		return edge.OperationResult{}, "", false, errors.New("Windows control operation progress failed")
+		return edge.OperationResult{}, "", false, err
 	}
 	if control.CancelRequested {
 		return edge.OperationResult{}, "", true, nil
@@ -77,7 +76,7 @@ func executeWindowsControlOperationLifecycle(ctx context.Context, transport wind
 			control, progressErr := transport.ReportOperationProgress(progressCtx, lease.Operation.ID, lease.LeaseID, edge.OperationProgress{Revision: revision, Phase: "finalizing"})
 			cancel()
 			if progressErr != nil {
-				return edge.OperationResult{}, "", cancelRequested, progressErr
+				return execution.result, execution.code, cancelRequested, &controlFinalizingError{cause: progressErr}
 			}
 			if control.CancelRequested {
 				cancelRequested = true
