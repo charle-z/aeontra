@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -10,6 +11,24 @@ import (
 	"github.com/charle-z/mcp-devbox/internal/edge"
 	"github.com/charle-z/mcp-devbox/internal/edgeclient"
 )
+
+func TestProjectToolboxCancellationDoesNotRepairOrTryAnotherEngine(t *testing.T) {
+	for _, cause := range []error{context.Canceled, context.DeadlineExceeded} {
+		err := errors.Join(edgeclient.ErrProjectToolboxOwnershipInspectUnavailable, edgeclient.ErrProjectToolboxContainerUnavailable, cause)
+		first, second := &fakeProjectToolboxManager{statusErr: err}, &fakeProjectToolboxManager{}
+		selected, got := selectProjectToolboxManager(t.Context(), []projectToolboxOperations{first, second}, toolboxSelectionFixture(), edge.Operation{Kind: edge.OperationProjectToolboxRepair})
+		if selected != nil || !errors.Is(got, cause) || first.repairCalls != 0 || second.statusCalls != 0 {
+			t.Fatalf("cancellation caused recovery: %v", got)
+		}
+		if code := safeProjectToolboxSelectionFailure(err); code != "cancelled" {
+			t.Fatalf("selection code=%s", code)
+		}
+		_, code := collectProjectToolbox(t.Context(), first, toolboxSelectionFixture(), edge.Operation{Kind: edge.OperationProjectToolboxStatus})
+		if code != "cancelled" {
+			t.Fatalf("collection code=%s", code)
+		}
+	}
+}
 
 func TestSafeProjectToolboxSelectionFailureCategories(t *testing.T) {
 	tests := []struct {
