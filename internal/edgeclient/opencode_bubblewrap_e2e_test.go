@@ -105,6 +105,65 @@ func TestBubblewrapLinkedWorktreeGitMetadata(t *testing.T) {
 	if worktreeHead == fixture.head || canonicalHead != fixture.head {
 		t.Fatalf("branch isolation failed: worktree=%s canonical=%s base=%s", worktreeHead, canonicalHead, fixture.head)
 	}
+	for _, selected := range []Workspace{workspace, fixture.canonical} {
+		t.Run(selected.ID, func(t *testing.T) {
+			lease.WorkspaceID = selected.ID
+			runtimeDir := filepath.Join(fixture.stateRoot, "r", lease.RuntimeID)
+			spec, err := launcher.codexLinuxWorkcellProcessSpec(runtimeDir, selected, LinuxWorkcellPreparation{Workspace: selected}, "http://127.0.0.1:43210/v1", lease, io.Discard, io.Discard)
+			if err != nil {
+				t.Fatal(err)
+			}
+			separator := slices.Index(spec.Args, "--")
+			if separator < 0 {
+				t.Fatal("Bubblewrap command separator is missing")
+			}
+			invoke := func(arguments ...string) (string, error) {
+				args := append(append([]string(nil), spec.Args[:separator+1]...), append([]string{gitPath}, arguments...)...)
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				defer cancel()
+				command := exec.CommandContext(ctx, spec.Executable, args...)
+				command.Dir, command.Env = spec.Dir, spec.Env
+				output, err := command.CombinedOutput()
+				return strings.TrimSpace(string(output)), err
+			}
+			git := func(arguments ...string) string {
+				t.Helper()
+				output, err := invoke(arguments...)
+				if err != nil {
+					t.Fatalf("sandbox Git %v failed: %v: %s", arguments, err, boundedDiagnostic(output))
+				}
+				return output
+			}
+			// A sandbox-global identity must not silently replace missing repo configuration.
+			if err := os.WriteFile(filepath.Join(runtimeDir, "home", ".gitconfig"), []byte("[user]\nname = Global Fixture\nemail = global@example.invalid\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			git("config", "--local", "user.name", "Fixture Contributor")
+			git("config", "--local", "user.email", "contributor@example.invalid")
+			git("commit", "--allow-empty", "-m", "explicit identity acceptance")
+			want := "Fixture Contributor|contributor@example.invalid|Fixture Contributor|contributor@example.invalid"
+			if got := git("show", "-s", "--format=%an|%ae|%cn|%ce", "HEAD"); got != want {
+				t.Fatalf("commit attribution=%q want=%q", got, want)
+			}
+			for _, key := range []string{"user.name", "user.email"} {
+				before := git("rev-parse", "HEAD")
+				value := git("config", "--local", "--get", key)
+				git("config", "--local", "--unset", key)
+				output, err := invoke("commit", "--allow-empty", "-m", "missing identity must fail")
+				if err == nil || !strings.Contains(strings.ToLower(output), "auto-detection is disabled") {
+					t.Fatalf("missing %s did not fail for explicit identity: err=%v output=%s", key, err, boundedDiagnostic(output))
+				}
+				if got := git("rev-parse", "HEAD"); got != before {
+					t.Fatal("missing identity created a commit")
+				}
+				git("config", "--local", key, value)
+			}
+			git("commit", "--allow-empty", "-m", "identity recovery acceptance")
+			if got := git("show", "-s", "--format=%an|%ae|%cn|%ce", "HEAD"); got != want {
+				t.Fatalf("recovered attribution=%q want=%q", got, want)
+			}
+		})
+	}
 }
 
 func runHostGit(t *testing.T, directory string, arguments ...string) string {
