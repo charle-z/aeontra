@@ -247,7 +247,7 @@ func runWindowsControlOperationWorker(ctx context.Context, config windowsAgentCo
 			if config.once {
 				return leaseErr
 			}
-			fmt.Fprintln(config.stderr, "mcp-edge: Windows control operation polling failed safely")
+			logControlOperationFailure(config.stderr, "polling", "", leaseErr)
 			if !waitWindowsAgent(ctx, config.poll) {
 				return nil
 			}
@@ -263,39 +263,45 @@ func runWindowsControlOperationWorker(ctx context.Context, config windowsAgentCo
 			continue
 		}
 		result, safeCode, cancelRequested, lifecycleErr, gateHeld, exclusive := executeWindowsControlOperationWithProgressAndGate(ctx, config.stateRoot, transport, processes, len(workspaces), controlGate, *lease)
-		if lifecycleErr != nil {
+		if !controlResultCanComplete(lifecycleErr) {
 			if gateHeld {
 				controlGate.release(exclusive)
 			}
-			fmt.Fprintln(config.stderr, "mcp-edge: Windows control operation stopped safely")
+			logControlOperationFailure(config.stderr, "progress", lease.Operation.ID, lifecycleErr)
 			if config.once {
 				return lifecycleErr
 			}
 			continue
+		}
+		if lifecycleErr != nil {
+			logControlOperationFailure(config.stderr, "finalizing", lease.Operation.ID, lifecycleErr)
 		}
 		if cancelRequested {
 			cancelCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 			_, cancelErr := transport.CancelOperation(cancelCtx, lease.Operation.ID, lease.LeaseID)
 			cancel()
 			if cancelErr != nil {
-				fmt.Fprintln(config.stderr, "mcp-edge: Windows cancellation acknowledgement failed safely")
+				logControlOperationFailure(config.stderr, "cancellation", lease.Operation.ID, cancelErr)
 			}
 			if gateHeld {
 				controlGate.release(exclusive)
+			}
+			if config.once {
+				return cancelErr
 			}
 		} else {
 			completionCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 			_, completeErr := transport.CompleteOperation(completionCtx, lease.Operation.ID, lease.LeaseID, result, safeCode)
 			cancel()
 			if completeErr != nil {
-				fmt.Fprintln(config.stderr, "mcp-edge: Windows control operation completion failed safely")
+				logControlOperationFailure(config.stderr, "completion", lease.Operation.ID, completeErr)
 			}
 			if gateHeld {
 				controlGate.release(exclusive)
 			}
-		}
-		if config.once {
-			return nil
+			if config.once {
+				return completeErr
+			}
 		}
 	}
 }

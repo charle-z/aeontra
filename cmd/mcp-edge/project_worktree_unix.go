@@ -48,7 +48,7 @@ func executeProjectWorktree(ctx context.Context, stateRoot string, operation edg
 			LeaseID: operation.Request.WorkLeaseID, Fence: operation.Request.WorkFence,
 		})
 	case edge.OperationProjectWorktreeStatus:
-		snapshot, err = manager.Status(ctx, operation.Request.WorktreeID)
+		snapshot, err = manager.StatusWithAncestors(ctx, operation.Request.WorktreeID, operation.Request.WorktreeAncestorCommits)
 	case edge.OperationProjectWorktreeList:
 		var items []edgeclient.ProjectWorktreeSnapshot
 		items, err = manager.List(ctx, resolved.Project.Alias, resolved.TargetAlias, operation.Request.WorktreeLimit)
@@ -70,7 +70,12 @@ func executeProjectWorktree(ctx context.Context, stateRoot string, operation edg
 	if snapshot.Alias != resolved.Project.Alias || snapshot.TargetAlias != resolved.TargetAlias || snapshot.Repository != resolved.Project.Owner+"/"+resolved.Project.Repository {
 		return edge.OperationResult{}, "project_worktree_conflict"
 	}
-	return projectWorktreeResult(resolved, snapshot), ""
+	result := projectWorktreeResult(resolved, snapshot)
+	if len(operation.Request.WorktreeAncestorCommits) != 0 {
+		result.WorktreeAncestorCommits = append([]string(nil), operation.Request.WorktreeAncestorCommits...)
+		result.WorktreeAncestorsVerified = true
+	}
+	return result, ""
 }
 
 func projectWorktreeResult(resolved edgeclient.ProjectResolution, snapshot edgeclient.ProjectWorktreeSnapshot) edge.OperationResult {

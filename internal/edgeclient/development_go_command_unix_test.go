@@ -73,6 +73,21 @@ func TestDevelopmentGoCommandRequirementsPreserveProvenance(t *testing.T) {
 	}
 }
 
+func TestDevelopmentGoCommandRequirementsCorepackMinimumProvenance(t *testing.T) {
+	root, conservative, runner := goManifestRequirementsFixture(t, map[string]string{
+		"go.mod":       "module example.test/project\ngo 1.26.2\n",
+		"Makefile":     "all:\n",
+		"package.json": `{"packageManager":"` + corepackPnpmFixture + `"}`,
+	})
+	evidence, err := DevelopmentGoCommandRequirements(t.Context(), root, "sha256:"+strings.Repeat("a", 64), conservative, runner)
+	if err != nil || evidence == nil || !reflect.DeepEqual(evidence.MinimumVersions, []development.GoMinimum{{Manifest: "go.mod", Version: "1.26.2"}}) || len(evidence.ExactRequirements) != 0 {
+		t.Fatalf("Go minimum became an exact caller/manager pin: %+v %v", evidence, err)
+	}
+	if !reflect.DeepEqual(conservative, []development.CapabilityID{"build.make", "toolchain.go.v1-26-2", "toolchain.pnpm.v11-19-0"}) {
+		t.Fatalf("non-Go conservative requirement was dropped: %v", conservative)
+	}
+}
+
 func TestDevelopmentGoCommandRequirementsRejectMalformedAndUncommittedEvidence(t *testing.T) {
 	for _, content := range []string{"go nope\n", "go 1.26.6\ngo 1.26.8\n", "go 01.26.6\n", "go 1.26.6 # invalid\n"} {
 		t.Run(content, func(t *testing.T) {

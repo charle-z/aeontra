@@ -89,7 +89,10 @@ func authenticatedManagedCatalog(entry coolifyEnvironmentVariable, token string)
 		candidates = []string{value}
 	}
 	resolved, err := frontdoorcoordinator.ManagedEnvironmentValue(entry.Comment, token, entry.Key, candidates...)
-	if err != nil || !frontDoorCatalogPattern.MatchString(resolved) || (value != "" && resolved != value) {
+	// The coordinator signs an empty optional transition when retiring the old
+	// catalog. This is an authenticated single-catalog state, not a missing MAC.
+	clearedTransition := entry.Key == frontDoorTransitionCatalogKey && resolved == ""
+	if err != nil || (!frontDoorCatalogPattern.MatchString(resolved) && !clearedTransition) || (value != "" && resolved != value) {
 		return "", errors.New("environment authentication failed")
 	}
 	return resolved, nil

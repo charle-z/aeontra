@@ -237,7 +237,8 @@ type requestIDContextKey struct{}
 
 type observabilityResponseWriter struct {
 	http.ResponseWriter
-	status int
+	status   int
+	writeErr error
 }
 
 func (w *observabilityResponseWriter) WriteHeader(status int) {
@@ -252,7 +253,14 @@ func (w *observabilityResponseWriter) Write(data []byte) (int, error) {
 	if w.status == 0 {
 		w.WriteHeader(http.StatusOK)
 	}
-	return w.ResponseWriter.Write(data)
+	n, err := w.ResponseWriter.Write(data)
+	if w.writeErr == nil {
+		w.writeErr = err
+		if err == nil && n < len(data) {
+			w.writeErr = io.ErrShortWrite
+		}
+	}
+	return n, err
 }
 
 func (w *observabilityResponseWriter) Flush() {
@@ -285,7 +293,17 @@ func (s *Server) withHTTPObservability(next http.Handler) http.Handler {
 		outcome := observability.OutcomeSuccess
 		level := observability.LevelInfo
 		errorClass := observability.ErrorNone
+		// This classifies server-observed transport completion, not client
+		// consumption or an acknowledgment of the response.
 		switch {
+		case ctx.Err() != nil:
+			outcome = observability.OutcomeCancelled
+			level = observability.LevelError
+			errorClass = observability.ErrorTransport
+		case recorder.writeErr != nil:
+			outcome = observability.OutcomeError
+			level = observability.LevelError
+			errorClass = observability.ErrorTransport
 		case status == http.StatusAccepted:
 			outcome = observability.OutcomeAccepted
 		case status == http.StatusUnauthorized || status == http.StatusForbidden:

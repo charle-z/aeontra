@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:22-alpine3.22@sha256:cd7807368cf24826297cbad5dca1a44972ccfd770647db52a8c7589eb4599ac8 AS console-build
+FROM public.ecr.aws/docker/library/node:22-alpine3.22@sha256:cd7807368cf24826297cbad5dca1a44972ccfd770647db52a8c7589eb4599ac8 AS console-build
 
 # The production VPS has two vCPUs. Keep image assembly to one logical CPU by
 # default so the live control plane, Coolify and Traefik retain scheduler time.
@@ -20,7 +20,7 @@ RUN GOMAXPROCS=${BUILD_GOMAXPROCS} \
 	UV_THREADPOOL_SIZE=${BUILD_UV_THREADPOOL_SIZE} \
 	pnpm console:build
 
-FROM golang:1.26.6-alpine3.24@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS build
+FROM public.ecr.aws/docker/library/golang:1.26.9-alpine3.24@sha256:cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0 AS build
 
 # GIT_SHA is the commit being built. Coolify (or any CI) should pass it with
 # --build-arg GIT_SHA=$(git rev-parse HEAD). It is baked into the binary via -ldflags so
@@ -60,7 +60,7 @@ LABEL org.opencontainers.image.title="Aeontra" \
 COPY --from=build /usr/local/go /usr/local/go
 
 RUN apk upgrade --no-cache \
-	&& apk add --no-cache ca-certificates curl git libstdc++ nodejs-22 \
+	&& apk add --no-cache ca-certificates curl git libstdc++ nodejs-22 glibc-2.44=2.44-r8 glibc-2.44-locale-posix=2.44-r8 ld-linux-2.44=2.44-r8 libcrypt1-2.44=2.44-r8 libssl3=3.6.5-r1 libcrypto3=3.6.5-r1 \
 	&& test "$(node --version)" = v22.23.2 \
 	&& test ! -e /usr/local/lib/node_modules/npm \
 	&& test ! -e /usr/lib/node_modules/npm \

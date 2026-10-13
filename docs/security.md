@@ -231,6 +231,13 @@ engine identity and ownership still validate; otherwise it fails closed and can 
 controlled-recreated without deleting the source workspace. Schema migrations are
 additive and reject unknown newer schemas.
 
+Rootless engine CLI scratch is per-call and owner-only, outside project source and
+runtime roots. The client receives a temporary `XDG_RUNTIME_DIR`; engine authority
+remains the validated absolute user-owned socket passed explicitly in argv and the
+controlled environment. The temporary directory is removed after success, failure or
+cancellation. This does not change systemd filesystem protections or expose a host
+engine socket to a workcell.
+
 The Edge scheduler uses bounded shared capacity for independent project, Git inspection,
 process and toolbox operations. Signed bundle update, rollback and repair acquire an
 Edge-wide exclusive gate. A long build in one project therefore does not hold the
@@ -445,8 +452,8 @@ Git evidence measured against the exact base and bound to the task, worker,
 worktree/workspace, branch, lease and fence. The receipt does not establish
 natural-language goal satisfaction or test success. Before cleanup, the exact live
 evidence is revalidated; after successful cleanup, the receipt and cleanup checkpoint
-preserve the verified Git evidence predicate, not semantic acceptance. Task and worker
-acceptance remain pending until a trusted objective evaluator exists. Missing or
+preserve the verified Git evidence predicate, not semantic acceptance. Evidence-only
+task and worker acceptance remain pending. Missing or
 changed evidence remains reconciliation, not success. A separate opt-in test contract
 pins an operator-owned Edge profile by ID and digest at task creation. The client cannot
 supply its argv, environment, stdin or cwd. Its process runs asynchronously in the
@@ -456,9 +463,24 @@ match. A status read never stops the process, and explicit stop uses its capture
 process identity even when the checkout has changed. This digest covers Git-selected
 source files, not Git-ignored inputs or files outside the worktree, so the receipt is
 not a hermetic test proof or natural-language evaluation. Git and test contracts are
-mutually exclusive in this first version. No contract is inferred for old or
-contractless tasks, and neither predicate grants authority beyond the existing
-worktree, preview, CI and merge contracts. Automated integration remains out of scope.
+mutually exclusive. An optional declared objective contract combines the pinned
+operator-owned test profile with explicit clean-tree and minimum-change criteria.
+An accepted receipt binds the task and worker goal hashes, immutable profile digest,
+exact test receipt and source criteria. It evaluates only that declared contract;
+the server cannot infer that a generic test suite proves arbitrary prose requirements.
+Live status revalidates the worktree and tests, and a source mismatch cannot be hidden
+by substituting the test's HEAD for the observed Git HEAD. Missing criteria never
+select weaker defaults. Zero-change and dirty-source objectives remain supported.
+No contract is inferred for old or contractless tasks, and no predicate grants
+authority beyond the existing worktree, preview, CI and merge contracts.
+An optional integration contract creates one responsible reviewer in a new worktree
+from an exact canonical base. It selects two to four committed, clean, succeeded
+workers from one same-project/same-target task. Source identities and receipt digests
+are captured by the server and revalidated before launch, replay and acceptance.
+Acceptance requires the selected exact commits to be ancestors of the integrator's
+tested clean HEAD. Missing ancestry evidence on an older Edge requires reconciliation.
+Active integration pins prevent managed cleanup of its sources. Conflict resolution,
+publication, CI and merge retain their existing separate controls.
 For a linked worktree, the outer Bubblewrap launcher projects that repository's validated
 common Git directory at one fixed internal mount and sets `GIT_DIR` to the exact
 server-owned worktree entry. This is writable repository-scoped Git authority required
@@ -467,8 +489,39 @@ sibling working-tree contents, Git credentials, host home or unrelated repositor
 The `.git` pointer, common directory, ownership, modes, managed development root and
 absence of symlinks are revalidated before the sandbox starts; ordinary canonical
 checkouts receive no extra Git mount.
+The writable common Git directory is trusted repository-scoped metadata authority:
+it is not an adversarial isolation boundary between sibling refs. Integration preserves
+source worktrees through its lifecycle and detects drift; it cannot guarantee that a
+malicious worker with this existing Git authority is unable to change another ref.
 This source contract does not claim an installed Edge release; signed publication and
 real-device acceptance remain separate gates.
+
+### Optional model-response ownership
+
+A controller ID coordinates responses within the same authenticated single owner.
+It is not a secret or a new principal. Claim, prepare, ACK, transfer and release bind
+one current unexpired pending turn and a monotonically increasing generation inside
+the model-turn transaction. Prepared handoffs pause response admission; transfer
+fences the previous controller. A successor receives no new host, worktree or process
+authority. Pending effects require ordinary identity-based reconciliation, not replay.
+Legacy uncontrolled runtimes remain unchanged. Controlled responses also have a SQLite
+admission trigger so an old binary cannot submit an unfenced response.
+
+### Reviewed raster acquisition
+
+The administrator may load an immutable image manifest outside repository roots.
+MCP callers select only reviewed IDs and a new jailed destination, never URLs,
+credentials, network policy or a different library. Download accepts only fixed public
+HTTPS sources, resolves once and pins the validated numeric address while TLS verifies
+the original hostname. Private/special address sets, redirects, environment proxies,
+cookies, oversized responses and hash/MIME/raster mismatches are rejected.
+
+Preview/execute binds the library digest, root/parent identities and file absence.
+Descriptor-relative creation rejects symlinks and overwrites; the reopened file's
+identity and actual bytes are checked afterward. A failed write reports incomplete
+state instead of deleting uncertain content. This explicit new binary-file effect does
+not change patch-first editing of existing files. Operator license declarations and
+returned provenance are distribution evidence, not legal clearance.
 
 ### Managed browser harness
 
@@ -666,6 +719,18 @@ acknowledges kill without exiting. The creation time is revalidated on that same
 before termination, and `interrupt` has no forced fallback. The worker-owned Job Object
 kills its contained descendants when the wrapper exits.
 
+An admitted Linux worker can finish before its workload PID can be inspected. It may
+report a known terminal exit only after waiting for its own exact spawned launcher;
+sandbox commands also require valid launcher metadata. No child PID is fabricated.
+Live workloads still require ownership, process-group and start-time attestation before
+signals or stdin control. Readiness and exit receipt races preserve the original exit.
+
+`edge_connectivity_status` reports server-received authenticated contact time from the
+private Edge database. Signature, nonce and active-device checks precede the contact
+write in the existing transaction. Replays, forged signatures and caller timestamps
+cannot refresh contact. This evidence grants no execution authority and does not prove
+host power or readiness. The read performs no Edge RPC and does not change admission.
+
 The process journal also records the owner-bound repository, claim generation, selected
 profile and mode, and workspace binding captured at start. These fields are used for
 authorization after a project alias is released or reassociated; a later Git change
@@ -729,12 +794,20 @@ Redaction is not a substitute for keeping secrets out of inputs and storage.
 ### Temporary container risk acceptance
 
 Container scans retain their original reports. A reviewed risk acceptance is a
-separate gate input, not a corrected or unaffected VEX statement. The current
+separate gate input, not a corrected or unaffected VEX statement. The historical
 approval in `security/accepted-risks/http-cache-semantics-20261003.json` expires
 on 2026-10-17 at 13:24 UTC. It applies only to CVE-2026-93748 / GHSA-ch52-4w7c-c8xp,
 `http-cache-semantics` 4.2.0 at its exact bundled-npm path in the reviewed sandbox
 workcell. The gate verifies the scanned OCI configuration ID against the verified
 image ID and binds the approval to the workcell Dockerfile SHA-256.
+
+New workcell builds install the official `http-cache-semantics` 4.3.0 package
+with a verified archive SHA-256 and run the ordinary High threshold without that
+approval. The historical file remains for the exact deployed image monitored by
+the daily watch; it is not extended or rebound to new images. The upstream
+maintainer disputes CVE-2026-93748, and the advisory currently lists versions
+through 4.2.0. Updating beyond that range is not proof of a new shared-cache
+security guarantee; arbitrary project use still needs correct cache policy.
 
 Accepted findings remain visible as warnings with their owner and expiry. Other
 advisories, package versions or locations, Critical/Unknown severity, an available

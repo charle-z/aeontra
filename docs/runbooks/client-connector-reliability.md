@@ -63,6 +63,44 @@ checkpoint. It must remain read-only and must not keep resending the same prompt
 create a second scheduler. Automatic objective supervision, semantic acceptance and
 model-provider handoff are separate P17 work; this procedure does not claim them.
 
+### Execution, result acceptance and response delivery
+
+Track these boundaries separately:
+
+- An executor returning proves that the local operation ended. It does not prove the
+  coordinator accepted its result.
+- The coordinator's terminal operation record proves acceptance under the original
+  device, operation and lease. Inspect that record before repeating any effect.
+- An HTTP response event describes what the server observed while writing. A successful
+  write may be buffered; it does not prove that ChatGPT received or used the result.
+- An opaque content reference, missing reply or `{}` in a client projection leaves
+  client consumption unknown. It is not evidence of an empty request at the server.
+
+When execution has ended but the `finalizing` progress acknowledgement is lost, the
+Edge carries the executor result into its normal completion path with the original
+lease. `project_exec` does not re-register workspaces between execution and completion:
+it uses an existing local binding and creates none. Other operations retain their
+registration requirements, which can still fail before completion. No command is
+executed again by this recovery. Cancellation and expired leases still
+prevent acceptance. Failure of initial or running progress does not take this path.
+A lost completion response requires reconciliation of the existing operation, not a
+new execution; this recovery does not survive arbitrary Edge process loss.
+The Windows one-shot worker returns an error if completion or cancellation
+acknowledgement fails; process exit success must not hide an unaccepted result.
+
+Private Edge journal failures include a validated opaque operation ID (or `unknown`),
+a closed phase and a closed error class. Correlate `finalizing` and `completion`
+separately. Classes include `timeout`, `cancelled`, `authentication`, `conflict`,
+`rate_limited`, `server_error`, `http_rejected`, `invalid_response`, `unavailable` and
+`unknown`; they contain no raw transport error, URL, body or credential. Keep these
+private correlation IDs out of public incident summaries.
+
+HTTP write failures and short writes are recorded as `error/transport_error` even if
+the response status is 200 or 202. Request cancellation takes precedence and is
+recorded as `cancelled/transport_error`. Neither signal reveals why a model stopped.
+Failures after a buffered write or after handler completion remain unobserved by this
+wrapper; do not treat a successful event as a client acknowledgement.
+
 ## First-response sequence
 
 1. Preserve the current `deployment_id`; do not trigger another deployment.

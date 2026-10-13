@@ -6,7 +6,7 @@
   "type": "npm",
   "location": "/usr/lib/node_modules/npm/node_modules/http-cache-semantics/package.json",
   "image_definition": "Dockerfile.sandbox-workcell",
-  "image_definition_sha256": "cc5cb19e289aeb0bf82076da5807b7efcdee56bcb2fd3e1adb7cb74c9fc74ccc",
+  "image_definition_sha256": "90d871967d9469e07f4b7f231ade595389562e534cb1977d8e73cbadcb443635",
   "approved_at": "2026-10-03T13:24:00Z",
   "expires_at": "2026-10-17T13:24:00Z",
   "owner": "charle-z",

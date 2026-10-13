@@ -22,6 +22,7 @@ type recordingToolboxRunner struct {
 	execExitCode   int
 	environments   [][]string
 	fail           string
+	failError      error
 	failPatterns   []string
 	workspace      string
 	socket         string
@@ -44,6 +45,9 @@ func (runner *recordingToolboxRunner) Run(_ context.Context, executable string, 
 	runner.environments = append(runner.environments, append([]string(nil), environment...))
 	joined := strings.Join(args, " ")
 	if runner.fail != "" && strings.Contains(joined, runner.fail) {
+		if runner.failError != nil {
+			return []byte("private diagnostic must not escape"), runner.failError
+		}
 		return nil, errors.New("runner failed")
 	}
 	for _, pattern := range runner.failPatterns {

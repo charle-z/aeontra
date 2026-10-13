@@ -164,6 +164,8 @@ above:
 - Development workspace state, runtime-root separation, durable process identity,
   toolbox recovery and bounded Edge concurrency:
   `docs/adr/0007-development-environment-state-and-concurrency.md`.
+- Start, locate, observe and recover ordinary development work:
+  `docs/runbooks/linear-development.md`.
 - Development-complete capability resolution, immutable attempts and governed runner migration:
   `docs/adr/0008-development-complete-capability-resolution.md`.
 - Private rootless L3 deployment and acceptance:

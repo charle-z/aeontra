@@ -32,11 +32,12 @@ do not replace server-side enforcement.
 | `model_runtime_start` | 0/0/0/0 | Create one durable external-model runtime; it does not start or select a model provider. |
 | `opencode_runtime_start` | 0/0/1/0 | Historical compatibility name for the active signed Edge model harness; current signed candidates use Codex while a bundle rollback may restore OpenCode. |
 | `codex_runtime_start` | 0/0/1/0 | Request one pinned stock Codex runtime on an active Edge device using only opaque device/workspace identity, a bounded goal, timeout, and idempotency key. |
-| `project_task_start` | 0/0/1/1 | Start or reuse one durable task group with one to four bounded goals. Each goal receives a separately leased and fenced server-owned Git worktree, registered Edge workspace, branch and independent stock Codex runtime; no worker shares a writer checkout. An optional typed version-1 `git_evidence_contract` sets minimum commits-ahead and changed-path counts per worker and requires a clean tree. Alternatively, `test_profile_id` pins one operator-owned Edge test profile and digest for post-worker test evidence. The two contracts cannot be combined. Neither contract proves semantic task acceptance. |
+| `project_task_start` | 0/0/1/1 | Start or reuse one durable task group with one to four bounded goals, independent fenced worktrees and model runtimes. Optional `git_evidence_contract` and `test_profile_id` preserve their evidence-only behavior and cannot be combined. An opt-in `objective_contract` requires `test_profile_id` and declares that its pinned operator-owned tests evaluate each goal, together with explicit source criteria. Acceptance applies to that declared contract. Zero changes and dirty trees are allowed when the criteria permit them. No contract is required for ordinary work. |
 | `project_task_status` | 1/0/1/0 | Reconcile and return separate task lifecycle, model-runtime and semantic acceptance states. Advisory `continuation` and per-worker `attention` identify an awaiting model turn, review, failure or reconciliation. `attention_order` puts workers with unknown turn age first, then known turns oldest first; `active_turn_created_at`, `turn_sequence` and `model_wait_seconds` expose bounded, content-free timing where known. `last_runtime_phase` and its timestamp show the latest recorded phase without labeling a slow worker as failed. When attention requires reconciliation, `reconciliation_reason` identifies the bounded failure class (control plane, disconnected or unavailable runtime, Edge, worktree, receipt, Git evidence, test evidence or lifecycle mismatch); it does not include raw errors. The versioned `handoff` contains a revision digest and a short resume prompt that directs a new chat to fetch fresh status before acting. It does not transfer ownership, wake a closed ChatGPT chat, choose tools or retry effects. A completed runtime remains `acceptance_pending` until trusted objective and test criteria exist. Opt-in Git and test evidence are reported separately. A test receipt requires a terminal, known zero exit plus revalidated profile, worktree, branch, HEAD, lease/fence and selected source-content digest; it does not prove the natural-language goal. Receipts are revalidated before cleanup and retained afterward. Missing or inconsistent evidence becomes `reconciliation_required`. Goals, transcripts, leases, fences, paths, credentials and process internals remain private. |
 | `project_task_list` | 1/0/1/0 | List up to 20 recent task IDs and bounded lifecycle metadata for one project/Edge target, including retained terminal tasks. It reads the indexed local journal without polling the Edge or starting a worker. A new chat can find a lost task ID, then call `project_task_status` for current runtime and acceptance evidence. It does not return goals, prompts, leases, paths or credentials. |
 | `project_development_start` | 0/1/1/1 | Stage and pin one exact scoped argv command, relative cwd, non-secret environment, stdin, timeout and optional extra capability requirements before any Edge effect. Return a durable `dr_` request immediately. The existing coordinator inspects the registered workspace and measured capabilities, executes only a supported registered route, and binds command acceptance to the exact source, environment, private body and captured process. Registered Linux source fingerprinting is Git-selected and finitely bounded; leaf symlink text is included without following targets, while directories/gitlinks and special files fail inspection. An isolated runner requires an explicit administrator-registered profile; private or dirty source is not moved. Capability requirements never grant execution authority. |
 | `project_development_status` | 1/0/1/0 | Read only durable request and objective metadata. No Edge polling, dispatch, raw command body, environment, paths or output is returned. `command_verified` means the exact command had a known zero exit and its source/environment bindings were revalidated; it does not establish a natural-language goal. Code failure, source drift, a requirement explicitly unsupported by every available provisioner, or a requirement missing from the selected calibrated runner template reports `awaiting_reasoning`. Unavailable provisioning, unknown or pending runner calibration, and unverified receipts remain pending. |
+| `project_development_list` | 1/0/1/0 | Recover command request IDs by alias and active Edge target. Return up to 100 newest metadata records (default 20), including awaiting-reasoning and unexpired retained terminal requests. `list_complete=false` means more matching records exist. Filtering includes current device binding before limiting; it never polls the Edge, dispatches work, touches revisions or exposes private bodies. |
 | `project_development_cancel` | 0/1/1/0 | Persist cancellation for one exact request. The existing coordinator recovers lost start acknowledgments and stops only the process captured from its authenticated original operation. A failed stop enters durable, identity-bound read-only reconciliation; journal retention or a lost observation acknowledgment cannot replay the stop. The result may remain `cancelling` until terminal evidence is observed; cancellation cannot create passing command evidence. |
 | `project_task_test_start` | 0/0/1/1 | Start or reuse one pinned operator-owned test profile after the worker runtime succeeds. The Edge runs fixed argv asynchronously in that worker's exact managed worktree. The caller cannot supply argv, environment, stdin or cwd. |
 | `project_task_test_status` | 1/0/1/0 | Observe one durable test process and revalidate its identity, profile and selected source-content digest. A passing terminal result records an immutable receipt; status never stops the process. Nonzero, unknown, stopped, stale and unavailable results do not pass. |
@@ -92,6 +93,7 @@ do not replace server-side enforcement.
 | `project_toolbox_service_stop` | 0/1/1/1 | Stop one owned service after PID/start-tick revalidation using TERM, a bounded grace period and KILL only when necessary; repeated requests are idempotent. |
 | `project_toolbox_cleanup` | 0/1/1/1 | Explicitly remove only the project's toolbox rootfs and private toolbox metadata. With one rootless endpoint, a missing container permits record-only cleanup after the pinned endpoint, workspace identity, name and label have been checked. Cleanup is idempotent, never automatic, and does not delete the project workspace or other workspace storage. |
 | `edge_operation_list` | 1/0/1/0 | List bounded queued/running operation identity, kind, progress and cancellation state for one human Edge target without exposing device/workspace ids, paths, request bodies or raw output. |
+| `edge_connectivity_status` | 1/0/1/0 | Read one active paired Edge's authenticated contact metadata locally with `target` or legacy `device_id`, never both. Returns `recent_contact`, `no_recent_contact` or `unknown`, server observation/contact times and a 90-second freshness window. It never dispatches, waits for or wakes the Edge. Contact is transport evidence, not power, service readiness, compatibility or capacity; absence cannot distinguish shutdown from a network or daemon failure. |
 | `edge_operation_status` | 1/0/1/0 | Read one durable Edge operation's bounded lifecycle, progress and derived queue/pickup/work/completion/total durations by operation id; internal absolute phase timestamps remain private. |
 | `edge_operation_cancel` | 0/1/1/0 | Idempotently cancel one queued operation or one interruptible running operation; updater, rollback and repair effects become non-cancellable after pickup. |
 | `workspace_lab_retarget` | 0/0/1/0 | Queue a private-IP retarget; the Edge validates VPN routing and rotates local authorization while preserving the workspace ID and evidence. |
@@ -106,9 +108,13 @@ do not replace server-side enforcement.
 | `edge_repair` | 0/0/1/0 | Restore only reviewed signed components, permissions, fixed symlinks, packaged unit and Edge health. |
 | `edge_onboarding_status` | 1/0/1/0 | Return safe pairing, service, platform-known restart state, bundle, compatible components, workspace count and blocker metadata. Linux additionally reports Bubblewrap/rootless checks plus filesystem capacity, optional reserve pressure, and the outer rootless storage-driver posture without exposing paths; Windows binds the responder to the current SCM process and derives provider/driver compatibility from the verified signed bundle. |
 | `model_runtime_status` | 1/0/1/0 | Return only public runtime identity, state, controller, sequence, update time, optional result ref, and the bounded server-owned startup phase timeline. |
+| `model_runtime_control` | 0/0/0/0 | Opt in to generation-fenced model responses. Claim a pending turn, prepare a successor, ACK the exact turn, transfer, then release the previous controller. Abort recovers a pending handoff at a new generation. It keeps the same runtime and worker and never replays effects or adds host authority. |
 | `model_turn_next` | 1/0/1/0 | Poll for the next awaiting turn and return its canonical request plus offered tool ids. |
 | `model_turn_next_any` | 1/0/1/0 | Poll or wait up to 180 seconds across one to four distinct known runtime IDs and per-runtime sequence cursors. Return only the oldest pending turn, or one terminal runtime when no turn is pending; no turn is consumed. The shared store wakeup avoids serial per-worker waits. A lost response can be recovered with cursor zero. Runtime IDs remain opaque and do not grant new authority. |
 | `model_turn_respond` | 0/0/0/0 | Submit one bounded response. Explicit `task_state` is preferred; cached legacy schemas may omit it and the server infers the state from `finish_reason`. `active` requires an offered tool call, `blocked` requires `error`/`cancelled`, and `complete` requires `stop` without pending-action language. |
+| `asset_search` | 1/0/1/0 | Search the operator-reviewed PNG/JPEG library locally; return pinned hashes, provenance, license review and attribution. No network search or legal clearance is implied. |
+| `asset_materialize_preview` | 1/0/1/0 | Bind one reviewed image and exact new relative file path in a configured backend repository to a five-minute single-use plan. Parent must already exist; no download, write or Edge selection occurs. |
+| `asset_materialize` | 0/0/0/1 | Revalidate the plan, fetch its fixed public HTTPS source, verify actual hash/MIME/raster bytes and exclusively create the file. Ask mode requires approval. Returns provenance; no overwrite or uncertain automatic cleanup. Linux backend only. |
 | `model_runtime_cancel` | 0/1/1/0 | Idempotently cancel a runtime and all active unconsumed turns. |
 | `build_context_pack` | 1/0/1/0 | Read a compact jailed repo context pack. |
 | `workspace_checkpoint` | 1/0/1/0 | Return a bounded schema-only Git/task checkpoint without fetch, file bodies, absolute paths, or external calls. |
@@ -136,7 +142,120 @@ do not replace server-side enforcement.
 | `repo_fast_forward` | 0/0/0/0 | Revalidate and run exactly `git merge --ff-only <upstream>` in the attested private L3 executor; allow mode only. |
 | `git_commit` | 0/0/0/0 | Stage and commit locally in the attested private L3 executor; allow mode only. It does not push. |
 
+### Task evidence after cleanup
+
+Git and test evidence contracts are opt-in. After a succeeded worker's worktree
+is cleaned, a task without either contract remains `acceptance_pending` for
+manual review. Status does not require a receipt or poll the removed worktree.
+Tasks with an evidence contract still require its durable verified receipt.
+Cleanup does not infer acceptance of a natural-language objective.
+
+Every task worker has an independent fenced worktree; no worker shares a writer checkout.
+
+### Declared objective acceptance
+
+`project_task_start` may receive an `objective_contract` with four required fields:
+`version: 1`, `minimum_commits_ahead_per_worker` and
+`minimum_changed_paths_per_worker` (each 0–10000), and `require_clean` (boolean).
+It requires `test_profile_id` and excludes `git_evidence_contract`.
+The caller explicitly declares that the operator-owned profile checks the goal;
+the server cannot determine whether an arbitrary test suite covers prose requirements.
+Operators must supply meaningful goal-specific checks before using this mode.
+
+`project_task_status` returns worker `acceptance_state: accepted` only after the runtime
+succeeds, the pinned profile has a known zero exit on the exact selected source digest,
+and current Git evidence meets every declared criterion. The task becomes `accepted`
+only when every worker is accepted. Missing tests or unmet criteria remain pending;
+source drift, unavailable evidence and identity mismatches require reconciliation.
+It records `objective_evidence_state` and `objective_recorded_at` separately from
+runtime, Git and test evidence. This does not authorize publication or integration.
+
+The immutable receipt binds the goal hashes, profile digest, test receipt and observed
+source criteria. While the worktree exists, status revalidates it rather than trusting
+the stored receipt alone. Cleanup requires fresh evidence, retains the receipt and
+recovers a confirmed cleanup with a lost SQLite marker without replaying that effect.
+After managed cleanup, acceptance describes the recorded contract and tested source;
+it is not an observation of later edits to the preserved branch.
+
+### Reviewed multiworker integration
+
+An optional `integration_contract` on `project_task_start` has required fields
+`version: 1`, `expected_base_commit`, `source_task_id`, and `workers`. Each of the two
+to four distinct workers selects an explicit zero-based `ordinal` and exact
+`head_commit`. All sources must be succeeded, committed and clean, on the same project,
+target and base. Recursive integration is unsupported. Supply exactly one goal, an
+operator-owned `test_profile_id` and an `objective_contract` with `require_clean: true`.
+The canonical checkout must still have the declared base.
+
+The server captures source bindings and creates a separate reviewer/integrator worker;
+it never writes into the source worktrees. Source drift rejects replay and acceptance,
+and active pins prevent their managed cleanup. The integrator reviews the selected
+changes and resolves conflicts in its own worktree. Unresolved conflicts remain
+blocked; no automatic ours/theirs, rebase or force operation is added.
+
+Acceptance requires fresh goal-specific passing tests, clean exact-HEAD evidence, and
+proof that every selected source commit is an ancestor of that HEAD. An older Edge
+without ancestry evidence reports `integration_ancestry_unavailable`, not success.
+`integration_state: verified` retains a receipt after managed cleanup. Publication,
+PR review, exact-head CI and merge are separate operations. Linked worktrees retain
+their existing trusted common-Git authority; source-ref isolation against a malicious
+worker is not claimed.
+
+### Optional controller handoff
+
+`model_runtime_control` coordinates model-response ownership within the existing
+authenticated single-owner boundary. It does not identify an authenticated chat or
+move filesystem authority. An opaque `controller_id` has the form `mc_` plus 32
+lowercase hexadecimal characters. Every transition binds the exact pending `turn_id`,
+`expected_sequence` and `request_digest`. Claim uses generation 0; later transitions
+use the generation reported by `model_runtime_status.control`.
+
+Prepare names a distinct `successor_id` and pauses response admission. Only that
+successor may ACK the bound turn. Transfer then increments generation atomically;
+the former controller releases its old generation. The successor can respond after
+transfer, but another prepare waits for that release. Abort before transfer restores
+the original controller at a new generation. A missing successor never causes an
+automatic takeover. Reconcile a lost reply by reading runtime status.
+
+Controlled `model_turn_respond` calls require `controller_id` and `control_generation`.
+Late controllers, stale generations, terminal/expired runtimes and responded batches
+are rejected. Uncontrolled runtimes retain their existing response contract. Pending
+commands and external operations must be reconciled before a successor acts; handoff
+does not stop them, start a second writer or retry them.
+
+### Optional efficiency measurements
+
+`project_task_status(include_metrics=true)` adds bounded, content-free worker timings
+and observed turn/retry counts. Missing or inconsistent metadata is unavailable rather
+than a fabricated zero. It does not load prompts, alter acceptance, estimate provider
+credits or establish that an interruption wasted work. The default does no metrics
+queries. See [observability.md](observability.md).
+
+### Reviewed image acquisition
+
+Asset tools require an administrator-owned `MCP_DEVBOX_ASSET_LIBRARY` configured at
+startup. Search matches only that immutable library. Preview selects an entry and a
+new relative PNG/JPEG destination in a configured backend repository; execute consumes
+the exact plan. The existing parent and root identities are revalidated before and
+after download, and creation refuses existing files and symlinks.
+
+The receipt includes the reviewed license, attribution, source and manifest digest.
+Keep it with distribution evidence; the operator's declaration is not legal clearance.
+If a write fails after creating a file, inspect that path before making a new preview:
+the tool reports incomplete state and does not remove uncertain bytes. This capability
+does not offer online image search, generation, private-source credentials or Edge
+materialization. See [configuration.md](configuration.md) for manifest bounds.
+
 ### Development-environment v2 semantics
+
+For a complete start/find/recover/publish sequence, use the
+[linear development runbook](runbooks/linear-development.md). Read-only health
+queries accept exactly one human `target` or legacy `device_id`; signed update,
+rollback and repair operations keep their existing `device_id` contract.
+Process listings always contain `processes`, including an empty array, without
+single-process stdout, stdin or exit fields. Task snapshot failures include the
+original operation ID, bounded reason and next observation tool before any worker
+is started.
 
 Project and process tools distinguish ordinary development state from a boundary
 failure. `project_status` may report `ready` or `dirty` when the registered workspace
@@ -163,6 +282,13 @@ owner-only permissions before the workcell starts. Existing legacy runtime direc
 implicitly.
 
 Toolbox records bind workspace, mount policy, rootless engine identity and generation.
+Inspection failures retain their original cause internally. Cancellation and expired
+execution contexts report `cancelled`; they do not trigger additional discovery probes,
+alternate-engine selection, or repair. The private Edge service journal records the
+opaque operation ID, inspection stage, a closed error category, and a process exit code
+when available. It never prints engine output, command arguments, or host paths. These
+diagnostics do not add automatic retries or relax ownership validation.
+
 `project_toolbox_repair` can restart only a stopped server-owned toolbox whose identity
 and mounts still validate; stale but safely reconcilable records use the controlled
 reconciliation path, while ownership or boundary drift fails closed. Cleanup is explicit
@@ -294,7 +420,7 @@ session. See `docs/runbooks/brain-operations.md`.
 
 | Tool | R/D/I/O | Effect |
 |---|---:|---|
-| `brain_search` | 1/0/1/0 | BM25 search over bounded quoted plain-text terms; at most 20 short redacted matches. |
+| `brain_search` | 1/0/1/0 | Find an exact note slug first, then BM25 matches over bounded quoted plain-text terms; at most 20 short redacted matches, without duplicates or FTS operator interpretation. |
 | `brain_read` | 1/0/1/0 | Read one strict slug with trust metadata and at most 128 backlinks. |
 | `brain_write` | 0/0/0/0 | Create/update only agent-owned `working/` Markdown with provenance and review date; curated/path/timestamps are not inputs. |
 | `brain_index` | 0/0/1/0 | Return index status or transactionally rebuild only the disposable cache from Markdown truth. |

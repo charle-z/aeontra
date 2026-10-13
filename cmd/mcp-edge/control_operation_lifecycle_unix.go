@@ -4,7 +4,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/edge"
@@ -68,7 +67,7 @@ func executeControlOperationLifecycle(ctx context.Context, transport controlOper
 			revision++
 			control, err := reportControlOperationProgress(ctx, transport, lease, revision, "finalizing")
 			if err != nil {
-				return edge.OperationResult{}, "", cancelRequested, err
+				return execution.result, execution.code, cancelRequested, &controlFinalizingError{cause: err}
 			}
 			if control.CancelRequested {
 				cancelRequested = true
@@ -126,7 +125,7 @@ func reportControlOperationProgress(ctx context.Context, transport controlOperat
 	defer cancel()
 	control, err := transport.ReportOperationProgress(progressCtx, lease.Operation.ID, lease.LeaseID, edge.OperationProgress{Revision: revision, Phase: phase})
 	if err != nil {
-		return edge.OperationControl{}, errors.New("control operation progress failed")
+		return edge.OperationControl{}, err
 	}
 	return control, nil
 }

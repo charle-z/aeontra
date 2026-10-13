@@ -11,7 +11,8 @@ import (
 )
 
 type projectProcessToolStore struct {
-	created []edge.Operation
+	created   []edge.Operation
+	processes []edge.BackgroundProcessSummary
 }
 
 func (*projectProcessToolStore) DeviceActive(string) bool { return true }
@@ -45,6 +46,7 @@ func (store *projectProcessToolStore) WaitOperation(_ context.Context, operation
 		ProjectTarget: "parrot", ProjectState: "ready", ProjectProfile: "linux-workcell", ProjectMode: "dev",
 		BackgroundProcessID: "pr_44444444444444444444444444444444", BackgroundProcessState: "running", BackgroundStartedAt: "2026-08-02T14:00:00Z",
 		BackgroundStdout: "ready\n", BackgroundStdoutNext: 6,
+		BackgroundProcesses: store.processes,
 	}
 	if created.Kind == edge.OperationProjectProcessStdin {
 		result.BackgroundStdout = ""
@@ -80,7 +82,7 @@ func TestProjectProcessToolsQueueClosedOperationsWithoutLeaks(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", test.name, err)
 		}
-		if store.created[len(store.created)-1].Kind != test.kind || !strings.Contains(output, `"process_id":"pr_44444444444444444444444444444444"`) {
+		if store.created[len(store.created)-1].Kind != test.kind || (test.kind != edge.OperationProjectProcessList && !strings.Contains(output, `"process_id":"pr_44444444444444444444444444444444"`)) {
 			t.Fatalf("%s output=%s created=%+v", test.name, output, store.created)
 		}
 		for _, forbidden := range []string{"device_id", "workspace_id", `"argv"`, `"environment"`, `"pid"`, "/home/", ".local/state"} {
@@ -88,5 +90,45 @@ func TestProjectProcessToolsQueueClosedOperationsWithoutLeaks(t *testing.T) {
 				t.Fatalf("%s exposed %q: %s", test.name, forbidden, output)
 			}
 		}
+	}
+}
+
+func TestProjectProcessListReturnsEmptyArrayWithoutSingleProcessFields(t *testing.T) {
+	store := &projectProcessToolStore{}
+	server := New(nil).WithEdgeStore(store)
+	body, err := server.handleProjectProcessList(json.RawMessage(`{"alias":"project","target":"parrot","limit":3}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var view map[string]any
+	if err := json.Unmarshal([]byte(body), &view); err != nil {
+		t.Fatal(err)
+	}
+	processes, ok := view["processes"].([]any)
+	if !ok || len(processes) != 0 {
+		t.Fatalf("empty list must be an array: %s", body)
+	}
+	for _, key := range []string{"process_id", "process_state", "exit_known", "exit_code", "stdin_next", "stdout", "stderr"} {
+		if _, found := view[key]; found {
+			t.Fatalf("list exposed single-process field %s: %s", key, body)
+		}
+	}
+}
+
+func TestProjectProcessListPreservesEachProcessExitEvidence(t *testing.T) {
+	store := &projectProcessToolStore{processes: []edge.BackgroundProcessSummary{{ProcessID: "pr_44444444444444444444444444444444", State: "exited", ExitKnown: true, ExitCode: 7}}}
+	server := New(nil).WithEdgeStore(store)
+	body, err := server.handleProjectProcessList(json.RawMessage(`{"alias":"project","target":"parrot","limit":3}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var view struct {
+		Processes []edge.BackgroundProcessSummary `json:"processes"`
+	}
+	if err := json.Unmarshal([]byte(body), &view); err != nil {
+		t.Fatal(err)
+	}
+	if len(view.Processes) != 1 || !view.Processes[0].ExitKnown || view.Processes[0].ExitCode != 7 {
+		t.Fatalf("exit evidence lost: %s", body)
 	}
 }

@@ -92,6 +92,11 @@ reconciliation after the new primary is live. If Coolify masks a runtime value a
 `null`, reconciliation recovers only these non-secret catalog hashes from their
 authenticated public managed comments; missing or invalid signatures still fail closed.
 
+When the coordinator retires the optional transition it may leave a signed empty
+value in Coolify. Reconciliation authenticates that marker and treats it as no
+transition. The primary catalog still requires a valid hash; unsigned empty values
+and modified signatures remain invalid.
+
 Optional variables:
 
 ```text
