@@ -499,9 +499,9 @@ because they appear in source.
 | `/state/telemetry` | content-free aggregate SQLite metrics | persistent but reconstructability is limited | retain per operational policy; never treat it as request-content evidence |
 | `/state/model-turns` | durable model-turn coordination and optional controller generations | persistent; additive controller table, response columns and admission trigger | private control-plane state; preserve in a consistent pre-rollout backup and never expose to repository tools |
 | `/state/edge` | paired Edge/control operations | persistent; oldest terminal operations are reclaimed within the fixed page budget | private authority state; queued and leased operations are never reclaimed; back up and protect separately |
-| `<edge-state>/project-runtime/<workspace-id>` | per-workspace toolchain homes and mutable runtime state, including a pre-created `home` directory | persistent until an administrator-controlled exact workspace cleanup; owner-only | outside the source tree; `project_toolbox_cleanup` removes the toolbox record/container but does not remove these roots; never expose the path to an MCP client; validate ownership and symlink ancestry |
-| `<edge-state>/project-cache/<workspace-id>` | package-manager and compiler caches | disposable but persistent between runs when retained | outside the source tree; reclaim only through an administrator-controlled exact workspace cleanup; no general cache purge is implicit |
-| `<edge-state>/project-artifacts/<workspace-id>` | generated reports, captures and managed artifacts | persistent until an administrator-controlled exact artifact/workspace cleanup; owner-only | mount only the exact workspace artifact root; arbitrary files are not artifacts |
+| `<edge-state>/project-runtime/<workspace-id>` | per-workspace toolchain homes and mutable runtime state, including a pre-created `home` directory | persistent for ordinary projects; owner-only | explicit terminal task worktree cleanup reclaims the exact unreferenced root on Linux; retained toolboxes, browser sessions and active process/model journals preserve it. `project_toolbox_cleanup` alone does not remove it; paths remain private |
+| `<edge-state>/project-cache/<workspace-id>` | package-manager and compiler caches | disposable but persistent between runs when retained | explicit terminal task worktree cleanup reclaims the exact unreferenced root on Linux; ordinary project caches are unchanged. No global purge or shared writable cache is implicit |
+| `<edge-state>/project-artifacts/<workspace-id>` | generated reports, captures and managed artifacts | owner-only; populated roots persist | terminal task cleanup removes only an empty artifact root. Reports, captures and pinned evidence are preserved; arbitrary files are not automatically disposable |
 | `/state/console` | console sessions | persistent when login continuity matters | private; never agent-writable |
 | `/state/brain` | Brain console node identity | persistent | private runtime identity, distinct from Brain truth |
 | `/brain` | Brain Markdown truth, local Git, and disposable `.cache` | dedicated persistent volume; dirs `0700`, files `0600`, UID/GID `10001:10001` in image | outside the repository jail; back up `.git`, `.gitignore`, `curated`, `working`; `.cache` is disposable |
@@ -513,6 +513,11 @@ because they appear in source.
 | `~/.local/state/mcp-edge/project-worktrees.db` | Edge-private managed worktree identity, ownership and fence registry | private SQLite, `0600` | paths remain local and are never returned by public task tools |
 | `<edge-state>/worktree-test-profile.json` | one optional operator-owned managed-worktree test profile | private regular file, owner UID, exact `0600`, canonical JSON with version `1`, profile ID, fixed argv and timeout; absent by default | never writable through a public MCP tool; only its ID, digest and timeout are returned to a task start |
 | `/opt/mcp-devbox/current/codex/pin.json` | official tag, asset, archive SHA-256, binary SHA-256 and provider contract | immutable component hashed by the Edge manifest | server-owned input; a runtime request cannot replace the executable, pin or provider URL |
+
+If storage metadata is unreadable or removal is unsafe/unavailable, terminal
+worktree cleanup retains that storage and logs a bounded classified reason.
+It still records the completed source cleanup; reclamation does not invalidate
+the durable worktree receipt or authorize a broader deletion.
 
 No secret store, OAuth store, Edge identity, local Git credential, Docker socket, or
 host-private state path should be exposed as a repository alias or normal agent-writable

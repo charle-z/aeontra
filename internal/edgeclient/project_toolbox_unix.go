@@ -255,6 +255,14 @@ func OpenProjectToolboxManager(config ProjectToolboxManagerConfig) (*ProjectTool
 }
 
 func (manager *ProjectToolboxManager) Create(ctx context.Context, request ProjectToolboxCreateRequest) (ProjectToolboxSnapshot, bool, error) {
+	if manager == nil {
+		return ProjectToolboxSnapshot{}, false, ErrProjectToolboxUnsafeState
+	}
+	runtimeRelease, err := acquireProjectRuntimeGate(ctx, filepath.Dir(manager.stateRoot), request.Workspace.ID, false)
+	if err != nil {
+		return ProjectToolboxSnapshot{}, false, err
+	}
+	defer runtimeRelease()
 	release, err := manager.acquireWorkspaceLock(ctx, request.Workspace.ID)
 	if err != nil {
 		return ProjectToolboxSnapshot{}, false, err

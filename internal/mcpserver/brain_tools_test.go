@@ -99,8 +99,16 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Historical projections retain their original display text. The current
+	// descriptions and schemas are checked by the full catalog identity below.
+	compatibility := append([]CatalogTool(nil), snapshot.Tools...)
+	for index := range compatibility {
+		if compatibility[index].Name == "coolify_app_status" {
+			compatibility[index].Description = "Read one Coolify application by uuid. Disabled unless COOLIFY_URL + COOLIFY_API_TOKEN are set; COOLIFY_ALLOWED_APPS is enforced when configured."
+		}
+	}
 	legacy := make([]CatalogTool, 0, 62)
-	for _, tool := range snapshot.Tools {
+	for _, tool := range compatibility {
 		if strings.HasPrefix(tool.Name, "asset_") {
 			continue
 		}
@@ -119,7 +127,7 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 		t.Fatalf("P8 compatibility catalog changed: count=%d hash=%s", len(legacy), legacyHash)
 	}
 	previous := make([]CatalogTool, 0, 71)
-	for _, tool := range snapshot.Tools {
+	for _, tool := range compatibility {
 		if strings.HasPrefix(tool.Name, "asset_") {
 			continue
 		}
@@ -138,7 +146,7 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 		t.Fatalf("P11 compatibility catalog changed: count=%d hash=%s", len(previous), previousHash)
 	}
 	step1 := make([]CatalogTool, 0, 72)
-	for _, tool := range snapshot.Tools {
+	for _, tool := range compatibility {
 		if strings.HasPrefix(tool.Name, "asset_") {
 			continue
 		}
@@ -158,7 +166,7 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 		t.Fatalf("Step 1 catalog identity changed: count=%d hash=%s", len(step1), step1ComputedHash)
 	}
 	step4 := make([]CatalogTool, 0, 77)
-	for _, tool := range snapshot.Tools {
+	for _, tool := range compatibility {
 		if strings.HasPrefix(tool.Name, "asset_") || tool.Name == "model_runtime_control" {
 			continue
 		}
@@ -211,7 +219,7 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 	if len(step4) != 77 || step4ComputedHash != step4Hash {
 		t.Fatalf("Step 4 compatibility catalog changed: count=%d hash=%s", len(step4), step4ComputedHash)
 	}
-	if snapshot.ToolCount != 195 || snapshot.Hash != "sha256:1d57b5ee4612f90c9411abd8637543a76c0b63fa873ff8c3c09e7014e7f772fb" {
+	if snapshot.ToolCount != 195 || snapshot.Hash != "sha256:48995d4ae478cbfa89e1f7fea2a860494d2d87e9084614d8423efda04c50605a" {
 		t.Fatalf("Step 6 catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
 	}
 }

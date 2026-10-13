@@ -320,6 +320,11 @@ func (manager *ProjectProcessManager) Close() error {
 }
 
 func (manager *ProjectProcessManager) Start(ctx context.Context, request ProjectProcessStartRequest) (ProjectProcessSnapshot, bool, error) {
+	release, err := acquireProjectRuntimeGate(ctx, manager.stateRoot, request.Workspace.ID, false)
+	if err != nil {
+		return ProjectProcessSnapshot{}, false, err
+	}
+	defer release()
 	if !projectProcessIdempotencyPattern.MatchString(request.IdempotencyKey) || !projectAliasPattern.MatchString(request.ProjectAlias) || !projectTargetPattern.MatchString(request.TargetAlias) {
 		return ProjectProcessSnapshot{}, false, errors.New("project process start request is invalid")
 	}

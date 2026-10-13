@@ -99,6 +99,15 @@ func TestProjectWorktreeLifecycleUsesExactBaseAndFencedOwner(t *testing.T) {
 	if err := os.Remove(dirtyPath); err != nil {
 		t.Fatal(err)
 	}
+	runtimeRoots, err := prepareProjectRuntimeRoots(fixture.stateRoot, workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, root := range []string{runtimeRoots.Runtime, runtimeRoots.Cache} {
+		if err := os.WriteFile(filepath.Join(root, "temporary-cache"), []byte("temporary"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	removed, reused, err := manager.Cleanup(context.Background(), cleanup)
 	if err != nil || reused || removed.State != ProjectWorktreeRemoved {
 		t.Fatalf("cleanup=%+v reused=%v err=%v", removed, reused, err)
@@ -108,6 +117,11 @@ func TestProjectWorktreeLifecycleUsesExactBaseAndFencedOwner(t *testing.T) {
 	}
 	if _, err := fixture.workspaces.Get(created.WorkspaceID); err == nil {
 		t.Fatal("removed worktree remained registered")
+	}
+	for _, root := range []string{runtimeRoots.Runtime, runtimeRoots.Cache, runtimeRoots.Artifacts} {
+		if _, err := os.Lstat(root); !os.IsNotExist(err) {
+			t.Fatalf("temporary runtime root remained: %v", err)
+		}
 	}
 	repeatedCleanup, reused, err := manager.Cleanup(context.Background(), cleanup)
 	if err != nil || !reused || repeatedCleanup.State != ProjectWorktreeRemoved {

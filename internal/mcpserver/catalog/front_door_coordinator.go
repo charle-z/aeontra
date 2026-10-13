@@ -95,7 +95,7 @@ func RegisterFrontDoorCoordinator(register Register, service FrontDoorCoordinato
 	register(Tool{
 		Name:        "platform_front_door_transition_status",
 		Version:     "1",
-		Description: "Read the private coordinator application, persistent-journal contract, published monotonic transition status and current fixed topology without exposing environment values or credentials.",
+		Description: "Read the private coordinator application, persistent-journal contract, published topology or backend catalog rollout status and current fixed topology without exposing environment values or credentials.",
 		InputSchema: object(map[string]any{}),
 		Handler: func(raw json.RawMessage) (string, error) {
 			var params struct{}

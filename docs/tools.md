@@ -144,6 +144,11 @@ do not replace server-side enforcement.
 
 ### Task evidence after cleanup
 
+On Linux, explicit cleanup also reclaims the temporary workspace's unreferenced
+private runtime/cache roots and removes an empty artifact root. Active process or
+model journals, retained toolbox/browser records and populated artifacts preserve
+their data. Ordinary project roots and caches are unchanged; no global GC runs.
+
 Git and test evidence contracts are opt-in. After a succeeded worker's worktree
 is cleaned, a task without either contract remains `acceptance_pending` for
 manual review. Status does not require a receipt or poll the removed worktree.
@@ -381,7 +386,7 @@ domain operations continue to use only the operator's configured Coolify boundar
 | `coolify_list_apps` | 1/0/1/1 | Compatibility name for `platform_apps_list`. |
 | `platform_apps_list` | 1/0/1/1 | Return safe application summaries. |
 | `coolify_app_status` | 1/0/1/1 | Compatibility name for `platform_app_status`. |
-| `platform_app_status` | 1/0/1/1 | Return one allowed application's safe status. |
+| `platform_app_status` | 1/0/1/1 | Return one allowed application's compact safe status with one external read; logs are fetched only through `platform_app_logs`. |
 | `coolify_app_logs` | 1/0/1/1 | Compatibility name for bounded, redacted `platform_app_logs`. |
 | `platform_app_logs` | 1/0/1/1 | Return bounded and redacted logs for one allowed application. |
 | `coolify_deployment_status` | 1/0/1/1 | Compatibility name for one deployment's safe status summary. |
@@ -396,7 +401,7 @@ domain operations continue to use only the operator's configured Coolify boundar
 | `platform_front_door_coordinator_create` | 0/1/0/1 | Create or reconcile the private coordinator with fixed application identities and one normal deployment. |
 | `platform_front_door_transition_preview` | 1/0/1/1 | Reconstruct the fixed topology and plan a cutover or rollback disposition as dispatch, observe, or noop. |
 | `platform_front_door_transition` | 0/1/0/1 | Dispatch one reviewed closed target to the independent coordinator without changing domains in the backend request. |
-| `platform_front_door_transition_status` | 1/0/1/1 | Read the coordinator contract, durable monotonic journal status, and current fixed topology. |
+| `platform_front_door_transition_status` | 1/0/1/1 | Read the coordinator contract, published monotonic status and current fixed topology. `transition_kind` identifies `topology`, `catalog` or `none`; state, phase, revision and timestamps describe the published operation. Catalog rollout status never silently becomes idle. Durable request IDs, environment values and credentials remain private. |
 | `coolify_create_app` | 0/0/0/1 | Compatibility name for planned `platform_app_create`. |
 | `platform_app_create` | 0/0/0/1 | Create one app from an unexpired single-use plan. |
 | `platform_validation_runner_create_preview` | 1/0/1/1 | Plan one private validation runner using administrator-owned destination and mounts. |

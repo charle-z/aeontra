@@ -88,6 +88,15 @@ type DirectWorkcellCommandRunner interface {
 type directWorkcellExecRunner struct{}
 
 func RunDirectWorkcellCommand(ctx context.Context, request DirectWorkcellCommandRequest, runner DirectWorkcellCommandRunner) (DirectWorkcellCommandResult, error) {
+	stateRoot := request.StateRoot
+	if strings.TrimSpace(stateRoot) == "" {
+		stateRoot = defaultProjectRuntimeStateRoot()
+	}
+	release, err := acquireProjectRuntimeGate(ctx, stateRoot, request.Workspace.ID, false)
+	if err != nil {
+		return DirectWorkcellCommandResult{}, ErrDirectWorkcellContract
+	}
+	defer release()
 	preflightStarted := time.Now()
 	stdout := newBoundedCapture(edge.MaxProjectExecStreamBytes)
 	stderr := newBoundedCapture(edge.MaxProjectExecStreamBytes)

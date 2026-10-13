@@ -178,17 +178,7 @@ func (s *PlatformCapability) PlatformAppStatus(appID string) (string, error) {
 		return "", err
 	}
 	sp.Finish(audit.Allow, "status "+app.UUID, nil, nil)
-	out := s.redact(formatPlatformApp(app))
-	logs, logErr := s.PlatformAppLogs(app.UUID, 100)
-	if logErr != nil {
-		out += "logs_error: " + s.redact(logErr.Error()) + "\n"
-	} else if strings.TrimSpace(logs) != "" {
-		out += "logs:\n" + logs
-		if !strings.HasSuffix(out, "\n") {
-			out += "\n"
-		}
-	}
-	return out, nil
+	return s.redact(formatPlatformApp(app)), nil
 }
 
 func (s *PlatformCapability) PlatformAppLogs(appID string, lines int) (string, error) {

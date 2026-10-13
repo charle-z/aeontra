@@ -30,6 +30,20 @@ func TestInitializeDoesNotAdvertiseUnsupportedToolListChanges(t *testing.T) {
 	}
 }
 
+func TestInitializeInstructionsUseCurrentDevelopmentEntryPoints(t *testing.T) {
+	s := stampServer(t)
+	result := s.initializeResult(nil, stdioSessionKey)
+	instructions, _ := result["instructions"].(string)
+	for _, want := range []string{"project_task_list", "project_development_list", "model_turn_next/model_turn_respond"} {
+		if !strings.Contains(instructions, want) {
+			t.Errorf("instructions omit %q", want)
+		}
+	}
+	if strings.Contains(instructions, "OpenCode fallback") || strings.Contains(instructions, "one call per message") {
+		t.Fatal("initialize still supplies obsolete client guidance")
+	}
+}
+
 func TestSSENeverInventsCatalogChangeOnStartup(t *testing.T) {
 	h, _ := newHTTPServer(t, "read-only")
 
