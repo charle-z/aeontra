@@ -71,6 +71,20 @@ func TestNormalizeDropsUnknownAndSensitiveContent(t *testing.T) {
 	}
 }
 
+func TestNormalizeDistinguishesComposeReadinessFromEngineFailures(t *testing.T) {
+	for input, want := range map[string]string{
+		"podman-compose did not create a labelled service container":      "compose_container_missing",
+		"podman-compose service did not persist its readiness marker":     "compose_marker_missing",
+		"podman-compose failed: database configuration mismatch /private": "storage_configuration_mismatch",
+		"podman-compose failed: read-only file system /private":           "read_only_filesystem",
+		"podman-compose failed: toomanyrequests token=secret":             "registry_rate_limit",
+	} {
+		if got := normalize(input); got != "P12 rootless category="+want {
+			t.Fatalf("got=%q want=%q", got, want)
+		}
+	}
+}
+
 func TestRedactBoundsOutput(t *testing.T) {
 	input := strings.Repeat("permission denied at /private/path\n", maxLines+100)
 	var output bytes.Buffer
