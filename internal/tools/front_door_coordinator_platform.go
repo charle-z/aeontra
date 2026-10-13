@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/audit"
+	"github.com/charle-z/mcp-devbox/internal/catalogrollout"
 	"github.com/charle-z/mcp-devbox/internal/frontdoorcoordinator"
 )
 
@@ -525,14 +526,32 @@ func (s *PlatformCapability) PlatformFrontDoorTransitionStatus() (string, error)
 	if !present {
 		published = frontdoorcoordinator.Status{Target: frontdoorcoordinator.TargetIdle, State: frontdoorcoordinator.StateIdle}
 	}
+	kind := "none"
+	if present {
+		kind = "topology"
+	}
+	catalog, catalogPresent, err := catalogrollout.DecodePublishedStatus(app.Description)
+	if err != nil {
+		sp.Finish(audit.Deny, "status", nil, err)
+		return "", err
+	}
+	if catalogPresent {
+		kind = "catalog"
+		published.Target = "backend"
+		// These are the shared display fields, not a topology transition request.
+		published.State = frontdoorcoordinator.State(catalog.State)
+		published.Phase = frontdoorcoordinator.Phase(catalog.Phase)
+		published.Revision, published.DeploymentID = catalog.Revision, catalog.DeploymentID
+		published.Reason, published.UpdatedAt = catalog.Reason, catalog.UpdatedAt
+	}
 	storage, storageErr := s.verifyManagedFrontDoorCoordinatorStorage(app.UUID)
 	contract := "valid"
 	if err := s.validateManagedFrontDoorCoordinatorApp(app); err != nil || storageErr != nil {
 		contract = "invalid"
 	}
 	sp.Finish(audit.Allow, "status "+app.UUID, nil, nil)
-	return fmt.Sprintf("coordinator_application_uuid: %s\ncoordinator_status: %s\ncoordinator_deployment_state: %s\ncontract: %s\npersistent_storage: %s\ntarget: %s\nrecovery_target: %s\nstate: %s\nphase: %s\nrevision: %d\ndeployment_id: %s\nreason: %s\nfront_domain: %s\nfront_backend: %s\nbackend_domains: %s\nupdated_at: %s\n",
-		app.UUID, app.Status, app.DeploymentStatus, contract, storage, published.Target, published.RecoveryTarget, published.State, published.Phase,
+	return fmt.Sprintf("coordinator_application_uuid: %s\ncoordinator_status: %s\ncoordinator_deployment_state: %s\ncontract: %s\npersistent_storage: %s\ntransition_kind: %s\ntarget: %s\nrecovery_target: %s\nstate: %s\nphase: %s\nrevision: %d\ndeployment_id: %s\nreason: %s\nfront_domain: %s\nfront_backend: %s\nbackend_domains: %s\nupdated_at: %s\n",
+		app.UUID, app.Status, app.DeploymentStatus, contract, storage, kind, published.Target, published.RecoveryTarget, published.State, published.Phase,
 		published.Revision, published.DeploymentID, published.Reason, front.domain(), frontBackend, backend.domain(), published.UpdatedAt.Format(time.RFC3339)), nil
 }
 

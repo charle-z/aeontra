@@ -233,39 +233,55 @@ func mustJSON(value string) string {
 
 func TestPlatformFrontDoorTransitionStatusOmitsDurableRequestID(t *testing.T) {
 	const requestID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	statusDescription := `mcp-front-door-coordinator:v1 {"schema_version":1,"revision":9,"request_id":"` + requestID + `","target":"cutover","state":"running","phase":"release-public-backend","topology":{"front_domain":"https://front.mcp-devbox-charlez.duckdns.org","front_backend_url":"https://backend.mcp-devbox-charlez.duckdns.org","backend_domains":"https://mcp-devbox-charlez.duckdns.org,https://backend.mcp-devbox-charlez.duckdns.org"},"updated_at":"2026-07-31T15:00:00Z"}`
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v1/applications":
-			_, _ = w.Write([]byte(`[{"uuid":"front1","name":"mcp-devbox-front-door-managed"},{"uuid":"coord1","name":"mcp-devbox-front-door-coordinator-managed"}]`))
-		case "/api/v1/applications/front1":
-			_, _ = w.Write([]byte(`{"uuid":"front1","name":"mcp-devbox-front-door-managed","status":"running:healthy","deployment_status":"finished","git_repository":"acme/mcp-devbox","git_branch":"front-door-stable","fqdn":"https://front.mcp-devbox-charlez.duckdns.org","build_pack":"dockerfile","dockerfile_location":"/Dockerfile.front-door","ports_exposes":"8765","is_auto_deploy_enabled":false,"instant_deploy":false,"health_check_path":"/front-door/healthz","custom_docker_run_options":""}`))
-		case "/api/v1/applications/coord1":
-			_, _ = w.Write([]byte(`{"uuid":"coord1","name":"mcp-devbox-front-door-coordinator-managed","status":"running:healthy","deployment_status":"finished","description":` + mustJSON(statusDescription) + `,"git_repository":"acme/mcp-devbox","git_branch":"main","build_pack":"dockerfile","dockerfile_location":"/Dockerfile.front-door-coordinator","ports_exposes":"8766","is_auto_deploy_enabled":false,"instant_deploy":false,"health_check_path":"/readyz","custom_docker_run_options":"` + managedFrontDoorCoordinatorDockerOptions + `"}`))
-		case "/api/v1/applications/" + managedBackendAppUUID:
-			_, _ = w.Write([]byte(`{"uuid":"` + managedBackendAppUUID + `","git_repository":"acme/mcp-devbox","git_branch":"main","fqdn":"https://mcp-devbox-charlez.duckdns.org,https://backend.mcp-devbox-charlez.duckdns.org"}`))
-		case "/api/v1/applications/front1/envs":
-			_, _ = w.Write([]byte(frontBackendEnvironment(frontdoorcoordinator.BackendOrigin)))
-		case "/api/v1/applications/coord1/storages":
-			_, _ = w.Write([]byte(`[{"type":"persistent","name":"mcp-devbox-front-door-coordinator-state","mount_path":"/coordinator-state"}]`))
-		default:
-			t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
-		}
-	}))
-	defer ts.Close()
+	for _, tc := range []struct {
+		name, description, kind, state, phase string
+	}{
+		{"topology", `mcp-front-door-coordinator:v1 {"schema_version":1,"revision":9,"request_id":"` + requestID + `","target":"cutover","state":"running","phase":"release-public-backend","topology":{"front_domain":"https://front.mcp-devbox-charlez.duckdns.org","front_backend_url":"https://backend.mcp-devbox-charlez.duckdns.org","backend_domains":"https://mcp-devbox-charlez.duckdns.org,https://backend.mcp-devbox-charlez.duckdns.org"},"updated_at":"2026-07-31T15:00:00Z"}`, "topology", "running", "release-public-backend"},
+		{"catalog", `mcp-cr:v1 {"r":9,"q":"` + requestID + `","s":"succeeded","p":"complete","u":1785510000}`, "catalog", "succeeded", "complete"},
+		{"invalid catalog", `mcp-cr:v1 {"q":"bad"}`, "", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			statusDescription := tc.description
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/api/v1/applications":
+					_, _ = w.Write([]byte(`[{"uuid":"front1","name":"mcp-devbox-front-door-managed"},{"uuid":"coord1","name":"mcp-devbox-front-door-coordinator-managed"}]`))
+				case "/api/v1/applications/front1":
+					_, _ = w.Write([]byte(`{"uuid":"front1","name":"mcp-devbox-front-door-managed","status":"running:healthy","deployment_status":"finished","git_repository":"acme/mcp-devbox","git_branch":"front-door-stable","fqdn":"https://front.mcp-devbox-charlez.duckdns.org","build_pack":"dockerfile","dockerfile_location":"/Dockerfile.front-door","ports_exposes":"8765","is_auto_deploy_enabled":false,"instant_deploy":false,"health_check_path":"/front-door/healthz","custom_docker_run_options":""}`))
+				case "/api/v1/applications/coord1":
+					_, _ = w.Write([]byte(`{"uuid":"coord1","name":"mcp-devbox-front-door-coordinator-managed","status":"running:healthy","deployment_status":"finished","description":` + mustJSON(statusDescription) + `,"git_repository":"acme/mcp-devbox","git_branch":"main","build_pack":"dockerfile","dockerfile_location":"/Dockerfile.front-door-coordinator","ports_exposes":"8766","is_auto_deploy_enabled":false,"instant_deploy":false,"health_check_path":"/readyz","custom_docker_run_options":"` + managedFrontDoorCoordinatorDockerOptions + `"}`))
+				case "/api/v1/applications/" + managedBackendAppUUID:
+					_, _ = w.Write([]byte(`{"uuid":"` + managedBackendAppUUID + `","git_repository":"acme/mcp-devbox","git_branch":"main","fqdn":"https://mcp-devbox-charlez.duckdns.org,https://backend.mcp-devbox-charlez.duckdns.org"}`))
+				case "/api/v1/applications/front1/envs":
+					_, _ = w.Write([]byte(frontBackendEnvironment(frontdoorcoordinator.BackendOrigin)))
+				case "/api/v1/applications/coord1/storages":
+					_, _ = w.Write([]byte(`[{"type":"persistent","name":"mcp-devbox-front-door-coordinator-state","mount_path":"/coordinator-state"}]`))
+				default:
+					t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
+				}
+			}))
+			defer ts.Close()
 
-	svc := configuredCoordinatorService(t, config.ModeReadOnly, ts.URL)
-	out, err := svc.PlatformFrontDoorTransitionStatus()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(out, requestID) || strings.Contains(out, "request_id") {
-		t.Fatalf("durable request id leaked: %s", out)
-	}
-	for _, want := range []string{"recovery_target: ", "state: running", "phase: release-public-backend", "revision: 9", "front_backend: https://backend.mcp-devbox-charlez.duckdns.org"} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("status missing %q: %s", want, out)
-		}
+			svc := configuredCoordinatorService(t, config.ModeReadOnly, ts.URL)
+			out, err := svc.PlatformFrontDoorTransitionStatus()
+			if tc.kind == "" {
+				if err == nil {
+					t.Fatal("malformed catalog status must not become idle")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(out, requestID) || strings.Contains(out, "request_id") {
+				t.Fatalf("durable request id leaked: %s", out)
+			}
+			for _, want := range []string{"transition_kind: " + tc.kind, "state: " + tc.state, "phase: " + tc.phase, "revision: 9", "front_backend: https://backend.mcp-devbox-charlez.duckdns.org"} {
+				if !strings.Contains(out, want) {
+					t.Fatalf("status missing %q: %s", want, out)
+				}
+			}
+		})
 	}
 }
 

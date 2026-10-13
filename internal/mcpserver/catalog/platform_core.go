@@ -46,7 +46,7 @@ func RegisterPlatformCore(register Register, service PlatformCoreService) {
 
 	register(Tool{
 		Name:        "coolify_app_status",
-		Description: "Read one Coolify application by uuid. Disabled unless COOLIFY_URL + COOLIFY_API_TOKEN are set; COOLIFY_ALLOWED_APPS is enforced when configured.",
+		Description: "Read one compact Coolify application status by uuid without fetching logs. Use platform_app_logs for logs. Disabled unless COOLIFY_URL + COOLIFY_API_TOKEN are set; COOLIFY_ALLOWED_APPS is enforced when configured.",
 		InputSchema: object(map[string]any{"app": strProp("Coolify application uuid")}, "app"),
 		Version:     "1",
 		Handler: func(arguments json.RawMessage) (string, error) {

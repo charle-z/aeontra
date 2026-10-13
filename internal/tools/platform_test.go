@@ -43,6 +43,24 @@ func TestPlatformAppsListAndStatusReturnSafeSummaries(t *testing.T) {
 	}
 }
 
+func TestPlatformAppStatusDoesNotFetchLogs(t *testing.T) {
+	requests := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.URL.Path != "/api/v1/applications/app1" {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte(`{"uuid":"app1","status":"running:healthy"}`))
+	}))
+	defer ts.Close()
+	svc := configuredPlatformService(t, config.ModeReadOnly, ts.URL)
+	out, err := svc.PlatformAppStatus("app1")
+	if err != nil || requests != 1 || strings.Contains(out, "logs") || !strings.Contains(out, "running:healthy") {
+		t.Fatalf("status must be one compact read: requests=%d out=%q err=%v", requests, out, err)
+	}
+}
+
 func TestPlatformAppLogsReturnsBoundedRedactedLogs(t *testing.T) {
 	var gotLines string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
