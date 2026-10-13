@@ -229,6 +229,9 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
   runtime as read-only. Socket discovery and validation still use `/run/user/<uid>`;
   the absolute selected endpoint is unchanged. The scratch directory is never mounted
   into a workspace or toolbox. No host runtime permissions need to be relaxed.
+  An existing Podman runtime auth file remains referenced at its original location;
+  explicit `REGISTRY_AUTH_FILE` and home-directory fallback behavior are preserved.
+  Credential bytes are never copied into the temporary directory.
 - **Security posture:** the ordinary Edge sandbox is networkless; the trusted Linux
   workcell intentionally shares the host network; authorized target-locked actions
   revalidate the private target and VPN route. These are distinct boundaries.

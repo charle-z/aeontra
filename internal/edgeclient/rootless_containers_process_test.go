@@ -83,6 +83,32 @@ func TestExecContainerCommandRunnerCleansRuntimeOnStartFailure(t *testing.T) {
 	}
 }
 
+func TestExecContainerCommandRunnerPreservesAuthLocation(t *testing.T) {
+	runtime := t.TempDir()
+	if err := os.Mkdir(filepath.Join(runtime, "containers"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	authPath := filepath.Join(runtime, "containers", "auth.json")
+	if err := os.WriteFile(authPath, []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, explicit := range []bool{false, true} {
+		environment := []string{"PATH=/usr/bin:/bin", "XDG_RUNTIME_DIR=" + runtime}
+		want := authPath
+		if explicit {
+			want = filepath.Join(t.TempDir(), "explicit-auth.json")
+			environment = append(environment, "REGISTRY_AUTH_FILE="+want)
+		}
+		output, err := (execContainerCommandRunner{}).Run(t.Context(), "/bin/sh", []string{"-c", `test ! -e "$XDG_RUNTIME_DIR/containers/auth.json" && printf '%s' "$REGISTRY_AUTH_FILE"`}, environment)
+		if err != nil || string(output) != want {
+			t.Fatalf("auth location changed: output=%q err=%v", output, err)
+		}
+	}
+	if content, err := os.ReadFile(authPath); err != nil || string(content) != "fixture" {
+		t.Fatalf("original auth modified: %v", err)
+	}
+}
+
 func TestExecContainerCommandRunnerRejectsUnavailableScratch(t *testing.T) {
 	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "absent"))
 	_, err := (execContainerCommandRunner{}).Run(t.Context(), "/bin/true", nil, []string{"XDG_RUNTIME_DIR=/missing-host-runtime"})
