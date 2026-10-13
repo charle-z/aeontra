@@ -89,6 +89,8 @@ Clean up any retained toolbox or browser session before task cleanup when it
 should also be discarded. This operation does not stop resources implicitly.
 Ordinary project caches are unchanged. Stop or explicitly clean up retained
 resources through their own tools; never substitute a global engine or cache prune.
+Uncertain storage is retained with `worktree storage cleanup deferred` and a
+classified reason in Edge logs; it does not prevent recording a completed cleanup.
 
 For deployment observation, `platform_app_status` returns metadata only. Fetch
 bounded logs with `platform_app_logs` when needed. The coordinator status tool

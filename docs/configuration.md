@@ -514,6 +514,11 @@ because they appear in source.
 | `<edge-state>/worktree-test-profile.json` | one optional operator-owned managed-worktree test profile | private regular file, owner UID, exact `0600`, canonical JSON with version `1`, profile ID, fixed argv and timeout; absent by default | never writable through a public MCP tool; only its ID, digest and timeout are returned to a task start |
 | `/opt/mcp-devbox/current/codex/pin.json` | official tag, asset, archive SHA-256, binary SHA-256 and provider contract | immutable component hashed by the Edge manifest | server-owned input; a runtime request cannot replace the executable, pin or provider URL |
 
+If storage metadata is unreadable or removal is unsafe/unavailable, terminal
+worktree cleanup retains that storage and logs a bounded classified reason.
+It still records the completed source cleanup; reclamation does not invalidate
+the durable worktree receipt or authorize a broader deletion.
+
 No secret store, OAuth store, Edge identity, local Git credential, Docker socket, or
 host-private state path should be exposed as a repository alias or normal agent-writable
 mount.

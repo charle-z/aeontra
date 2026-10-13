@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -526,22 +527,18 @@ func (m *ProjectWorktreeManager) Cleanup(ctx context.Context, request ProjectWor
 		return ProjectWorktreeSnapshot{}, false, err
 	}
 	defer release()
-	if err := validateProjectWorktreeRuntime(m.stateRoot, snapshot); err != nil {
-		return ProjectWorktreeSnapshot{}, false, err
-	}
 	if snapshot.State == ProjectWorktreeRemoved {
 		if snapshot.cleanupKey != request.IdempotencyKey {
 			return ProjectWorktreeSnapshot{}, false, ErrProjectWorktreeConflict
 		}
-		return snapshot, true, cleanupProjectWorktreeRuntime(ctx, m.stateRoot, snapshot)
+		m.reclaimRuntime(ctx, snapshot)
+		return snapshot, true, nil
 	}
 	if _, pathErr := os.Lstat(snapshot.path); errors.Is(pathErr, os.ErrNotExist) {
 		if removeErr := m.workspaces.Remove(snapshot.WorkspaceID); removeErr != nil && !strings.Contains(removeErr.Error(), "not found") {
 			return ProjectWorktreeSnapshot{}, false, ErrProjectWorktreeUnavailable
 		}
-		if err := cleanupProjectWorktreeRuntime(ctx, m.stateRoot, snapshot); err != nil {
-			return ProjectWorktreeSnapshot{}, false, err
-		}
+		m.reclaimRuntime(ctx, snapshot)
 		return m.finishCleanup(snapshot, request.IdempotencyKey)
 	} else if pathErr != nil {
 		return ProjectWorktreeSnapshot{}, false, ErrProjectWorktreeUnavailable
@@ -566,10 +563,23 @@ func (m *ProjectWorktreeManager) Cleanup(ctx context.Context, request ProjectWor
 	if err := m.workspaces.Remove(snapshot.WorkspaceID); err != nil {
 		return ProjectWorktreeSnapshot{}, false, ErrProjectWorktreeUnavailable
 	}
-	if err := cleanupProjectWorktreeRuntime(ctx, m.stateRoot, snapshot); err != nil {
-		return ProjectWorktreeSnapshot{}, false, err
-	}
+	m.reclaimRuntime(ctx, snapshot)
 	return m.finishCleanup(snapshot, request.IdempotencyKey)
+}
+
+func (m *ProjectWorktreeManager) reclaimRuntime(ctx context.Context, snapshot ProjectWorktreeSnapshot) {
+	if err := cleanupProjectWorktreeRuntime(ctx, m.stateRoot, snapshot); err != nil {
+		// Worktree removal is already complete. Optional storage reclamation must
+		// retain uncertain data without poisoning the durable cleanup receipt.
+		reason := "metadata_or_storage_unavailable"
+		if errors.Is(err, ErrProjectWorktreeUnsafe) {
+			reason = "unsafe_boundary"
+		}
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			reason = "cancelled"
+		}
+		log.Printf("mcp-edge: worktree storage cleanup deferred workspace=%s reason=%s", snapshot.WorkspaceID, reason)
+	}
 }
 
 func (m *ProjectWorktreeManager) finishCleanup(snapshot ProjectWorktreeSnapshot, cleanupKey string) (ProjectWorktreeSnapshot, bool, error) {

@@ -115,3 +115,29 @@ func TestProjectRuntimeGateAllowsReadersAndDoesNotBlockOtherWorkspaces(t *testin
 		t.Fatal("gate registry leaked completed workspaces")
 	}
 }
+
+func TestProjectWorktreeCleanupKeepsUnreadableStorageWithoutBlockingCompletion(t *testing.T) {
+	manager, worktree, authority := newProjectWorktreeForContentDigest(t)
+	workspace, err := manager.workspaces.Get(worktree.WorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots, err := prepareProjectRuntimeRoots(manager.stateRoot, workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(manager.stateRoot, projectProcessDatabaseFile), []byte("unreadable journal"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	request := ProjectWorktreeCleanupRequest{ID: worktree.ID, JobID: authority.JobID, LeaseID: authority.LeaseID, Fence: authority.Fence, IdempotencyKey: "runtime-cleanup-unreadable-0001"}
+	removed, _, err := manager.Cleanup(context.Background(), request)
+	if err != nil || removed.State != ProjectWorktreeRemoved {
+		t.Fatalf("optional storage reclamation blocked source cleanup: %v", err)
+	}
+	if _, err := os.Stat(roots.Runtime); err != nil {
+		t.Fatalf("uncertain storage was removed: %v", err)
+	}
+	if _, reused, err := manager.Cleanup(context.Background(), request); err != nil || !reused {
+		t.Fatalf("cleanup retry=%v reused=%v", err, reused)
+	}
+}
