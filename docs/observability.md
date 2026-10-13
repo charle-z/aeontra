@@ -57,6 +57,21 @@ cookies, Brain content and model reasoning have no schema column.
 `estimate_bytes_div_4_not_billing`. It is display-only, never provider billing or
 claimed as actual model tokens.
 
+### Optional worker efficiency snapshot
+
+`project_task_status(include_metrics=true)` derives content-free measurements from
+existing runtime and turn metadata. It adds recorded queue, startup, first-turn and
+elapsed timings, observed lease retries, and outcome/response-wait counts for the latest
+4096 turns. Missing timings and retry measurements stay unknown; capped retry counts
+are marked as lower bounds and sample truncation is explicit. Durations overlap and
+must not be summed as components of elapsed time. Unresponded terminal turns indicate
+interruption, not proven duplicated work, token use or billing.
+
+The default task status does not query these measurements. Metric reads do not load
+request/response bodies, expire runtimes or signal workers. Failure to obtain metrics
+reports `efficiency_state: unavailable` without changing task acceptance. Passage of
+time or metrics availability does not invalidate the task handoff revision.
+
 ## Flags
 
 Equivalent flags override environment values:

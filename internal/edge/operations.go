@@ -188,6 +188,7 @@ type OperationRequest struct {
 	BrowserHarnessArtifactOffset      int64                               `json:"browser_harness_artifact_offset,omitempty"`
 	BrowserHarnessArtifactLimit       int                                 `json:"browser_harness_artifact_limit,omitempty"`
 	WorktreeID                        string                              `json:"worktree_id,omitempty"`
+	WorktreeAncestorCommits           []string                            `json:"worktree_ancestor_commits,omitempty"`
 	WorktreeBaseCommit                string                              `json:"worktree_base_commit,omitempty"`
 	WorktreeRole                      string                              `json:"worktree_role,omitempty"`
 	WorkJobID                         string                              `json:"work_job_id,omitempty"`
@@ -483,6 +484,8 @@ type OperationResult struct {
 	WorktreeBaseCommit               string                          `json:"worktree_base_commit,omitempty"`
 	WorktreeBranch                   string                          `json:"worktree_branch,omitempty"`
 	WorktreeEvidenceKnown            bool                            `json:"worktree_evidence_known,omitempty"`
+	WorktreeAncestorCommits          []string                        `json:"worktree_ancestor_commits,omitempty"`
+	WorktreeAncestorsVerified        bool                            `json:"worktree_ancestors_verified,omitempty"`
 	WorktreeHeadCommit               string                          `json:"worktree_head_commit,omitempty"`
 	WorktreeClean                    bool                            `json:"worktree_clean,omitempty"`
 	WorktreeCommitsAheadBase         int                             `json:"worktree_commits_ahead_base,omitempty"`

@@ -26,6 +26,12 @@ func category(line string) string {
 		needle string
 		code   string
 	}{
+		{"podman-compose did not create a labelled service container", "compose_container_missing"},
+		{"podman-compose service did not persist its readiness marker", "compose_marker_missing"},
+		{"database configuration mismatch", "storage_configuration_mismatch"},
+		{"read-only file system", "read_only_filesystem"},
+		{"too many requests", "registry_rate_limit"},
+		{"toomanyrequests", "registry_rate_limit"},
 		{"rootless podman endpoint unavailable", "endpoint_discovery"},
 		{"rootless endpoint unavailable after restart", "endpoint_restart"},
 		{"runtime-labelled resources survived rootless service restart", "restart_orphans"},

@@ -54,6 +54,7 @@ type Server struct {
 	workQueue         *workqueue.Store
 	developmentRunner projectDevelopmentRunner
 	taskStartLocks    [64]sync.Mutex
+	taskSourceLocks   [64]sync.Mutex
 	taskLifecycleMu   sync.Mutex
 	taskReconcileMu   sync.Mutex
 	taskCancel        context.CancelFunc

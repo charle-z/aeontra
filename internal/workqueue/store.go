@@ -16,7 +16,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 3
+const schemaVersion = 4
 
 type Store struct {
 	root     string
@@ -213,11 +213,9 @@ func (s *Store) initialize() error {
 	return s.Integrity()
 }
 
-// ensureSchemaExtensions migrates the v1/v2 queue into the v3 coordination
-// schema in one transaction. Existing task acceptance columns remain
-// backward-readable data, while v3 adds durable development objectives. A v2
-// binary must fail closed on user_version=3 instead of operating without the
-// objective/attempt contract.
+// ensureSchemaExtensions migrates older queues in one transaction. Schema 4
+// adds declared objective contracts and receipts. Older binaries fail closed
+// rather than ignoring the additional acceptance requirements.
 func ensureSchemaExtensions(db *sql.DB, version int) error {
 	tx, err := db.Begin()
 	if err != nil {
@@ -234,11 +232,17 @@ func ensureSchemaExtensions(db *sql.DB, version int) error {
 			{"acceptance_min_changed_paths", `INTEGER NOT NULL DEFAULT 0`},
 			{"test_profile_id", `TEXT NOT NULL DEFAULT ''`},
 			{"test_profile_digest", `TEXT NOT NULL DEFAULT ''`},
+			{"objective_contract", `TEXT NOT NULL DEFAULT ''`},
+			{"integration_contract", `TEXT NOT NULL DEFAULT ''`},
+			{"integration_source_task", `TEXT NOT NULL DEFAULT ''`},
+			{"integration_pins", `TEXT NOT NULL DEFAULT ''`},
+			{"integration_receipt", `TEXT NOT NULL DEFAULT ''`},
 		}},
 		{name: "task_workers", columns: []struct{ name, declaration string }{
 			{"acceptance_receipt", `TEXT NOT NULL DEFAULT ''`},
 			{"worktree_cleaned", `INTEGER NOT NULL DEFAULT 0`},
 			{"test_acceptance_receipt", `TEXT NOT NULL DEFAULT ''`},
+			{"objective_receipt", `TEXT NOT NULL DEFAULT ''`},
 		}},
 	} {
 		present := make(map[string]bool)
@@ -273,6 +277,7 @@ func ensureSchemaExtensions(db *sql.DB, version int) error {
 		}
 	}
 	for _, statement := range []string{
+		`CREATE INDEX IF NOT EXISTS task_integration_sources ON task_groups(integration_source_task) WHERE integration_source_task<>''`,
 		`CREATE TABLE IF NOT EXISTS development_objectives(
 			objective_id TEXT PRIMARY KEY,
 			revision INTEGER NOT NULL,
@@ -300,7 +305,7 @@ func ensureSchemaExtensions(db *sql.DB, version int) error {
 		}
 	}
 	if version < schemaVersion {
-		if _, err := tx.Exec(`PRAGMA user_version=3`); err != nil {
+		if _, err := tx.Exec(`PRAGMA user_version=4`); err != nil {
 			return errors.New("workqueue: schema migration failed")
 		}
 	}

@@ -17,9 +17,8 @@ import (
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/edgeclient"
+	"github.com/charle-z/mcp-devbox/packaging/parrot"
 )
-
-const onboardingPreflightPath = "/usr/local/libexec/mcp-devbox/onboarding-preflight"
 
 var onboardingUserPattern = regexp.MustCompile("^[a-z_][a-z0-9_-]{0,31}$")
 
@@ -28,8 +27,18 @@ var loadOnboardingIdentity = edgeclient.LoadIdentity
 var pairOnboardingIdentity = edgeclient.Pair
 var currentOnboardingUser = user.Current
 var runOnboardingPreflight = func() error {
-	return exec.Command(onboardingPreflightPath).Run()
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	return onboardingPreflightCommand(ctx).Run()
 }
+
+func onboardingPreflightCommand(ctx context.Context) *exec.Cmd {
+	command := exec.CommandContext(ctx, "/bin/bash", "-s")
+	command.Stdin = strings.NewReader(parrot.OnboardingPreflight)
+	command.WaitDelay = time.Second
+	return command
+}
+
 var waitOnboardingService = func(service string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -54,10 +63,10 @@ func onboard(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		return err
 	}
 	if err := runOnboardingPreflight(); err != nil {
-		return errors.New("onboarding preflight failed")
+		return errors.New("onboarding preflight failed; run mcp-edge doctor for diagnosis")
 	}
 
-	identity, pairingState, err := resolveOnboardingIdentity(*server, *name, *state, stdin)
+	identity, pairingState, err := resolveOnboardingIdentity(*server, *name, *state, stdin, stderr)
 	if err != nil {
 		return err
 	}
@@ -67,13 +76,14 @@ func onboard(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	}
 	service := edgeServiceName(currentUser.Username)
 	if err := waitOnboardingService(service, 30*time.Second); err != nil {
-		return err
+		return errors.New("onboarding service did not become active; identity preserved; run mcp-edge doctor, then rerun mcp-edge onboard")
 	}
 	fmt.Fprintf(stdout, "onboarding complete alias=%s service=active bundle=valid pairing=%s\n", identity.Name, pairingState)
+	fmt.Fprintln(stderr, "Next: run mcp-edge doctor, then verify edge_onboarding_status and edge_bundle_status for this alias.")
 	return nil
 }
 
-func resolveOnboardingIdentity(server, name, state string, stdin io.Reader) (edgeclient.Identity, string, error) {
+func resolveOnboardingIdentity(server, name, state string, stdin io.Reader, stderr io.Writer) (edgeclient.Identity, string, error) {
 	identity, _, loadErr := loadOnboardingIdentity(state)
 	if loadErr == nil {
 		if strings.TrimSpace(server) != "" {
@@ -97,12 +107,18 @@ func resolveOnboardingIdentity(server, name, state string, stdin io.Reader) (edg
 			return edgeclient.Identity{}, "", errors.New("edge state is unavailable")
 		}
 	}
+	normalized, err := edgeclient.NormalizeServerURL(server)
+	if err != nil {
+		return edgeclient.Identity{}, "", err
+	}
+	fmt.Fprint(stderr, "Pairing code (stdin): ")
 	code, err := readPairingCode(stdin)
+	fmt.Fprintln(stderr)
 	if err != nil {
 		return edgeclient.Identity{}, "", err
 	}
 	identity, err = pairOnboardingIdentity(context.Background(), edgeclient.PairOptions{
-		ServerURL: server,
+		ServerURL: normalized,
 		Code:      code,
 		Name:      name,
 		StateRoot: state,

@@ -1547,7 +1547,16 @@ func (platform osProjectProcessPlatform) startWorker(spec DirectWorkcellProcessS
 			return identity, exits, nil
 		}
 		select {
-		case <-exits:
+		case exit := <-exits:
+			// The worker may acknowledge admission and exit between the ready
+			// probe and this select. Preserve its receipt for the process watcher.
+			if info, err := os.Lstat(readyPath); err == nil && info.Mode().IsRegular() && info.Mode().Perm() == 0o600 && ownedByCurrentUIDPortable(info) {
+				_ = os.Remove(readyPath)
+				completed := make(chan ProjectProcessExit, 1)
+				completed <- exit
+				close(completed)
+				return identity, completed, nil
+			}
 			return ProjectProcessIdentity{}, nil, errors.New("project process worker failed before ready")
 		case <-time.After(10 * time.Millisecond):
 		}
@@ -1719,6 +1728,20 @@ func RunProjectProcessWorker(stateRoot, processID string) error {
 	}
 	waited := make(chan error, 1)
 	go func() { waited <- command.Wait() }()
+	finishEarly := func() error {
+		// Only Wait on this exact launcher can establish terminal evidence.
+		// No child identity is fabricated and no signal is sent to a dead PID.
+		if command.ProcessState == nil || command.ProcessState.ExitCode() < 0 {
+			_ = writeProjectProcessWorkerExit(workerRoot, processID, ProjectProcessExit{Reason: "process_identity_invalid"})
+			return errors.New("project process exited without known status")
+		}
+		_ = stdout.Close()
+		_ = stderr.Close()
+		if err := writeProjectProcessWorkerExit(workerRoot, processID, ProjectProcessExit{ExitKnown: true, ExitCode: command.ProcessState.ExitCode()}); err != nil {
+			return err
+		}
+		return writePrivateProjectProcessWorkerFile(projectProcessWorkerPath(workerRoot, processID, "ready"), []byte("ready\n"))
+	}
 	if request.Stdin != "" {
 		accepted, stdinErr := writeProjectProcessStdinChunk(stdinWriter, []byte(request.Stdin), 4*time.Second)
 		if stdinErr != nil || accepted != len(request.Stdin) {
@@ -1749,11 +1772,20 @@ func RunProjectProcessWorker(stateRoot, processID string) error {
 			}
 			childPID = result.ChildPID
 		case <-waited:
-			_ = sandboxInfoReader.Close()
+			// Bubblewrap publishes its metadata before executing the workload,
+			// but Wait may win the select before the pipe reader is scheduled.
+			select {
+			case result := <-info:
+				if result.Err == nil {
+					return finishEarly()
+				}
+			case <-time.After(time.Second):
+				_ = sandboxInfoReader.Close()
+			}
 			_ = stdout.Close()
 			_ = stderr.Close()
 			_ = writeProjectProcessWorkerExit(workerRoot, processID, ProjectProcessExit{Reason: "process_identity_invalid"})
-			return errors.New("project process sandbox exited before identity")
+			return errors.New("project process sandbox exited without valid identity metadata")
 		case <-time.After(5 * time.Second):
 			_ = sandboxInfoReader.Close()
 			_ = command.Process.Kill()
@@ -1765,6 +1797,13 @@ func RunProjectProcessWorker(stateRoot, processID string) error {
 		}
 	}
 	childIdentity, childIdentityErr := waitProjectProcessSandboxLeader(processID, childPID, 2*time.Second)
+	if childIdentityErr != nil {
+		select {
+		case <-waited:
+			return finishEarly()
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
 	if childIdentityErr != nil || writeProjectProcessWorkerChildIdentity(workerRoot, childIdentity) != nil {
 		_ = command.Process.Kill()
 		<-waited

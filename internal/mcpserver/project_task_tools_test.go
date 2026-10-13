@@ -37,6 +37,64 @@ type projectTaskEdgeStore struct {
 
 type inactiveProjectTaskEdgeStore struct{ *projectTaskEdgeStore }
 
+type taskSnapshotFailureStore struct {
+	*projectTaskEdgeStore
+	state    edge.OperationState
+	unborn   bool
+	mismatch bool
+}
+
+func (s *taskSnapshotFailureStore) WaitOperation(ctx context.Context, id string, timeout time.Duration) (edge.Operation, error) {
+	op, err := s.projectTaskEdgeStore.WaitOperation(ctx, id, timeout)
+	if op.Kind == edge.OperationProjectSnapshot {
+		op.State = s.state
+		if s.state == edge.OperationFailed {
+			op.SafeCode = "project_repository_mismatch"
+		}
+		if s.unborn {
+			op.Result.SnapshotHead = ""
+			op.Result.SnapshotUnborn = true
+		}
+		if s.mismatch {
+			op.Result.ProjectAlias = "another"
+		}
+	}
+	return op, err
+}
+
+func TestProjectTaskSnapshotFailureReturnsRecoverableContext(t *testing.T) {
+	for _, tc := range []struct {
+		state    edge.OperationState
+		unborn   bool
+		mismatch bool
+		reason   string
+		next     string
+	}{
+		{edge.OperationFailed, false, false, "project_repository_mismatch", "project_status"},
+		{edge.OperationQueued, false, false, "snapshot_pending", "edge_operation_status"},
+		{edge.OperationSucceeded, true, false, "initial_commit_required", "project_exec"},
+		{edge.OperationSucceeded, false, true, "snapshot_binding_mismatch", "project_status"},
+	} {
+		t.Run(tc.reason, func(t *testing.T) {
+			server, _, _ := developmentServer(t)
+			store := &taskSnapshotFailureStore{projectTaskEdgeStore: newProjectTaskEdgeStore(), state: tc.state, unborn: tc.unborn, mismatch: tc.mismatch}
+			server.WithEdgeStore(store)
+			body, err := server.table["project_task_start"].handler(json.RawMessage(`{"alias":"project","target":"parrot","goals":["Inspect README."],"timeout_seconds":600,"idempotency_key":"snapshot-diagnostic-01"}`))
+			if err == nil || !strings.Contains(body, `"reason":"`+tc.reason+`"`) || !strings.Contains(body, `"next_tool":"`+tc.next+`"`) || !strings.Contains(body, `"operation_id":"eo_`) {
+				t.Fatalf("diagnostic=%s err=%v", body, err)
+			}
+			if len(store.operations) != 1 {
+				t.Fatal("failed snapshot started other effects")
+			}
+			for _, forbidden := range []string{"workspace_id", "device_id", "body_ref", "/home/"} {
+				if strings.Contains(body, forbidden) {
+					t.Fatalf("diagnostic leaked %s", forbidden)
+				}
+			}
+		})
+	}
+}
+
 func (*inactiveProjectTaskEdgeStore) DeviceActive(string) bool { return false }
 
 func newProjectTaskEdgeStore() *projectTaskEdgeStore {
@@ -214,6 +272,242 @@ func TestProjectTaskStartCanRetryAfterOperatorRepairsTestProfile(t *testing.T) {
 	edges.mu.Unlock()
 	if len(keys) != 2 {
 		t.Fatalf("profile retry reused an old failed Edge operation: distinct keys=%d", len(keys))
+	}
+}
+
+func TestProjectTaskObjectiveAcceptanceRequiresDeclaredCriteriaAndFreshTests(t *testing.T) {
+	server, turns := modelTurnServer(t)
+	queue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(t.TempDir(), "queue"), ControllerID: "task-objective-acceptance"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = queue.Close() })
+	edges := newProjectTaskEdgeStore()
+	server.WithEdgeStore(edges).WithWorkQueue(queue)
+	output, err := server.table["project_task_start"].handler(json.RawMessage(`{"alias":"project","target":"parrot","goals":["Implement the behavior checked by go-check."],"timeout_seconds":600,"idempotency_key":"task-objective-0001","test_profile_id":"go-check","objective_contract":{"version":1,"minimum_commits_ahead_per_worker":1,"minimum_changed_paths_per_worker":1,"require_clean":true}}`))
+	if err != nil {
+		t.Fatalf("declared objective contract rejected: %v", err)
+	}
+	var started projectTaskView
+	if err := json.Unmarshal([]byte(output), &started); err != nil || len(started.Workers) != 1 {
+		t.Fatalf("started=%+v err=%v", started, err)
+	}
+	if err := turns.CompleteRuntime(context.Background(), started.Workers[0].RuntimeID); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.reconcileProjectTasksOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	statusRequest := json.RawMessage(fmt.Sprintf(`{"task_id":%q}`, started.TaskID))
+	status, err := server.table["project_task_status"].handler(statusRequest)
+	if err != nil || !strings.Contains(status, `"acceptance_state":"pending"`) {
+		t.Fatalf("runtime completion accepted without tests: %s err=%v", status, err)
+	}
+	testRequest := json.RawMessage(fmt.Sprintf(`{"task_id":%q,"ordinal":0}`, started.TaskID))
+	if _, err := server.table["project_task_test_start"].handler(testRequest); err != nil {
+		t.Fatal(err)
+	}
+	edges.mu.Lock()
+	edges.testProcessState, edges.testExitKnown, edges.testExitCode = "exited", true, 0
+	edges.mu.Unlock()
+	status, err = server.table["project_task_status"].handler(statusRequest)
+	if err != nil || !strings.Contains(status, `"acceptance_state":"accepted"`) || !strings.Contains(status, `"state":"accepted"`) {
+		t.Fatalf("declared objective not accepted with exact passing evidence: %s err=%v", status, err)
+	}
+	edges.mu.Lock()
+	edges.testStale = true
+	edges.mu.Unlock()
+	status, err = server.table["project_task_status"].handler(statusRequest)
+	if err != nil || strings.Contains(status, `"acceptance_state":"accepted"`) || !strings.Contains(status, `"reconciliation_reason":"test_evidence_stale"`) {
+		t.Fatalf("stale objective remained accepted: %s err=%v", status, err)
+	}
+	cleanupRequest := json.RawMessage(fmt.Sprintf(`{"task_id":%q,"idempotency_key":"objective-cleanup-0001"}`, started.TaskID))
+	if _, err := server.table["project_task_cleanup"].handler(cleanupRequest); err == nil {
+		t.Fatal("stale objective permitted cleanup")
+	}
+	edges.mu.Lock()
+	edges.testStale = false
+	edges.mu.Unlock()
+	cleaned, err := server.table["project_task_cleanup"].handler(cleanupRequest)
+	if err != nil || !strings.Contains(cleaned, `"cleaned":true`) || !strings.Contains(cleaned, `"acceptance_state":"accepted"`) {
+		t.Fatalf("cleanup lost objective receipt: %s err=%v", cleaned, err)
+	}
+	status, err = server.table["project_task_status"].handler(statusRequest)
+	if err != nil || !strings.Contains(status, `"acceptance_state":"accepted"`) || !strings.Contains(status, `"state":"none"`) {
+		t.Fatalf("retained objective acceptance=%s err=%v", status, err)
+	}
+}
+
+func TestProjectTaskObjectiveCleanupRecoversLostMarkerWithoutReplayingEffect(t *testing.T) {
+	server, turns := modelTurnServer(t)
+	root := filepath.Join(t.TempDir(), "queue")
+	queue, err := workqueue.Open(workqueue.Config{Root: root, ControllerID: "objective-marker"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = queue.Close() })
+	edges := newProjectTaskEdgeStore()
+	server.WithEdgeStore(edges).WithWorkQueue(queue)
+	output, err := server.table["project_task_start"].handler(json.RawMessage(`{"alias":"project","target":"parrot","goals":["Meet the profile's declared goal."],"timeout_seconds":600,"idempotency_key":"objective-marker-0001","test_profile_id":"go-check","objective_contract":{"version":1,"minimum_commits_ahead_per_worker":0,"minimum_changed_paths_per_worker":0,"require_clean":false}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var started projectTaskView
+	if err := json.Unmarshal([]byte(output), &started); err != nil {
+		t.Fatal(err)
+	}
+	if err := turns.CompleteRuntime(context.Background(), started.Workers[0].RuntimeID); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.reconcileProjectTasksOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.table["project_task_test_start"].handler(json.RawMessage(fmt.Sprintf(`{"task_id":%q,"ordinal":0}`, started.TaskID))); err != nil {
+		t.Fatal(err)
+	}
+	edges.mu.Lock()
+	edges.testProcessState, edges.testExitKnown = "exited", true
+	edges.mu.Unlock()
+	marker, err := sql.Open("sqlite", filepath.Join(root, "queue.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer marker.Close()
+	if _, err := marker.Exec(`CREATE TRIGGER fail_objective_marker BEFORE UPDATE OF worktree_cleaned ON task_workers BEGIN SELECT RAISE(ABORT,'injected'); END`); err != nil {
+		t.Fatal(err)
+	}
+	request := json.RawMessage(fmt.Sprintf(`{"task_id":%q,"idempotency_key":"objective-marker-cleanup-0001"}`, started.TaskID))
+	if _, err := server.table["project_task_cleanup"].handler(request); err == nil || !strings.Contains(err.Error(), "cleanup marker persistence failed") {
+		t.Fatalf("expected marker failure, got %v", err)
+	}
+	if _, err := marker.Exec(`DROP TRIGGER fail_objective_marker`); err != nil {
+		t.Fatal(err)
+	}
+	before := edges.worktreeStatusRequests
+	output, err = server.table["project_task_cleanup"].handler(request)
+	if err != nil || !strings.Contains(output, `"cleaned":true`) || !strings.Contains(output, `"acceptance_state":"accepted"`) {
+		t.Fatalf("cleanup could not recover its completed effect: %s err=%v", output, err)
+	}
+	if edges.worktreeStatusRequests != before {
+		t.Fatal("removed worktree was polled during marker recovery")
+	}
+	count := 0
+	for _, op := range edges.operations {
+		if op.Kind == edge.OperationProjectWorktreeCleanup {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("cleanup effects=%d, want one", count)
+	}
+}
+
+func TestProjectTaskObjectiveContractRejectsMissingUnknownOrConflictingInput(t *testing.T) {
+	for _, extra := range []string{
+		`"objective_contract":{"version":1}`,
+		`"objective_contract":{"version":2,"minimum_commits_ahead_per_worker":0,"minimum_changed_paths_per_worker":0,"require_clean":false}`,
+		`"objective_contract":{"version":1,"minimum_commits_ahead_per_worker":0,"minimum_changed_paths_per_worker":0,"require_clean":false,"auto_merge":true},"test_profile_id":"go-check"`,
+		`"objective_contract":{"version":1,"minimum_commits_ahead_per_worker":0,"minimum_changed_paths_per_worker":0,"require_clean":false}`,
+		`"objective_contract":{"version":1,"minimum_commits_ahead_per_worker":0,"minimum_changed_paths_per_worker":0,"require_clean":false},"test_profile_id":"go-check","git_evidence_contract":{"version":1,"minimum_commits_ahead_per_worker":1,"minimum_changed_paths_per_worker":1}`,
+	} {
+		t.Run(extra, func(t *testing.T) {
+			server, _ := modelTurnServer(t)
+			queue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(t.TempDir(), "queue"), ControllerID: "objective-input"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer queue.Close()
+			edges := newProjectTaskEdgeStore()
+			server.WithEdgeStore(edges).WithWorkQueue(queue)
+			request := json.RawMessage(`{"alias":"project","target":"parrot","goals":["Inspect the behavior."],"timeout_seconds":600,"idempotency_key":"objective-invalid-0001",` + extra + `}`)
+			if _, err := server.table["project_task_start"].handler(request); err == nil {
+				t.Fatal("invalid declaration accepted")
+			}
+			if len(edges.operations) != 0 {
+				t.Fatal("invalid input reached Edge effects")
+			}
+		})
+	}
+}
+
+func TestProjectTaskObjectiveCriteriaAndMultiworkerAcceptance(t *testing.T) {
+	for _, tc := range []struct {
+		name                    string
+		clean, requireClean     bool
+		ahead, changed, minimum int
+		workers                 int
+		expected                string
+	}{
+		{"read_only_dirty", false, false, 0, 0, 0, 1, "accepted"},
+		{"explicit_clean_not_met", false, true, 1, 1, 1, 1, "acceptance_pending"},
+		{"missing_changes", true, true, 1, 1, 2, 1, "acceptance_pending"},
+		{"two_workers_only_one_tested", true, true, 1, 1, 1, 2, "acceptance_pending"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server, turns := modelTurnServer(t)
+			queue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(t.TempDir(), "queue"), ControllerID: "objective-criteria"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer queue.Close()
+			edges := newProjectTaskEdgeStore()
+			server.WithEdgeStore(edges).WithWorkQueue(queue)
+			goals := []string{"Evaluate the declared profile."}
+			if tc.workers == 2 {
+				goals = append(goals, "Evaluate the other worker independently.")
+			}
+			goalJSON, err := json.Marshal(goals)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request := json.RawMessage(fmt.Sprintf(`{"alias":"project","target":"parrot","goals":%s,"timeout_seconds":600,"idempotency_key":"objective-criteria-0001","test_profile_id":"go-check","objective_contract":{"version":1,"minimum_commits_ahead_per_worker":%d,"minimum_changed_paths_per_worker":%d,"require_clean":%t}}`, goalJSON, tc.minimum, tc.minimum, tc.requireClean))
+			output, err := server.table["project_task_start"].handler(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var started projectTaskView
+			if err := json.Unmarshal([]byte(output), &started); err != nil {
+				t.Fatal(err)
+			}
+			for _, worker := range started.Workers {
+				if err := turns.CompleteRuntime(context.Background(), worker.RuntimeID); err != nil {
+					t.Fatal(err)
+				}
+				edges.mu.Lock()
+				result := edges.worktrees[worker.WorktreeID]
+				result.WorktreeEvidenceKnown, result.WorktreeClean = true, tc.clean
+				result.WorktreeHeadCommit = "1123456789abcdef0123456789abcdef01234567"
+				if tc.ahead == 0 {
+					result.WorktreeHeadCommit = result.WorktreeBaseCommit
+				}
+				result.WorktreeCommitsAheadBase, result.WorktreeChangedPathCount = tc.ahead, tc.changed
+				edges.worktrees[worker.WorktreeID] = result
+				edges.mu.Unlock()
+			}
+			if err := server.reconcileProjectTasksOnce(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := server.table["project_task_test_start"].handler(json.RawMessage(fmt.Sprintf(`{"task_id":%q,"ordinal":0}`, started.TaskID))); err != nil {
+				t.Fatal(err)
+			}
+			edges.mu.Lock()
+			edges.testProcessState, edges.testExitKnown = "exited", true
+			edges.mu.Unlock()
+			output, err = server.table["project_task_status"].handler(json.RawMessage(fmt.Sprintf(`{"task_id":%q}`, started.TaskID)))
+			var view projectTaskView
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := json.Unmarshal([]byte(output), &view); err != nil {
+				t.Fatal(err)
+			}
+			if view.State != tc.expected {
+				t.Fatalf("state=%s expected=%s output=%s", view.State, tc.expected, output)
+			}
+			if tc.workers == 2 && (view.Workers[0].AcceptanceState != "accepted" || view.Workers[1].AcceptanceState != "pending") {
+				t.Fatalf("partial evidence accepted both workers: %+v", view.Workers)
+			}
+		})
 	}
 }
 
@@ -805,7 +1099,8 @@ func TestProjectTaskStatusCleanupAndCoordinatorLifecycle(t *testing.T) {
 	nilServer.StopProjectTaskCoordinator()
 
 	server, turns := modelTurnServer(t)
-	queue, err := workqueue.Open(workqueue.Config{Root: filepath.Join(t.TempDir(), "queue"), ControllerID: "mcp-task-test"})
+	queueRoot := filepath.Join(t.TempDir(), "queue")
+	queue, err := workqueue.Open(workqueue.Config{Root: queueRoot, ControllerID: "mcp-task-test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -871,6 +1166,32 @@ func TestProjectTaskStatusCleanupAndCoordinatorLifecycle(t *testing.T) {
 	cleaned, err := server.table["project_task_cleanup"].handler(json.RawMessage(`{"task_id":"` + started.TaskID + `","idempotency_key":"parallel-cleanup-finish-0001"}`))
 	if err != nil || !strings.Contains(cleaned, `"cleaned":true`) {
 		t.Fatalf("cleaned=%s err=%v", cleaned, err)
+	}
+	statusCallsBeforeCleanupReads := edges.worktreeStatusRequests
+	for _, reopen := range []bool{false, true} {
+		if reopen {
+			if err := queue.Close(); err != nil {
+				t.Fatal(err)
+			}
+			queue, err = workqueue.Open(workqueue.Config{Root: queueRoot, ControllerID: "mcp-task-test"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			server.WithWorkQueue(queue)
+		}
+		statusAfterCleanup, err := server.table["project_task_status"].handler(json.RawMessage(`{"task_id":"` + started.TaskID + `"}`))
+		if err != nil || !strings.Contains(statusAfterCleanup, `"state":"acceptance_pending"`) ||
+			!strings.Contains(statusAfterCleanup, `"runtime_state":"completed"`) ||
+			!strings.Contains(statusAfterCleanup, `"acceptance_state":"pending"`) ||
+			!strings.Contains(statusAfterCleanup, `"continuation":{"state":"review_required"}`) ||
+			strings.Contains(statusAfterCleanup, `"reconciliation_reason":`) ||
+			strings.Contains(statusAfterCleanup, `"git_evidence_state":"verified"`) ||
+			strings.Contains(statusAfterCleanup, `"state":"accepted"`) {
+			t.Fatalf("status after cleanup (reopen=%t)=%s err=%v", reopen, statusAfterCleanup, err)
+		}
+		if edges.worktreeStatusRequests != statusCallsBeforeCleanupReads {
+			t.Fatal("status re-polled a cleaned worktree without an evidence contract")
+		}
 	}
 
 	queued, _, err := queue.CreateTask(workqueue.TaskSpec{

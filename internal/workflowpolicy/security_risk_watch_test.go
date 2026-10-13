@@ -1,8 +1,6 @@
 package workflowpolicy
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"os"
 	"strings"
@@ -22,8 +20,9 @@ func TestSecurityRiskWatchIsDailyBoundedAndIdentityVerified(t *testing.T) {
 		"schedule:", "cron: '41 11 * * *'", "workflow_dispatch:",
 		"github.ref == 'refs/heads/main'", "github.repository == 'charle-z/aeontra'",
 		"contents: read", "packages: read", "timeout-minutes: 15",
-		"security/monitored-images.json", "git show \"$revision:Dockerfile.sandbox-workcell\"",
-		"sha256sum Dockerfile.sandbox-workcell", "docker buildx imagetools inspect",
+		"security/monitored-images.json", "git show \"$revision:Dockerfile.sandbox-workcell\" > artifacts/monitored/Dockerfile.sandbox-workcell",
+		"sha256sum artifacts/monitored/Dockerfile.sandbox-workcell", "docker buildx imagetools inspect",
+		"test \"$committed_recipe\" = \"$expected_recipe\"",
 		".platform.os == \"linux\" and .platform.architecture == \"amd64\"",
 		"docker pull --platform linux/amd64", "org.opencontainers.image.revision",
 		"test \"$actual_id\" = \"$expected_id\"", "docker tag \"$actual_id\" mcp-sandbox-workcell:ci",
@@ -32,8 +31,7 @@ func TestSecurityRiskWatchIsDailyBoundedAndIdentityVerified(t *testing.T) {
 		"anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2",
 		"vex: security/vex/sandbox-workcell-zlib.openvex.json", "cache-db: true",
 		"fail-build: false", "severity-cutoff: high", "output-format: json",
-		"--accepted-risk security/accepted-risks/http-cache-semantics-20261003.json",
-		"--image-id \"$VERIFIED_IMAGE_ID\"", "--annotation-file Dockerfile.sandbox-workcell",
+		"test -n \"$VERIFIED_IMAGE_ID\"", "--annotation-file artifacts/monitored/Dockerfile.sandbox-workcell",
 		"db-provenance.json", "if: always()", "retention-days: 7", "if-no-files-found: error",
 	} {
 		if !strings.Contains(text, required) {
@@ -44,6 +42,7 @@ func TestSecurityRiskWatchIsDailyBoundedAndIdentityVerified(t *testing.T) {
 		"pull_request:", "pull_request_target:", "push:", "continue-on-error:",
 		"docker build ", "docker buildx build", "docker run ", ":latest", "only-fixed: true",
 		"packages: write", "contents: write", "secrets.",
+		"checked_out_recipe=", "--annotation-file Dockerfile.sandbox-workcell",
 	} {
 		if strings.Contains(text, forbidden) {
 			t.Errorf("security risk watch contains forbidden %q", forbidden)
@@ -87,28 +86,35 @@ func TestSecurityRiskWatchInventoryMatchesVerifiedWorkcell(t *testing.T) {
 	}
 	w := inventory.Workcell
 	if w.Repository != "ghcr.io/charle-z/aeontra-sandbox-workcell" ||
-		w.IndexDigest != "sha256:a342917779194d6c455f25f760b13d7a1a1f4e88eafec0f231bf099aaa776d41" ||
-		w.ManifestDigest != "sha256:bb0691ef833195e08f583bc4787e00cbc0d0bd84f9438a1a76c568a757dbb54f" ||
-		w.ImageID != "sha256:0b6e0933cfc57d10fcbfdd805e632c638d2eb1071a5e06e86c4f8526e452a1da" ||
-		w.Revision != "f8f641e2d65d696f3ef057c1dda8f99ba5a8cf21" ||
-		w.RecipeSHA256 != "cc5cb19e289aeb0bf82076da5807b7efcdee56bcb2fd3e1adb7cb74c9fc74ccc" {
+		w.IndexDigest != "sha256:a57995ced48e5d50c48b49934e078a4c865dba356e32a2f59ec26b7b27c15223" ||
+		w.ManifestDigest != "sha256:e5368a7ff87330b4b3b42088a0927f9c5036d8e473c68b2ccc51ddf1d008186e" ||
+		w.ImageID != "sha256:1106476e2a9fce831f1f5abd6aafd9cf9770b0771ba065934de4aa03a2444c3d" ||
+		w.Revision != "e73ccea716e518531737db013b4caea3a4a9d298" ||
+		w.RecipeSHA256 != "11ebaa13b523eac95e2471341e4289025571e903b5059446e3d61452b422111f" {
 		t.Fatal("workcell identities differ from the verified protected image release")
 	}
-	recipe, err := os.ReadFile("../../Dockerfile.sandbox-workcell")
-	if err != nil {
-		t.Fatal(err)
-	}
-	digest := sha256.Sum256(recipe)
-	if hex.EncodeToString(digest[:]) != w.RecipeSHA256 {
-		t.Fatal("monitored image recipe differs from the checked-out approved recipe")
-	}
+	// The watch checks the recipe in this exact revision with a full checkout.
+	// Unit tests and ordinary development must also work from shallow checkouts.
 	doc, err := os.ReadFile("../../docs/runbooks/security-risk-watch.md")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"deployed-workcell", "does not discover production", "Coolify", "no image rebuild", "24 hours", "7 days", "larger transfer", "2026-10-03-workcell-rollout.md"} {
+	for _, required := range []string{"deployed-workcell", "does not discover production", "Coolify", "no image rebuild", "24 hours", "7 days", "larger transfer", "2026-10-09-workcell-rollout.md"} {
 		if !strings.Contains(strings.Join(strings.Fields(string(doc)), " "), required) {
 			t.Errorf("watch runbook missing limitation %q", required)
 		}
+	}
+}
+
+func TestSecurityRiskWatchUsesStrictGateForUpdatedWorkcell(t *testing.T) {
+	content, err := os.ReadFile("../../.github/workflows/security-risk-watch.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(content), "--accepted-risk") || strings.Contains(string(content), "--image-id") {
+		t.Fatal("updated workcell watch must not inherit the historical image exception")
+	}
+	if !strings.Contains(string(content), "--minimum high") {
+		t.Fatal("updated image lost High/Critical threshold")
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/charle-z/mcp-devbox/internal/assets"
 	"github.com/charle-z/mcp-devbox/internal/audit"
 	brainpkg "github.com/charle-z/mcp-devbox/internal/brain"
 	"github.com/charle-z/mcp-devbox/internal/policy"
@@ -38,6 +39,7 @@ type Service struct {
 	*ExecutionCapability
 	*ResultCapability
 	*BrainCapability
+	*AssetCapability
 }
 
 // NewService builds the shared core and every capability. root must be one of the
@@ -78,7 +80,14 @@ func NewService(pol *policy.Policy, log *audit.Logger, root string) *Service {
 		},
 		ResultCapability: &ResultCapability{serviceCore: core},
 		BrainCapability:  &BrainCapability{serviceCore: core},
+		AssetCapability:  &AssetCapability{serviceCore: core},
 	}
+}
+
+// WithAssetLibrary attaches the immutable operator-reviewed image library.
+func (s *Service) WithAssetLibrary(library *assets.Library) *Service {
+	s.AssetCapability.configureLibrary(library)
+	return s
 }
 
 // WithResultStore attaches the isolated bounded result store opened at startup.

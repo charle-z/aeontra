@@ -14,6 +14,7 @@ const tokenEnv = "MCP_DEVBOX_TOKEN"
 // Env fallbacks for the test/allowlist commands so a containerized deploy (Coolify)
 // can configure them without baking flags into the image. A flag, when set, wins.
 const brainRootEnv = "MCP_DEVBOX_BRAIN_ROOT"
+const assetLibraryEnv = "MCP_DEVBOX_ASSET_LIBRARY"
 const taskRootEnv = "MCP_DEVBOX_TASK_ROOT"
 const stateRootEnv = "MCP_DEVBOX_STATE_ROOT"
 const consoleTimezoneEnv = "CONSOLE_TIMEZONE"

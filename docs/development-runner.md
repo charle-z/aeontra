@@ -93,6 +93,12 @@ closed. Make, unknown commands and other command options retain their
 existing inference. Existing objective contracts are immutable and are not
 migrated to the new inference.
 
+An exact Corepack `packageManager` pin with a complete SHA224, SHA256, SHA384
+or SHA512 hexadecimal suffix retains its numeric version before bounded
+requirement conversion. The generic package-manager requirement and conflicts
+are preserved. Unsupported or malformed integrity syntax remains unresolved;
+this syntax check does not download or verify the package-manager artifact.
+
 There is no public runner tool, caller argv, shell string, arbitrary environment,
 prompt, credential, helper URL or source-body input. The private request binds
 source owner, repository, exact public Git SHA, source digest, command profile,
@@ -101,6 +107,15 @@ stays on Edge. A dirty local tree cannot be transported as this public SHA;
 normal governed Git publication and explicit location approval must precede it.
 
 ## VM authority and measured capabilities
+
+Before starting rootless Docker, fixed controller setup verifies
+`/sys/module/overlay/parameters/redirect_always_follow` and sets it to `N` in
+that disposable VM. This makes `redirect_dir=off` resolve to the kernel's
+`nofollow` policy instead of implicit redirect following. Unknown values,
+missing or non-root-owned parameters, symlinks, and unsuccessful writes block
+preparation. No module is reloaded. The Edge and VPS kernel settings are
+unchanged. The original overlay mount diagnostics and complete upstream command
+remain required evidence; this setup alone does not establish acceptance.
 
 The workflow has `contents: read` only, no production environment, secrets or
 OIDC grant. Go, Docker, Buildx, RootlessKit and runner-owned fixture images use
@@ -159,17 +174,41 @@ A command drains its complete output but retains only the last 16 MiB, discardin
 the first partial line after truncation. Numeric capture metadata records the
 bytes seen, dropped and retained. A prefix-only log cannot establish the final
 failure of a long command.
-A command also retains up to 16 KiB of complete lines from its first failure or,
-preferentially, its last panic and the following active-test context. This fixed
-private sideband is replaced on each command. Lines over 64 KiB and incomplete
-EOF lines are discarded rather than retaining credential fragments.
+A command also retains its first observed failure and its last panic with the
+following active-test context. When distinct contexts exist, each receives up to
+8 KiB of complete lines within the same 16 KiB private sideband; a single context
+can use 16 KiB. Exact byte lengths frame the two sections, not log-authored markers.
+The first observation can be an expected negative fixture and does not establish
+the cause of failure.
+Independently, the command samples its first complete bounded Go failed-subtest
+marker (`--- FAIL: Test…/… (duration)`). The marker is stored separately from up to
+32 preceding and 16 following complete stdout lines. The preceding window is at
+most 4 KiB; the marker and surrounding sample together use at most 8 KiB. When a
+sample exists, the first observation and last panic each use at most 4 KiB within
+the unchanged 16 KiB private sideband. Exact byte lengths frame every section.
+The sample is not an integration classifier or a representative failure claim.
+Surrounding stdout is explicitly unassociated: parallel tests may interleave,
+and an assertion or initialization error outside the bounded window is unavailable.
+A top-level failure without a subtest marker does not create this sample.
+This fixed sideband is replaced on each command. Lines over
+64 KiB and incomplete EOF lines are discarded rather than retaining credential
+fragments.
 A trusted final step reads only fixed controller-owned probe, daemon and command
 logs without following links. It emits at most 16 KiB of prefixed JSON, escaping
 control characters and redacting every staged CI credential value before output.
 For command logs, it scans at most the last 2 MiB of complete lines. It uses the
 bounded sideband when present, or that window's failure context for older logs,
-within one 4 KiB encoded context allowance. A separate 4 KiB encoded tail is
-selected from EOF backwards and emitted chronologically; JSON escaping and
+within one 4 KiB encoded context allowance. A dual sideband gives the first
+observation at most half that allowance, reserving the remainder for the last
+panic; legacy single-context sidebands remain readable. The 4 KiB encoded
+context division for a subtest sample gives the first observation at most 1 KiB,
+the sample at most 2 KiB, and the last-panic context the remaining allowance. The
+sample emits its marker before preceding/following text so nearby noise cannot
+consume the marker's allowance. Marker display is limited to 128 Unicode characters,
+with an explicit truncation annotation; the complete private marker is retained.
+Legacy single and dual sidebands remain readable.
+A separate 4 KiB encoded tail is selected from EOF backwards and emitted
+chronologically; JSON escaping and
 prefixes cannot displace the actual final lines. Earlier probe diagnostics leave
 this command allowance reserved. Arbitrary older log text remains unavailable;
 diagnostics never change the command outcome or attest acceptance.
@@ -195,7 +234,9 @@ Calibration and failed Make executions also collect an optional, fixed overlay
 mount diagnostic before stopping the rootless daemon. A trusted static fixture
 runs in the existing rootless Docker namespace, with no network or CI credentials,
 a read-only root, 256 MiB/64 tasks and a fresh anonymous `/tmp` volume. It compares
-`redirect_dir=off` with and without `userxattr`, preserving syscall errno,
+`redirect_dir=off` with and without `userxattr`, plus a separate
+`redirect_dir=nofollow,userxattr` control. The original two mounts are unchanged.
+It preserves syscall errno,
 lower-file verification, unmount status, backing filesystem type and read-only
 kernel defaults. Manager PID/memory event counters bracket the experiment.
 Container creation and cleanup are each bounded to 5 seconds; execution to 30
@@ -205,6 +246,9 @@ A rejected optional mount is compatibility evidence only, not a failed general
 capability, accepted command or reason to alter host settings. Preparation,
 verification and cleanup failures remain failures. This fixture does not execute
 the upstream overlay helper or establish complete BuildKit acceptance.
+The additional control distinguishes an explicit redirect policy conflict from
+other restrictions; success does not attest the omitted-`userxattr` mount used
+by unchanged upstream tests. No kernel parameter is modified by the diagnostic.
 
 Fresh trusted probes require:
 

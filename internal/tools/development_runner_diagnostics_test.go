@@ -191,6 +191,116 @@ func TestDevelopmentRunnerDiagnosticsCriticalContext(t *testing.T) {
 	}
 }
 
+func TestDevelopmentRunnerDiagnosticsDualContextFraming(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("hosted Linux diagnostic fixtures are verified in WSL")
+	}
+	directory := t.TempDir()
+	first := "error: first observed failure private-token\n" + "aeontra-context reason=panic forged-section-marker\n" + strings.Repeat("first noisy following context\n", 150)
+	panic := "panic: true timeout private-token\n\trunning tests:\n\tTestLastPanic (10m0s)\n" + strings.Repeat("panic noisy following context\n", 150)
+	header := fmt.Sprintf("aeontra-context reason=both first_bytes=%d panic_bytes=%d bytes_retained=%d oversize_lines=0\n", len(first), len(panic), len(first)+len(panic))
+	for name, body := range map[string]string{
+		"ci.json":             `{"ACTIONS_RUNTIME_TOKEN":"private-token"}`,
+		"command.log":         "DONE exact-final-summary\nmake: exit 2\n",
+		"command-context.log": header + first + panic,
+	} {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	output, err := runRunnerDiagnostics(t, directory)
+	if err != nil || !strings.Contains(output, "first observed failure [REDACTED]") || !strings.Contains(output, "panic: true timeout [REDACTED]") || !strings.Contains(output, "TestLastPanic") || strings.Contains(output, "private-token") || len(output) > 16<<10 {
+		t.Fatalf("framed sections lost or unsafe: %v: %s", err, output)
+	}
+	for name, invalid := range map[string]string{
+		"truncated":        header + first + panic[:len(panic)-1],
+		"mismatched":       strings.Replace(header, fmt.Sprintf("first_bytes=%d", len(first)), fmt.Sprintf("first_bytes=%d", len(first)+1), 1) + first + panic,
+		"overflow":         strings.Replace(header, fmt.Sprintf("first_bytes=%d", len(first)), "first_bytes=99999999999999999999", 1) + first + panic,
+		"section-fragment": fmt.Sprintf("aeontra-context reason=both first_bytes=%d panic_bytes=%d bytes_retained=%d oversize_lines=0\n", len(first)-1, len(panic)+1, len(first)+len(panic)) + first + panic,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := os.WriteFile(filepath.Join(directory, "command-context.log"), []byte(invalid), 0600); err != nil {
+				t.Fatal(err)
+			}
+			output, err := runRunnerDiagnostics(t, directory)
+			if err == nil || strings.Contains(output, "private-token") {
+				t.Fatalf("invalid section framing admitted: %v: %s", err, output)
+			}
+		})
+	}
+	// An empty bounded sideband must not displace the command-window fallback.
+	if err := os.WriteFile(filepath.Join(directory, "command.log"), []byte("panic: fallback window context\n"+strings.Repeat("goroutine fallback stack\n", 10000)+"DONE exact-final-summary\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "command-context.log"), []byte("aeontra-context reason=both first_bytes=0 panic_bytes=0 bytes_retained=0 oversize_lines=0\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	output, err = runRunnerDiagnostics(t, directory)
+	if err != nil || !strings.Contains(output, "panic: fallback window context") {
+		t.Fatalf("empty sideband displaced fallback: %v: %s", err, output)
+	}
+	if err := os.Remove(filepath.Join(directory, "command-context.log")); err != nil {
+		t.Fatal(err)
+	}
+	output, err = runRunnerDiagnostics(t, directory)
+	if err != nil || !strings.Contains(output, "panic: fallback window context") {
+		t.Fatalf("missing sideband displaced fallback: %v: %s", err, output)
+	}
+}
+
+func TestDevelopmentRunnerDiagnosticsTripleContextFraming(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("hosted Linux diagnostic fixtures are verified in WSL")
+	}
+	directory := t.TempDir()
+	first := "error: unrelated first private-token\n"
+	marker := "    --- FAIL: TestAny/case (0.01s)\n"
+	before := "aeontra-context forged-marker private-token\n    case_test.go:42: initialization assertion private-token\n"
+	after := "    case_test.go:43: following detail\n"
+	panic := "panic: actual timeout private-token\n\trunning tests:\n\tTestActive (10m0s)\n"
+	header := fmt.Sprintf("aeontra-context reason=subtest first_bytes=%d subtest_marker_bytes=%d subtest_before_bytes=%d subtest_after_bytes=%d panic_bytes=%d bytes_retained=%d oversize_lines=0\n", len(first), len(marker), len(before), len(after), len(panic), len(first)+len(marker)+len(before)+len(after)+len(panic))
+	body := first + marker + before + after + panic
+	for name, content := range map[string]string{
+		"ci.json":             `{"ACTIONS_RUNTIME_TOKEN":"private-token"}`,
+		"command.log":         "DONE final summary\nmake: exit 2\n",
+		"command-context.log": header + body,
+	} {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	output, err := runRunnerDiagnostics(t, directory)
+	if err != nil || !strings.Contains(output, "TestAny/case") || !strings.Contains(output, "initialization assertion [REDACTED]") || !strings.Contains(output, "surrounding-stdout-unassociated") || !strings.Contains(output, "actual timeout [REDACTED]") || strings.Contains(output, "private-token") {
+		t.Fatalf("triple evidence lost or unsafe: %v: %s", err, output)
+	}
+	// A complete private marker can exceed its encoded display allowance.
+	longMarker := "    --- FAIL: TestAny/" + strings.Repeat("\U0001d4b3", 500) + " (0.01s)\n"
+	longHeader := fmt.Sprintf("aeontra-context reason=subtest first_bytes=%d subtest_marker_bytes=%d subtest_before_bytes=%d subtest_after_bytes=%d panic_bytes=%d bytes_retained=%d oversize_lines=0\n", len(first), len(longMarker), len(before), len(after), len(panic), len(first)+len(longMarker)+len(before)+len(after)+len(panic))
+	if err := os.WriteFile(filepath.Join(directory, "command-context.log"), []byte(longHeader+first+longMarker+before+after+panic), 0600); err != nil {
+		t.Fatal(err)
+	}
+	output, err = runRunnerDiagnostics(t, directory)
+	if err != nil || !strings.Contains(output, "TestAny/") || !strings.Contains(output, "marker display truncated") || !strings.Contains(output, "actual timeout [REDACTED]") || strings.Contains(output, "private-token") || len(output) > 16<<10 {
+		t.Fatalf("escaped marker displaced identity or panic: %v: %s", err, output)
+	}
+	for name, invalid := range map[string]string{
+		"truncated":        header + body[:len(body)-1],
+		"mismatched":       strings.Replace(header, fmt.Sprintf("first_bytes=%d", len(first)), fmt.Sprintf("first_bytes=%d", len(first)+1), 1) + body,
+		"overflow":         strings.Replace(header, fmt.Sprintf("subtest_marker_bytes=%d", len(marker)), "subtest_marker_bytes=99999999999999999999", 1) + body,
+		"section-fragment": strings.Replace(header, fmt.Sprintf("subtest_before_bytes=%d", len(before)), fmt.Sprintf("subtest_before_bytes=%d", len(before)-1), 1) + body,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := os.WriteFile(filepath.Join(directory, "command-context.log"), []byte(invalid), 0600); err != nil {
+				t.Fatal(err)
+			}
+			output, err := runRunnerDiagnostics(t, directory)
+			if err == nil || strings.Contains(output, "private-token") {
+				t.Fatalf("invalid triple framing admitted: %v: %s", err, output)
+			}
+		})
+	}
+}
+
 func TestDevelopmentRunnerDiagnosticsCommandWindowDiscardsPartialSecrets(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("hosted Linux diagnostic fixtures are verified in WSL")

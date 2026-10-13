@@ -1,6 +1,7 @@
 package edgeclient
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -59,6 +60,7 @@ var (
 	toolchainRustChannelPattern      = regexp.MustCompile(`(?m)^\s*channel\s*=\s*["']([^"']+)["']`)
 	toolchainMiseToolPattern         = regexp.MustCompile(`^\s*["']?([A-Za-z0-9_.+:-]+)["']?\s*=\s*["']([^"']+)["']`)
 	toolchainNumericVersionPattern   = regexp.MustCompile(`^v?[0-9]+(?:\.[0-9]+){0,3}$`)
+	corepackExactVersionPattern      = regexp.MustCompile(`^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$`)
 	toolchainPythonVersionPattern    = regexp.MustCompile(`([0-9]+)(?:\.([0-9]+))?`)
 )
 
@@ -378,6 +380,13 @@ func inspectPackageManifest(content []byte, workspace string, addPin func(string
 		addFinding("package.json", "package-manager", ToolchainEdgeRequired, "", "a package lockfile is required for bounded validation")
 		return nil
 	}
+	if strings.Contains(version, "+") {
+		// Only validated Corepack integrity suffixes are removed by the
+		// packageManager parser. Do not treat malformed suffixes as a
+		// supported npm range or truncate them into a numeric capability.
+		addFinding("package.json", "package-manager", ToolchainEdgeRequired, version, "packageManager integrity format requires managed resolution")
+		return nil
+	}
 	if manager == "pnpm" {
 		addFinding("package.json", "pnpm", ToolchainEdgeRequired, version, "pnpm is not in the fixed L3 image; use the persistent Edge toolbox")
 		return nil
@@ -403,7 +412,47 @@ func splitPackageManager(value string) (string, string) {
 	if !hasVersion {
 		return manager, ""
 	}
-	return manager, strings.TrimSpace(version)
+	version = strings.TrimSpace(version)
+	if manager == "npm" || manager == "pnpm" || manager == "yarn" {
+		if exact := corepackPackageManagerVersion(version); exact != "" {
+			version = exact
+		}
+	}
+	return manager, version
+}
+
+// corepackPackageManagerVersion recognizes an exact packageManager version
+// with a complete Corepack SHA integrity suffix before finding truncation.
+// This validates manifest syntax only; it does not fetch or verify an artifact.
+func corepackPackageManagerVersion(value string) string {
+	version, integrity, ok := strings.Cut(value, "+")
+	if !ok || len(version) > 64 || !corepackExactVersionPattern.MatchString(version) {
+		return ""
+	}
+	algorithm, digest, ok := strings.Cut(integrity, ".")
+	if !ok {
+		return ""
+	}
+	size := 0
+	switch algorithm {
+	case "sha224":
+		size = 56
+	case "sha256":
+		size = 64
+	case "sha384":
+		size = 96
+	case "sha512":
+		size = 128
+	default:
+		return ""
+	}
+	if len(digest) != size {
+		return ""
+	}
+	if _, err := hex.DecodeString(digest); err != nil {
+		return ""
+	}
+	return version
 }
 
 func parseToolVersions(content []byte) []toolchainPin {

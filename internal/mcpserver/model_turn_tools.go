@@ -106,9 +106,10 @@ func (s *Server) addModelTurnTools() {
 		Name:        "model_turn_respond",
 		Description: "Submit one bounded response after identity validation. Explicit task_state is preferred; legacy clients may omit it and the server infers it from finish_reason. Active must include an offered tool call, blocked must use error or cancelled, and complete must use stop without declaring pending work.",
 		InputSchema: modelTurnRespondSchema(),
-		Version:     "2",
+		Version:     "3",
 		Annotations: writeHints,
 	}, s.handleModelTurnRespond)
+	s.addModelRuntimeControlTool(writeHints)
 
 	s.addDirectTool(toolDef{
 		Name:        "model_runtime_cancel",
@@ -165,12 +166,14 @@ func modelTurnRespondSchema() map[string]any {
 		"usage":         usage,
 	}, []string{"finish_reason"})
 	return closedObject(map[string]any{
-		"runtime_id":        stringSchema("opaque model runtime id", `^mr_[a-f0-9]{32}$`, 35),
-		"turn_id":           stringSchema("opaque model turn id", `^mt_[a-f0-9]{32}$`, 35),
-		"expected_sequence": map[string]any{"type": "integer", "minimum": 1},
-		"request_digest":    stringSchema("canonical request SHA-256 digest", `^sha256:[a-f0-9]{64}$`, 71),
-		"task_state":        map[string]any{"type": "string", "enum": []string{modelturn.TaskStateActive, modelturn.TaskStateBlocked, modelturn.TaskStateComplete}},
-		"response":          response,
+		"runtime_id":         stringSchema("opaque model runtime id", `^mr_[a-f0-9]{32}$`, 35),
+		"controller_id":      stringSchema("optional claimed controller identity; required for controlled runtimes", `^mc_[a-f0-9]{32}$`, 35),
+		"control_generation": map[string]any{"type": "integer", "minimum": 1, "maximum": 1000000000},
+		"turn_id":            stringSchema("opaque model turn id", `^mt_[a-f0-9]{32}$`, 35),
+		"expected_sequence":  map[string]any{"type": "integer", "minimum": 1},
+		"request_digest":     stringSchema("canonical request SHA-256 digest", `^sha256:[a-f0-9]{64}$`, 71),
+		"task_state":         map[string]any{"type": "string", "enum": []string{modelturn.TaskStateActive, modelturn.TaskStateBlocked, modelturn.TaskStateComplete}},
+		"response":           response,
 	}, []string{"runtime_id", "turn_id", "expected_sequence", "request_digest", "response"})
 }
 
@@ -212,12 +215,14 @@ type boundedModelResponse struct {
 }
 
 type modelTurnRespondParams struct {
-	RuntimeID        string               `json:"runtime_id"`
-	TurnID           modelturn.TurnID     `json:"turn_id"`
-	ExpectedSequence uint64               `json:"expected_sequence"`
-	RequestDigest    string               `json:"request_digest"`
-	TaskState        string               `json:"task_state"`
-	Response         boundedModelResponse `json:"response"`
+	ControllerID      string               `json:"controller_id,omitempty"`
+	ControlGeneration uint64               `json:"control_generation,omitempty"`
+	RuntimeID         string               `json:"runtime_id"`
+	TurnID            modelturn.TurnID     `json:"turn_id"`
+	ExpectedSequence  uint64               `json:"expected_sequence"`
+	RequestDigest     string               `json:"request_digest"`
+	TaskState         string               `json:"task_state"`
+	Response          boundedModelResponse `json:"response"`
 }
 
 func (s *Server) handleModelRuntimeStart(arguments json.RawMessage) (string, error) {
@@ -443,6 +448,7 @@ func (s *Server) handleModelTurnRespond(arguments json.RawMessage) (string, erro
 		return "", err
 	}
 	record, err := s.modelTurns.Respond(context.Background(), modelturn.ResponseSubmission{
+		ControllerID: params.ControllerID, ControlGeneration: params.ControlGeneration,
 		RuntimeID:        params.RuntimeID,
 		TurnID:           params.TurnID,
 		ExpectedSequence: params.ExpectedSequence,

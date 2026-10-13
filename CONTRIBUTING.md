@@ -17,7 +17,7 @@ changes focused on the capability or contract being improved rather than on the 
 
 The ordinary contributor path requires:
 
-- Go `1.26.6`, matching `go.mod` and CI;
+- Go `1.26.9`, matching `go.mod` and CI;
 - Node.js `22`;
 - Corepack with pnpm `10.13.1`, matching the root `packageManager` field;
 - Git.

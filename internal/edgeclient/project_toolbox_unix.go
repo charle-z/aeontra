@@ -1076,7 +1076,7 @@ func (manager *ProjectToolboxManager) statusSnapshot(ctx context.Context, record
 	}
 	output, err := manager.run(ctx, "inspect", "--format", "{{.State.Status}}|{{.State.Running}}", record.ContainerName)
 	if err != nil {
-		return ProjectToolboxSnapshot{}, projectToolboxInspectionFailure(ErrProjectToolboxStateInspectUnavailable, manager.classifyContainerInspectFailure(ctx, record, record.ContainerName))
+		return ProjectToolboxSnapshot{}, manager.inspectFailure(ctx, record, record.ContainerName, ErrProjectToolboxStateInspectUnavailable, err)
 	}
 	state := ProjectToolboxUnknown
 	switch strings.TrimSpace(string(output)) {
@@ -1106,14 +1106,14 @@ func (manager *ProjectToolboxManager) classifyContainerInspectFailure(ctx contex
 	}
 	labelOutput, err := manager.run(ctx, "ps", "-aq", "--filter", "label="+projectToolboxLabelKey+"="+record.ToolboxID)
 	if err != nil {
-		return ErrProjectToolboxUnavailable
+		return toolboxInspectionError(ErrProjectToolboxUnavailable, nil, err)
 	}
 	if strings.TrimSpace(string(labelOutput)) != "" {
 		return ErrProjectToolboxContainerUnavailable
 	}
 	nameOutput, err := manager.run(ctx, "ps", "-aq", "--filter", "name="+record.ContainerName)
 	if err != nil {
-		return ErrProjectToolboxUnavailable
+		return toolboxInspectionError(ErrProjectToolboxUnavailable, nil, err)
 	}
 	if strings.TrimSpace(string(nameOutput)) != "" {
 		return ErrProjectToolboxContainerUnavailable
@@ -1122,17 +1122,6 @@ func (manager *ProjectToolboxManager) classifyContainerInspectFailure(ctx contex
 		return ErrProjectToolboxEndpointStale
 	}
 	return ErrProjectToolboxContainerMissing
-}
-
-func projectToolboxInspectionFailure(stage, classified error) error {
-	switch {
-	case errors.Is(classified, ErrProjectToolboxContainerMissing), errors.Is(classified, ErrProjectToolboxEndpointStale):
-		return classified
-	case errors.Is(classified, ErrProjectToolboxContainerUnavailable), errors.Is(classified, ErrProjectToolboxUnavailable):
-		return fmt.Errorf("%w: %w", stage, classified)
-	default:
-		return classified
-	}
 }
 
 func (manager *ProjectToolboxManager) recoverOwnedContainer(ctx context.Context, record projectToolboxRecord, alias, target string, workspace Workspace) error {
@@ -1198,7 +1187,7 @@ func (manager *ProjectToolboxManager) verifyOwnershipReferenceMode(ctx context.C
 	}
 	output, err := manager.run(ctx, "inspect", "--format", `{{index .Config.Labels "`+projectToolboxLabelKey+`"}}|{{.Image}}`, reference)
 	if err != nil {
-		return projectToolboxInspectionFailure(ErrProjectToolboxOwnershipInspectUnavailable, manager.classifyContainerInspectFailure(ctx, record, reference))
+		return manager.inspectFailure(ctx, record, reference, ErrProjectToolboxOwnershipInspectUnavailable, err)
 	}
 	label, rawImageID, found := strings.Cut(strings.TrimSpace(string(output)), "|")
 	imageID, normalizeErr := normalizeProjectToolboxImageID(rawImageID)
@@ -1210,7 +1199,10 @@ func (manager *ProjectToolboxManager) verifyOwnershipReferenceMode(ctx context.C
 		Type, Source, Destination string
 		RW                        bool
 	}
-	if err != nil || json.Unmarshal(mountOutput, &mounts) != nil {
+	if err != nil {
+		return toolboxInspectionError(ErrProjectToolboxMountMismatch, nil, err)
+	}
+	if json.Unmarshal(mountOutput, &mounts) != nil {
 		return fmt.Errorf("%w: mount metadata unreadable", ErrProjectToolboxMountMismatch)
 	}
 	if record.RuntimeVersion == projectToolboxRuntimeV2 {
@@ -1231,12 +1223,18 @@ func (manager *ProjectToolboxManager) verifyOwnershipReferenceMode(ctx context.C
 	}
 	resourceOutput, err := manager.run(ctx, "inspect", "--format", "{{.HostConfig.Memory}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}", reference)
 	wantResources := fmt.Sprintf("%d|%d|%d", int64(record.MemoryMiB)*1024*1024, int64(record.CPUMillis)*1000000, record.ProcessLimit)
-	if err != nil || strings.TrimSpace(string(resourceOutput)) != wantResources {
+	if err != nil {
+		return toolboxInspectionError(ErrProjectToolboxResourceMismatch, nil, err)
+	}
+	if strings.TrimSpace(string(resourceOutput)) != wantResources {
 		return ErrProjectToolboxResourceMismatch
 	}
 	environmentOutput, err := manager.run(ctx, "inspect", "--format", "{{json .Config.Env}}", reference)
 	var environment []string
-	if err != nil || json.Unmarshal(environmentOutput, &environment) != nil || !validProjectToolboxContainerEnvironment(environment, record.RuntimeVersion) {
+	if err != nil {
+		return toolboxInspectionError(ErrProjectToolboxEnvironmentMismatch, nil, err)
+	}
+	if json.Unmarshal(environmentOutput, &environment) != nil || !validProjectToolboxContainerEnvironment(environment, record.RuntimeVersion) {
 		return fmt.Errorf("%w: runtime=%s", ErrProjectToolboxEnvironmentMismatch, record.RuntimeVersion)
 	}
 	return nil
@@ -1320,12 +1318,12 @@ func (manager *ProjectToolboxManager) storage(ctx context.Context, containerName
 	output, err := manager.run(ctx, "inspect", "--size", "--format", "{{.SizeRw}}|{{.SizeRootFs}}", containerName)
 	parts := strings.Split(strings.TrimSpace(string(output)), "|")
 	if err != nil || len(parts) != 2 {
-		return 0, 0, fmt.Errorf("%w: %w", ErrProjectToolboxStorageInspectUnavailable, ErrProjectToolboxUnavailable)
+		return 0, 0, toolboxInspectionError(ErrProjectToolboxStorageInspectUnavailable, ErrProjectToolboxUnavailable, err)
 	}
 	writableBytes, writableErr := strconv.ParseInt(parts[0], 10, 64)
 	rootFSBytes, rootErr := strconv.ParseInt(parts[1], 10, 64)
 	if writableErr != nil || rootErr != nil || writableBytes < 0 || rootFSBytes <= 0 {
-		return 0, 0, fmt.Errorf("%w: %w", ErrProjectToolboxStorageInspectUnavailable, ErrProjectToolboxUnavailable)
+		return 0, 0, toolboxInspectionError(ErrProjectToolboxStorageInspectUnavailable, ErrProjectToolboxUnavailable, nil)
 	}
 	return writableBytes, rootFSBytes, nil
 }
@@ -1336,7 +1334,11 @@ func (manager *ProjectToolboxManager) run(ctx context.Context, args ...string) (
 	if err != nil {
 		return nil, err
 	}
-	return manager.runner.Run(ctx, manager.endpoint.Executable, prefixed, environment)
+	output, err := manager.runner.Run(ctx, manager.endpoint.Executable, prefixed, environment)
+	if err != nil && len(args) > 0 && (args[0] == "inspect" || args[0] == "ps") {
+		err = toolboxCommandError(err, output)
+	}
+	return output, err
 }
 
 func (manager *ProjectToolboxManager) recordPath(workspaceID string) string {
