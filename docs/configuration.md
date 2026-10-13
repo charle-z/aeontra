@@ -218,6 +218,11 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
   if delivery cannot be confirmed, the local failure remains visible for
   reconciliation instead of holding a poller indefinitely. `--once` still
   attempts only one lease.
+- **Toolbox inspection diagnostics:** the Edge service journal includes
+  `toolbox inspection failed` with the opaque operation ID, stage, closed error class
+  and exit code (`-1` when no normal process exit was observed). No extra configuration
+  is needed. Correlate that ID with `edge_operation_status`; engine output and private
+  paths are excluded, and an unknown category is not evidence of container corruption.
 - **Security posture:** the ordinary Edge sandbox is networkless; the trusted Linux
   workcell intentionally shares the host network; authorized target-locked actions
   revalidate the private target and VPN route. These are distinct boundaries.

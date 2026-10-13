@@ -282,6 +282,13 @@ owner-only permissions before the workcell starts. Existing legacy runtime direc
 implicitly.
 
 Toolbox records bind workspace, mount policy, rootless engine identity and generation.
+Inspection failures retain their original cause internally. Cancellation and expired
+execution contexts report `cancelled`; they do not trigger additional discovery probes,
+alternate-engine selection, or repair. The private Edge service journal records the
+opaque operation ID, inspection stage, a closed error category, and a process exit code
+when available. It never prints engine output, command arguments, or host paths. These
+diagnostics do not add automatic retries or relax ownership validation.
+
 `project_toolbox_repair` can restart only a stopped server-owned toolbox whose identity
 and mounts still validate; stale but safely reconcilable records use the controlled
 reconciliation path, while ownership or boundary drift fails closed. Cleanup is explicit
