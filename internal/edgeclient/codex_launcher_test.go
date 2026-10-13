@@ -62,9 +62,14 @@ func TestCodexLinuxWorkcellSpecUsesOnlySignedHarnessAndLoopbackAdapter(t *testin
 			t.Fatalf("credential-shaped environment escaped into Codex: %s", key)
 		}
 	}
+	for _, key := range []string{"GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"} {
+		if _, set := spec.Sandbox.Environment[key]; set {
+			t.Fatalf("Codex sandbox must not force %s", key)
+		}
+	}
 	for key, want := range map[string]string{
-		"GIT_AUTHOR_NAME": "MCP Devbox Codex", "GIT_AUTHOR_EMAIL": "codex@mcp-devbox.invalid",
-		"GIT_COMMITTER_NAME": "MCP Devbox Codex", "GIT_COMMITTER_EMAIL": "codex@mcp-devbox.invalid",
+		"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null",
+		"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "user.useConfigOnly", "GIT_CONFIG_VALUE_0": "true",
 	} {
 		if spec.Sandbox.Environment[key] != want {
 			t.Fatalf("%s=%q want=%q", key, spec.Sandbox.Environment[key], want)
