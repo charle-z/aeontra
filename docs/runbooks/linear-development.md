@@ -78,3 +78,19 @@ requires upstream action and cannot be declared green or bypassed.
 If a tool or field exists in the server catalog but not in the client, follow
 [catalog refresh](catalog-cache.md). Repeated deployments cannot replace a
 conversation's already loaded schema.
+
+## Clean up a completed task
+
+Review the terminal task and its evidence, then use `project_task_cleanup`.
+It preserves branches and durable receipts. On Linux it also reclaims the exact
+temporary workspace's runtime and cache when no active process/model journal,
+toolbox or browser session retains them. Populated artifact roots are preserved.
+Clean up any retained toolbox or browser session before task cleanup when it
+should also be discarded. This operation does not stop resources implicitly.
+Ordinary project caches are unchanged. Stop or explicitly clean up retained
+resources through their own tools; never substitute a global engine or cache prune.
+
+For deployment observation, `platform_app_status` returns metadata only. Fetch
+bounded logs with `platform_app_logs` when needed. The coordinator status tool
+reports the published operation's kind, state, phase and revision for both
+topology transitions and backend catalog rollouts.

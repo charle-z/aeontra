@@ -428,6 +428,13 @@ a writer checkout. Expired leases must reclaim the same worktree with a strictly
 fence before work resumes; stale claims, completion and cleanup fail closed. Terminal
 cleanup requires an exact fence and a clean tree, preserves each worker branch, and
 never guesses how commits should be integrated.
+On Linux, explicit terminal worktree cleanup also reclaims that workspace's
+unreferenced private runtime and cache roots. Active process/model journals,
+retained toolboxes and browser sessions preserve their runtime/cache roots. Populated artifact
+roots, branches and durable task evidence remain intact. A per-workspace guard
+excludes cleanup from concurrent commands and launch registration; ordinary
+commands share it and unrelated workspaces are independent. No global prune or
+cleanup on chat termination is performed.
 Managed model responses also cross a completion gate before persistence and again at
 the loopback adapter. `active` requires a real offered tool call, `blocked` requires an
 explicit failure/cancellation, and `complete` requires a non-truncated stop response

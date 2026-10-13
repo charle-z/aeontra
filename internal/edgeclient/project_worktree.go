@@ -521,15 +521,26 @@ func (m *ProjectWorktreeManager) Cleanup(ctx context.Context, request ProjectWor
 	if snapshot.JobID != request.JobID || snapshot.LeaseID != request.LeaseID || snapshot.Fence != request.Fence {
 		return ProjectWorktreeSnapshot{}, false, ErrProjectWorktreeStaleFence
 	}
+	release, err := acquireProjectRuntimeGate(ctx, m.stateRoot, snapshot.WorkspaceID, true)
+	if err != nil {
+		return ProjectWorktreeSnapshot{}, false, err
+	}
+	defer release()
+	if err := validateProjectWorktreeRuntime(m.stateRoot, snapshot); err != nil {
+		return ProjectWorktreeSnapshot{}, false, err
+	}
 	if snapshot.State == ProjectWorktreeRemoved {
 		if snapshot.cleanupKey != request.IdempotencyKey {
 			return ProjectWorktreeSnapshot{}, false, ErrProjectWorktreeConflict
 		}
-		return snapshot, true, nil
+		return snapshot, true, cleanupProjectWorktreeRuntime(ctx, m.stateRoot, snapshot)
 	}
 	if _, pathErr := os.Lstat(snapshot.path); errors.Is(pathErr, os.ErrNotExist) {
 		if removeErr := m.workspaces.Remove(snapshot.WorkspaceID); removeErr != nil && !strings.Contains(removeErr.Error(), "not found") {
 			return ProjectWorktreeSnapshot{}, false, ErrProjectWorktreeUnavailable
+		}
+		if err := cleanupProjectWorktreeRuntime(ctx, m.stateRoot, snapshot); err != nil {
+			return ProjectWorktreeSnapshot{}, false, err
 		}
 		return m.finishCleanup(snapshot, request.IdempotencyKey)
 	} else if pathErr != nil {
@@ -554,6 +565,9 @@ func (m *ProjectWorktreeManager) Cleanup(ctx context.Context, request ProjectWor
 	}
 	if err := m.workspaces.Remove(snapshot.WorkspaceID); err != nil {
 		return ProjectWorktreeSnapshot{}, false, ErrProjectWorktreeUnavailable
+	}
+	if err := cleanupProjectWorktreeRuntime(ctx, m.stateRoot, snapshot); err != nil {
+		return ProjectWorktreeSnapshot{}, false, err
 	}
 	return m.finishCleanup(snapshot, request.IdempotencyKey)
 }
