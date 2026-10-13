@@ -231,6 +231,13 @@ engine identity and ownership still validate; otherwise it fails closed and can 
 controlled-recreated without deleting the source workspace. Schema migrations are
 additive and reject unknown newer schemas.
 
+Rootless engine CLI scratch is per-call and owner-only, outside project source and
+runtime roots. The client receives a temporary `XDG_RUNTIME_DIR`; engine authority
+remains the validated absolute user-owned socket passed explicitly in argv and the
+controlled environment. The temporary directory is removed after success, failure or
+cancellation. This does not change systemd filesystem protections or expose a host
+engine socket to a workcell.
+
 The Edge scheduler uses bounded shared capacity for independent project, Git inspection,
 process and toolbox operations. Signed bundle update, rollback and repair acquire an
 Edge-wide exclusive gate. A long build in one project therefore does not hold the

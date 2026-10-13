@@ -223,6 +223,12 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
   and exit code (`-1` when no normal process exit was observed). No extra configuration
   is needed. Correlate that ID with `edge_operation_status`; engine output and private
   paths are excluded, and an unknown category is not evidence of container corruption.
+- **Rootless engine client scratch:** engine CLI calls use a fresh owner-only temporary
+  `XDG_RUNTIME_DIR`, removed after the command exits, fails to start or is cancelled.
+  This lets remote Podman initialize its client state when the service sees the host
+  runtime as read-only. Socket discovery and validation still use `/run/user/<uid>`;
+  the absolute selected endpoint is unchanged. The scratch directory is never mounted
+  into a workspace or toolbox. No host runtime permissions need to be relaxed.
 - **Security posture:** the ordinary Edge sandbox is networkless; the trusted Linux
   workcell intentionally shares the host network; authorized target-locked actions
   revalidate the private target and VPN route. These are distinct boundaries.

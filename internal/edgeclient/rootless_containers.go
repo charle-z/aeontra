@@ -218,11 +218,37 @@ func rootlessEnginePrefix(endpoint *RootlessContainerEndpoint) []string {
 	return []string{"--url", uri}
 }
 
-func (execContainerCommandRunner) Run(ctx context.Context, executable string, args, environment []string) ([]byte, error) {
+func (execContainerCommandRunner) Run(ctx context.Context, executable string, args, environment []string) (result []byte, runErr error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	clientEnvironment := append([]string(nil), environment...)
+	clientRuntime := ""
+	for i, value := range clientEnvironment {
+		if !strings.HasPrefix(value, "XDG_RUNTIME_DIR=") {
+			continue
+		}
+		if clientRuntime == "" {
+			// Even remote Podman commands initialize local runtime directories. The
+			// service's host runtime is read-only; keep client scratch state private
+			// and disposable without changing the validated absolute socket address.
+			var err error
+			clientRuntime, err = os.MkdirTemp("", "mcp-edge-container-client-")
+			if err != nil {
+				return nil, fmt.Errorf("create container client runtime: %w", err)
+			}
+			defer func() {
+				if err := os.RemoveAll(clientRuntime); err != nil {
+					runErr = errors.Join(runErr, fmt.Errorf("remove container client runtime: %w", err))
+				}
+			}()
+		}
+		clientEnvironment[i] = "XDG_RUNTIME_DIR=" + clientRuntime
+	}
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 	command := exec.CommandContext(ctx, executable, args...)
-	command.Env = append([]string(nil), environment...)
+	command.Env = clientEnvironment
 	command.Stdout = stdout
 	command.Stderr = stderr
 	command.SysProcAttr = processGroupAttributes()
