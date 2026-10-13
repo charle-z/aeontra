@@ -215,7 +215,9 @@ func rootlessEnginePrefix(endpoint *RootlessContainerEndpoint) []string {
 	if endpoint.Engine == "docker" {
 		return []string{"--host", uri}
 	}
-	return []string{"--url", uri}
+	// Podman 3 does not select the remote engine from --url alone. Keep all
+	// operations on the validated socket, independent of client runtime paths.
+	return []string{"--remote", "--url", uri}
 }
 
 func (execContainerCommandRunner) Run(ctx context.Context, executable string, args, environment []string) (result []byte, runErr error) {

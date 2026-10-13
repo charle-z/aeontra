@@ -5,6 +5,12 @@ The packaged Edge keeps the host user runtime read-only. Remote Podman may initi
 failure. The client scratch lifecycle is defined in [configuration](../configuration.md)
 and the authority boundary in [security](../security.md).
 
+Engine commands select Podman's remote mode explicitly with `--remote --url`.
+Podman 3.4 does not infer remote mode from `--url` alone. Changing client scratch
+without selecting remote mode can initialize local engine state and break `exec`.
+The tagged rootless CI exercises build, Compose, exec and cleanup on Podman 3.4;
+the cold-runtime acceptance below exercises the installed host version.
+
 Ordinary regression tests:
 
 ```sh
