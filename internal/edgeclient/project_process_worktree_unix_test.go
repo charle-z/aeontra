@@ -212,6 +212,10 @@ func TestProjectWorktreeTestProfileRequiresOwnerOnlyCanonicalFile(t *testing.T) 
 	if err := os.WriteFile(profilePath, []byte(body), 0o640); err != nil {
 		t.Fatal(err)
 	}
+	// WriteFile is affected by umask (for example 0077), so force the unsafe fixture mode.
+	if err := os.Chmod(profilePath, 0o640); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := readProjectWorktreeTestProfile(stateRoot); !errors.Is(err, ErrProjectWorktreeTestProfileUnavailable) {
 		t.Fatalf("group-readable profile accepted: %v", err)
 	}
