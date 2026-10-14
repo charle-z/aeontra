@@ -628,7 +628,9 @@ The general browser harness has no separate owner mode. It is available to every
 registered `dev` project that resolves to the existing `linux-workcell` toolbox. Browser
 engines, drivers, libraries and language packages are installed with
 `project_toolbox_install` or normal project package managers and persist in the toolbox
-rootfs until `project_toolbox_cleanup`.
+rootfs until `project_toolbox_cleanup` or explicit mount reconciliation recreates the
+container. Source and private runtime/cache mounts remain across reconciliation;
+rootfs-only installations and profiles must be restored separately.
 
 Harness runs need no server environment variables. The Edge supplies these fixed paths
 inside the toolbox:
