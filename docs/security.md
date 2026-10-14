@@ -224,6 +224,23 @@ root, outside the source checkout. Only the exact roots are mounted into the sel
 workcell or rootless toolbox. Existing legacy `.mcp-devbox` data is not removed or
 silently adopted as authority.
 
+Direct MCP writers may opt into an exact-base managed worktree without another model
+runtime. Private registry markers distinguish these workspaces from leased worker
+worktrees. Every selection binds project, target, repository and canonical workspace;
+a caller-provided `worktree_id` cannot select a model worker or another project.
+Normal dirty state and branch changes remain usable. The canonical checkout remains
+the compatibility default when no explicit worktree is selected.
+
+Direct cleanup revalidates the exact expected HEAD under the per-workspace exclusive
+guard. It preserves dirty/untracked/ignored source and active resource references;
+committed work remains on a verified attached branch that cleanup never deletes.
+Detached/unknown heads and unknown retention state block this new source cleanup; it never
+means permission to delete. Populated artifacts, branches and durable receipts survive
+successful explicit cleanup. No session timeout or chat termination triggers deletion.
+Bounded byte accounting and an optional scratch-budget warning do not claim a hard
+filesystem quota or authorize reclamation. Status and captured process control remain
+available independently of those warnings.
+
 Project claims and toolbox records carry an owner-bound identity and generation. Stale
 claims can be identified and reconciled without scanning unrelated repositories. A
 toolbox can be restarted or reconciled only when its workspace, mount policy, rootless

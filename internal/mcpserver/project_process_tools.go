@@ -10,6 +10,7 @@ import (
 )
 
 type projectProcessStartParams struct {
+	WorktreeID     string            `json:"worktree_id,omitempty"`
 	Alias          string            `json:"alias"`
 	Target         string            `json:"target"`
 	IdempotencyKey string            `json:"idempotency_key"`
@@ -53,15 +54,17 @@ type projectProcessSignalParams struct {
 }
 
 type projectProcessListParams struct {
-	Alias  string `json:"alias"`
-	Target string `json:"target"`
-	Limit  int    `json:"limit"`
+	WorktreeID string `json:"worktree_id,omitempty"`
+	Alias      string `json:"alias"`
+	Target     string `json:"target"`
+	Limit      int    `json:"limit"`
 }
 
 type projectProcessCleanupParams struct {
-	Alias     string `json:"alias"`
-	Target    string `json:"target"`
-	ProcessID string `json:"process_id,omitempty"`
+	WorktreeID string `json:"worktree_id,omitempty"`
+	Alias      string `json:"alias"`
+	Target     string `json:"target"`
+	ProcessID  string `json:"process_id,omitempty"`
 }
 
 type projectProcessPublicView struct {
@@ -169,7 +172,8 @@ func (s *Server) handleProjectProcessStart(arguments json.RawMessage) (string, e
 		return "", err
 	}
 	return s.runProjectProcessOperation(params.Target, edge.OperationProjectProcessStart, edge.OperationRequest{
-		Alias: params.Alias, TargetAlias: params.Target, Profile: "linux-workcell", IdempotencyKey: params.IdempotencyKey,
+		WorktreeID: params.WorktreeID,
+		Alias:      params.Alias, TargetAlias: params.Target, Profile: "linux-workcell", IdempotencyKey: params.IdempotencyKey,
 		Argv: params.Argv, CWD: params.CWD, Stdin: params.Stdin, Environment: params.Environment,
 	}, params.Alias, params.Target)
 }
@@ -222,7 +226,7 @@ func (s *Server) handleProjectProcessList(arguments json.RawMessage) (string, er
 		return "", err
 	}
 	return s.runProjectProcessOperation(params.Target, edge.OperationProjectProcessList, edge.OperationRequest{
-		Alias: params.Alias, TargetAlias: params.Target, Profile: "linux-workcell", ProcessLimit: params.Limit,
+		Alias: params.Alias, TargetAlias: params.Target, Profile: "linux-workcell", WorktreeID: params.WorktreeID, ProcessLimit: params.Limit,
 	}, params.Alias, params.Target)
 }
 
@@ -231,8 +235,11 @@ func (s *Server) handleProjectProcessCleanup(arguments json.RawMessage) (string,
 	if err := decodeClosed(arguments, &params); err != nil {
 		return "", err
 	}
+	if params.ProcessID != "" && params.WorktreeID != "" {
+		return "", errors.New("select a process id or a direct workspace, not both")
+	}
 	return s.runProjectProcessOperation(params.Target, edge.OperationProjectProcessCleanup, edge.OperationRequest{
-		Alias: params.Alias, TargetAlias: params.Target, Profile: "linux-workcell", BackgroundProcessID: params.ProcessID,
+		Alias: params.Alias, TargetAlias: params.Target, Profile: "linux-workcell", WorktreeID: params.WorktreeID, BackgroundProcessID: params.ProcessID,
 	}, params.Alias, params.Target)
 }
 

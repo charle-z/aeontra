@@ -46,6 +46,9 @@ func isP16Project(name string) bool {
 	if strings.HasPrefix(name, "project_development_") {
 		return true
 	}
+	if strings.HasPrefix(name, "project_workspace_") {
+		return true
+	}
 	return name == "project_prepare" || name == "project_status" || name == "project_snapshot" || name == "project_exec" || name == "project_reconcile" || name == "project_release" || strings.HasPrefix(name, "project_registry_") || strings.HasPrefix(name, "project_network_") || strings.HasPrefix(name, "project_process_") || strings.HasPrefix(name, "project_git_") || strings.HasPrefix(name, "project_github_") || strings.HasPrefix(name, "project_toolbox_") || strings.HasPrefix(name, "project_browser_") || strings.HasPrefix(name, "project_task_") || strings.HasPrefix(name, "edge_operation_")
 }
 
@@ -67,14 +70,14 @@ func isEdgeReleaseSource(name string) bool {
 
 func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *testing.T) {
 	server := stampServer(t)
-	if len(server.order) != 195 {
-		t.Fatalf("tool order length=%d want=195", len(server.order))
+	if len(server.order) != 198 {
+		t.Fatalf("tool order length=%d want=198", len(server.order))
 	}
-	if server.order[87] != "workspace_checkpoint" {
-		t.Fatalf("workspace checkpoint position=%v", server.order[:87])
+	if server.order[90] != "workspace_checkpoint" {
+		t.Fatalf("workspace checkpoint position=%v", server.order[:90])
 	}
-	if !reflect.DeepEqual(server.order[92:95], []string{"result_read", "result_find", "result_stage"}) {
-		t.Fatalf("result tool position=%v", server.order[92:95])
+	if !reflect.DeepEqual(server.order[95:98], []string{"result_read", "result_find", "result_stage"}) {
+		t.Fatalf("result tool position=%v", server.order[95:98])
 	}
 	historical := make([]string, 0, len(p8ToolOrder))
 	for _, name := range server.order {
@@ -219,7 +222,7 @@ func TestWorkspaceCheckpointTracksCatalogIdentityAfterValidationRunnerV2(t *test
 	if len(step4) != 77 || step4ComputedHash != step4Hash {
 		t.Fatalf("Step 4 compatibility catalog changed: count=%d hash=%s", len(step4), step4ComputedHash)
 	}
-	if snapshot.ToolCount != 195 || snapshot.Hash != "sha256:48995d4ae478cbfa89e1f7fea2a860494d2d87e9084614d8423efda04c50605a" {
+	if snapshot.ToolCount != 198 || snapshot.Hash != "sha256:3959ea434bfb4f7e09ad054004169ee46abd5f1f0352757f0f17d8ab2910da2c" {
 		t.Fatalf("Step 6 catalog identity changed: count=%d hash=%s", snapshot.ToolCount, snapshot.Hash)
 	}
 }

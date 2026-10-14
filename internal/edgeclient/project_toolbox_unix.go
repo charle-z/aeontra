@@ -355,6 +355,7 @@ func (manager *ProjectToolboxManager) projectToolboxCreateArgs(toolboxID, contai
 		"--env", "UV_CACHE_DIR=/cache/uv", "--env", "MAVEN_HOME=/runtime/maven", "--env", "GRADLE_USER_HOME=/cache/gradle",
 		"--env", "GOPATH=/runtime/go", "--env", "GOBIN=/runtime/tools/bin", "--env", "GOMODCACHE=/cache/go-mod", "--env", "GOCACHE=/cache/go-build",
 		"--env", "MCP_DEVBOX_RUNTIME_ROOT=/runtime", "--env", "MCP_DEVBOX_CACHE_ROOT=/cache", "--env", "MCP_DEVBOX_ARTIFACT_ROOT=/artifacts",
+		"--env", "MCP_DEVBOX_SCRATCH_ROOT=/runtime/scratch",
 		"--volume", workspacePath+":/workspace:rw",
 		"--volume", runtimeRoots.Runtime+":/runtime:rw", "--volume", runtimeRoots.Cache+":/cache:rw", "--volume", runtimeRoots.Artifacts+":/artifacts:rw",
 		"--workdir", "/workspace", imageID, "sleep", "infinity")
@@ -424,6 +425,9 @@ func (manager *ProjectToolboxManager) Exec(ctx context.Context, request ProjectT
 		return ProjectToolboxSnapshot{}, err
 	}
 	args = append(args, "--workdir", cwd)
+	if record.RuntimeVersion == projectToolboxRuntimeV2 {
+		args = append(args, "--env", "MCP_DEVBOX_SCRATCH_ROOT=/runtime/scratch")
+	}
 	keys := make([]string, 0, len(request.Environment))
 	for key := range request.Environment {
 		keys = append(keys, key)
@@ -1306,6 +1310,9 @@ func validProjectToolboxContainerEnvironment(environment []string, runtimeVersio
 		}
 		found[key] = true
 		if forbidden[key] {
+			return false
+		}
+		if key == "MCP_DEVBOX_SCRATCH_ROOT" && (runtimeVersion != projectToolboxRuntimeV2 || !ok || value != "/runtime/scratch") {
 			return false
 		}
 		if expected, tracked := want[key]; tracked {

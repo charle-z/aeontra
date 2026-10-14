@@ -66,6 +66,9 @@ func prepareProjectRuntimeRoots(stateRoot string, workspace Workspace) (ProjectR
 			return ProjectRuntimeRoots{}, errors.New("project runtime root is unavailable")
 		}
 	}
+	if err := preparePrivateRoot(filepath.Join(roots.Runtime, "scratch")); err != nil {
+		return ProjectRuntimeRoots{}, errors.New("project scratch root is unavailable")
+	}
 	return roots, nil
 }
 

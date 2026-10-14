@@ -10,6 +10,7 @@ import (
 )
 
 type projectToolboxParams struct {
+	WorktreeID     string            `json:"worktree_id,omitempty"`
 	Alias          string            `json:"alias"`
 	Target         string            `json:"target"`
 	IdempotencyKey string            `json:"idempotency_key,omitempty"`
@@ -61,7 +62,7 @@ type projectToolboxPublicView struct {
 }
 
 func (s *Server) addProjectToolboxTools(projectSchema map[string]any) {
-	common := map[string]any{"alias": projectSchema["alias"], "target": projectSchema["target"]}
+	common := map[string]any{"alias": projectSchema["alias"], "target": projectSchema["target"], "worktree_id": stringSchema("optional direct managed workspace", `^wt_[a-f0-9]{32}$`, 35)}
 	key := stringSchema("caller-generated durable operation key", `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`, 128)
 	argv := map[string]any{"type": "array", "minItems": 1, "maxItems": 128, "items": map[string]any{"type": "string", "minLength": 1, "maxLength": 8192}}
 	environment := map[string]any{"type": "object", "maxProperties": 32, "propertyNames": map[string]any{"pattern": `^[A-Za-z_][A-Za-z0-9_]{0,63}$`}, "additionalProperties": map[string]any{"type": "string", "maxLength": 4096}}
@@ -125,7 +126,7 @@ func (s *Server) handleProjectToolbox(arguments json.RawMessage, kind edge.Opera
 	if err != nil {
 		return "", err
 	}
-	request := edge.OperationRequest{Alias: params.Alias, TargetAlias: params.Target, Profile: "linux-workcell", IdempotencyKey: params.IdempotencyKey, Argv: params.Argv, CWD: params.CWD, Environment: params.Environment, TimeoutSeconds: params.TimeoutSeconds, ToolboxServiceID: params.ServiceID, ToolboxServiceName: params.ServiceName, ToolboxLifecycle: params.Lifecycle, ToolboxCPUMillis: params.CPUMillis, ToolboxMemoryMiB: params.MemoryMiB, ToolboxProcessLimit: params.ProcessLimit}
+	request := edge.OperationRequest{Alias: params.Alias, TargetAlias: params.Target, Profile: "linux-workcell", WorktreeID: params.WorktreeID, IdempotencyKey: params.IdempotencyKey, Argv: params.Argv, CWD: params.CWD, Environment: params.Environment, TimeoutSeconds: params.TimeoutSeconds, ToolboxServiceID: params.ServiceID, ToolboxServiceName: params.ServiceName, ToolboxLifecycle: params.Lifecycle, ToolboxCPUMillis: params.CPUMillis, ToolboxMemoryMiB: params.MemoryMiB, ToolboxProcessLimit: params.ProcessLimit}
 	operation, created, err := s.edgeOperations.CreateOperation(device.ID, kind, request)
 	if err == nil {
 		operation, err = s.edgeOperations.WaitOperation(context.Background(), operation.ID, 180*time.Second)

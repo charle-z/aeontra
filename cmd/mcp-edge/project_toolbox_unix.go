@@ -35,7 +35,7 @@ type projectToolboxOperations interface {
 }
 
 func executeProjectToolbox(ctx context.Context, stateRoot string, operation edge.Operation) (edge.OperationResult, string) {
-	_, workspaces, projects, _, code := openProjectControlState(stateRoot)
+	credential, workspaces, projects, roots, code := openProjectControlState(stateRoot)
 	if code != "" {
 		return edge.OperationResult{}, code
 	}
@@ -44,6 +44,10 @@ func executeProjectToolbox(ctx context.Context, stateRoot string, operation edge
 	resolved, err := projects.Resolve(ctx, operation.Request.Alias, operation.Request.TargetAlias)
 	if err != nil {
 		return edge.OperationResult{}, safeProjectControlFailure(err)
+	}
+	resolved, err = resolveDirectProjectWorkspace(ctx, stateRoot, credential, workspaces, roots, resolved, operation.Request.WorktreeID)
+	if err != nil {
+		return edge.OperationResult{}, safeProjectWorktreeFailure(err)
 	}
 	endpoints, err := edgeclient.DiscoverRootlessContainerEndpoints(os.Geteuid(), "")
 	if err != nil || len(endpoints) == 0 {

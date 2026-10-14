@@ -255,7 +255,8 @@ func (l *OpenCodeLauncher) codexLinuxWorkcellProcessSpec(runtimeDir string, work
 		"GOMODCACHE": "/cache/go-mod", "GOCACHE": "/cache/go-build",
 		"DOCKER_CONFIG": "/toolchain/docker", "MCP_DEVBOX_RUNTIME_ROOT": "/toolchain",
 		"MCP_DEVBOX_CACHE_ROOT": "/cache", "MCP_DEVBOX_ARTIFACT_ROOT": "/artifacts", "MCP_DEVBOX_RUNTIME_ID": lease.RuntimeID,
-		"MCP_DEVBOX_PROFILE": string(workspace.Profile), "MCP_DEVBOX_MODE": string(workspace.Mode), "MCP_DEVBOX_NETWORK_POSTURE": LinuxWorkcellNetworkPosture,
+		"MCP_DEVBOX_SCRATCH_ROOT": "/toolchain/scratch",
+		"MCP_DEVBOX_PROFILE":      string(workspace.Profile), "MCP_DEVBOX_MODE": string(workspace.Mode), "MCP_DEVBOX_NETWORK_POSTURE": LinuxWorkcellNetworkPosture,
 		"COMPOSE_PROJECT_NAME": strings.ReplaceAll(lease.RuntimeID, "-", "_"),
 		// Git must use an explicitly configured repository-local identity, not a bot default.
 		"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null",

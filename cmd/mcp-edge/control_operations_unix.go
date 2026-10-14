@@ -218,7 +218,7 @@ func executeProjectGitHubStatus(ctx context.Context, stateRoot string, operation
 }
 
 func executeProjectGitSync(ctx context.Context, stateRoot string, operation edge.Operation) (edge.OperationResult, string) {
-	credential, workspaces, projects, _, code := openProjectControlState(stateRoot)
+	credential, workspaces, projects, roots, code := openProjectControlState(stateRoot)
 	if code != "" {
 		return edge.OperationResult{}, code
 	}
@@ -227,6 +227,10 @@ func executeProjectGitSync(ctx context.Context, stateRoot string, operation edge
 	resolved, err := projects.Resolve(ctx, operation.Request.Alias, operation.Request.TargetAlias)
 	if err != nil {
 		return edge.OperationResult{}, safeProjectControlFailure(err)
+	}
+	resolved, err = resolveDirectProjectWorkspace(ctx, stateRoot, credential, workspaces, roots, resolved, operation.Request.WorktreeID)
+	if err != nil {
+		return edge.OperationResult{}, safeProjectWorktreeFailure(err)
 	}
 	runner := edgeclient.NewDevGitCommandRunner(stateRoot, "/usr/local/bin:/usr/bin:/bin")
 	var result edge.OperationResult
@@ -403,6 +407,11 @@ func projectControlResult(ctx context.Context, projects *edgeclient.ProjectRegis
 }
 
 func safeProjectControlFailure(err error) string {
+	if errors.Is(err, edgeclient.ErrProjectWorktreeInvalid) || errors.Is(err, edgeclient.ErrProjectWorktreeNotFound) || errors.Is(err, edgeclient.ErrProjectWorktreeConflict) ||
+		errors.Is(err, edgeclient.ErrProjectWorktreeStaleFence) || errors.Is(err, edgeclient.ErrProjectWorktreeBaseChanged) || errors.Is(err, edgeclient.ErrProjectWorktreeDirty) ||
+		errors.Is(err, edgeclient.ErrProjectWorktreeUnsafe) || errors.Is(err, edgeclient.ErrProjectWorktreeUnavailable) || errors.Is(err, edgeclient.ErrProjectWorktreeBusy) {
+		return safeProjectWorktreeFailure(err)
+	}
 	var projectFailure *edgeclient.ProjectError
 	if errors.As(err, &projectFailure) {
 		code := string(projectFailure.Code)

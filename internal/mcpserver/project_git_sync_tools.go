@@ -10,6 +10,7 @@ import (
 )
 
 type projectGitSyncParams struct {
+	WorktreeID     string `json:"worktree_id,omitempty"`
 	Alias          string `json:"alias"`
 	Target         string `json:"target"`
 	IdempotencyKey string `json:"idempotency_key,omitempty"`
@@ -85,7 +86,7 @@ func (s *Server) handleProjectGitSync(arguments json.RawMessage, kind edge.Opera
 	if err != nil {
 		return "", err
 	}
-	request := edge.OperationRequest{Alias: params.Alias, TargetAlias: params.Target, Profile: "linux-workcell", IdempotencyKey: params.IdempotencyKey, GitPlanID: params.PlanID}
+	request := edge.OperationRequest{Alias: params.Alias, TargetAlias: params.Target, Profile: "linux-workcell", WorktreeID: params.WorktreeID, IdempotencyKey: params.IdempotencyKey, GitPlanID: params.PlanID}
 	op, created, err := s.edgeOperations.CreateOperation(device.ID, kind, request)
 	if err == nil {
 		op, err = s.edgeOperations.WaitOperation(context.Background(), op.ID, 180*time.Second)

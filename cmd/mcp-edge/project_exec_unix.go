@@ -13,7 +13,7 @@ import (
 
 func executeProjectExec(ctx context.Context, stateRoot string, operation edge.Operation) (edge.OperationResult, string) {
 	preflightStarted := time.Now()
-	_, workspaces, projects, roots, code := openProjectControlState(stateRoot)
+	credential, workspaces, projects, roots, code := openProjectControlState(stateRoot)
 	if code != "" {
 		return edge.OperationResult{}, code
 	}
@@ -22,6 +22,10 @@ func executeProjectExec(ctx context.Context, stateRoot string, operation edge.Op
 	resolved, err := projects.Resolve(ctx, operation.Request.Alias, operation.Request.TargetAlias)
 	if err != nil {
 		return edge.OperationResult{}, safeProjectControlFailure(err)
+	}
+	resolved, err = resolveDirectProjectWorkspace(ctx, stateRoot, credential, workspaces, roots, resolved, operation.Request.WorktreeID)
+	if err != nil {
+		return edge.OperationResult{}, safeProjectWorktreeFailure(err)
 	}
 	return collectProjectExecWithStateRootAndRoots(ctx, stateRoot, operation, resolved, roots, nil, time.Since(preflightStarted).Microseconds())
 }

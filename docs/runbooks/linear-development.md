@@ -36,6 +36,32 @@ direct workcell/toolbox path until that first commit exists.
 
 ## Run and recover work
 
+### Isolate independent direct writers
+
+For parallel chats or an experiment that should leave the canonical source intact:
+
+1. Read `project_snapshot` and select its exact committed HEAD.
+2. Call `project_workspace_prepare(alias,target,base_commit,idempotency_key)` with a
+   fresh key for this independent writer. Save the key and returned `worktree_id`.
+3. Pass that id to `project_exec`, `project_process_start`, toolbox operations or Git
+   status/fetch/publication. Ordinary source edits and branch changes are allowed.
+   Background process status/stop still use the captured `process_id`.
+4. After interruption, reuse the original preparation key/base or list recent spaces
+   with `project_workspace_status(alias,target)`. Do not create another clone or rerun
+   a command before reading its original durable operation result.
+5. Use `MCP_DEVBOX_SCRATCH_ROOT` for disposable logs/results and
+   `MCP_DEVBOX_ARTIFACT_ROOT` for retained evidence. Status exposes bounded logical
+   byte counts; `complete=false` is partial accounting, not an empty directory.
+6. Stop/close retained resources through their own tools. Preview exact workspace
+   status, then call `project_workspace_cleanup` with that HEAD and a durable key.
+   It refuses ignored files, dirty source, detached heads and live references.
+   Clean committed work stays on its verified branch, even before publication.
+   Preserve/close the remaining items instead of using reset/prune.
+
+Omitting `worktree_id` retains the established canonical-project workflow. The new
+selection is Linux-only and rejects leased model worktrees. Its managed branch anchor
+is separate from the current branch reported by `project_git_status`.
+
 - Foreground commands: `project_exec` returns the operation ID and bounded command
   result. A timeout or lost response is not a passing exit. Inspect the recorded
   operation before considering an exact retry with the original idempotency key.

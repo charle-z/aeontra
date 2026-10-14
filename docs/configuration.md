@@ -187,6 +187,26 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
 - **Recovery metadata:** project claims, checkout attestations, toolbox generations and
   process bindings are durable. Schema migrations are additive and fail closed on a
   newer schema. Reconciliation is explicit and never resets or deletes a source tree.
+- **Direct writer workspaces:** `project_workspace_prepare` binds one caller key to an
+  exact committed base in the existing worktree registry, without starting a model.
+  Different keys isolate writers; the same key/base recovers the same space. Pass its
+  `worktree_id` to direct exec, process start/list/cleanup, toolbox or Git status/fetch/
+  publication. Omitting it retains the canonical checkout. Model worker worktrees
+  cannot be selected through this option. This capability is Linux-only.
+- **Scratch and accounting:** Linux write preparation creates private
+  `<project-runtime>/<workspace-id>/scratch`; `MCP_DEVBOX_SCRATCH_ROOT` identifies it
+  inside a workcell/toolbox. Reuse it for disposable command logs and temporary
+  subdirectories; put evidence to retain under `MCP_DEVBOX_ARTIFACT_ROOT`.
+  Direct workspace status counts logical file bytes over at most 10,000 entries and
+  100 ms, never follows symlinks, and reports incomplete accounting explicitly.
+  `MCP_DEVBOX_SCRATCH_BUDGET_BYTES`, set only in the Edge service environment, is an
+  optional positive integer advisory threshold. Status reports `unconfigured`,
+  `normal`, `over_budget`, `unknown` or `invalid`; it does not stop commands, delete
+  files, impose a filesystem quota or prevent status/stop during disk pressure.
+- **WSL lifetime:** optional `scripts/edge-wsl-availability.ps1` installs one limited
+  current-user logon task, using an operator-selected local directory. See the
+  [Linux installation guide](install-edge-linux.md). It does not install the native
+  Windows Edge or change the Linux daemon, WSL configuration or sleep policy.
 - **Toolbox lifecycle:** toolbox metadata schema v3 records `persistent|disposable`
   plus a durable generation. Missing/historical lifecycle is interpreted as
   `persistent`; read-only status does not rewrite the record, while an explicit
