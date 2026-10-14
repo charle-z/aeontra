@@ -81,6 +81,145 @@ func TestDirectWorkspaceCannotSelectModelWorker(t *testing.T) {
 	}
 }
 
+func TestDirectWorkspaceCommandsMapAttestedLinkedGitMetadata(t *testing.T) {
+	m, resolved, head := directWorkspaceFixture(t)
+	w, _, err := m.PrepareDirectWorkspace(context.Background(), resolved, head, "direct-git-mapping-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := m.workspaces.Get(w.WorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec, err := prepareDirectWorkcellProcessSpec(DirectWorkcellCommandRequest{
+		OperationID: "eo_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Workspace: workspace, WorkspaceRoots: m.roots,
+		StateRoot: m.stateRoot, Argv: []string{"git", "status", "--short"}, TimeoutSeconds: 10,
+	}, nil, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, linked, err := resolveCodexWorktreeGitMetadata(workspace, m.roots)
+	if err != nil || !linked {
+		t.Fatalf("linked fixture: %v", err)
+	}
+	joined := strings.Join(spec.Args, "\n")
+	for _, expected := range []string{"--bind\n" + metadata.CommonDir + "\n" + metadata.CommonDir} {
+		if !strings.Contains(joined, expected) {
+			t.Fatalf("direct workspace Git mapping missing %q", expected)
+		}
+	}
+	if strings.Contains(joined, "--setenv\nGIT_DIR\n") || strings.Contains(joined, "--setenv\nGIT_WORK_TREE\n") {
+		t.Fatal("global Git overrides would break nested repository discovery")
+	}
+	if strings.Contains(joined, "--bind\n"+resolved.Workspace.Path+"\n") {
+		t.Fatal("canonical source was mounted alongside the linked workspace")
+	}
+}
+
+func TestDirectWorkspaceToolboxMapsAttestedLinkedGitMetadata(t *testing.T) {
+	m, resolved, head := directWorkspaceFixture(t)
+	w, _, err := m.PrepareDirectWorkspace(context.Background(), resolved, head, "direct-toolbox-git-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := m.workspaces.Get(w.WorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &recordingToolboxRunner{workspace: workspace.Path, socket: filepath.Join(m.stateRoot, "podman.sock")}
+	tb, err := OpenProjectToolboxManager(ProjectToolboxManagerConfig{
+		StateRoot: m.stateRoot, WorkspaceRoots: m.roots,
+		Endpoint: &RootlessContainerEndpoint{Engine: "podman", SocketPath: runner.socket, Executable: "/usr/bin/podman"},
+		Runner:   runner, environment: testRootlessContainerEnvironment,
+		NewID: func() (string, error) { return "tb_11111111111111111111111111111111", nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, _, err := tb.Create(ctx, ProjectToolboxCreateRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace}); err != nil {
+		t.Fatal(err)
+	}
+	metadata, linked, err := resolveCodexWorktreeGitMetadata(workspace, m.roots)
+	if err != nil || !linked {
+		t.Fatalf("linked fixture: %v", err)
+	}
+	found := false
+	for _, mount := range runner.mounts {
+		if mount.Destination == metadata.CommonDir && mount.Source == metadata.CommonDir && mount.RW {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("toolbox cannot resolve its linked Git metadata")
+	}
+	for _, item := range runner.containerEnv {
+		if strings.HasPrefix(item, "GIT_DIR=") || strings.HasPrefix(item, "GIT_WORK_TREE=") {
+			t.Fatal("global Git override")
+		}
+	}
+	// The explicit repair path can upgrade an older linked toolbox without
+	// treating its missing Git mount as permission to discard source.
+	runner.mounts = runner.mounts[:4]
+	if _, err := tb.Status(ctx, ProjectToolboxStatusRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace}); !errors.Is(err, ErrProjectToolboxMountMismatch) {
+		t.Fatalf("old linked toolbox: %v", err)
+	}
+	if repaired, err := tb.Reconcile(ctx, ProjectToolboxReconcileRequest{ProjectAlias: "project", TargetAlias: "parrot", Workspace: workspace}); err != nil || repaired.Generation != 2 {
+		t.Fatalf("linked toolbox reconciliation: %v", err)
+	}
+}
+
+func TestDirectWorkspaceGitMappingRejectsAnotherRepository(t *testing.T) {
+	m, resolved, head := directWorkspaceFixture(t)
+	w, _, err := m.PrepareDirectWorkspace(context.Background(), resolved, head, "direct-git-binding-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected, err := m.ResolveDirectWorkspace(context.Background(), resolved, w.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selected.Workspace.ManagedGitCommonDir != filepath.Join(resolved.Workspace.Path, ".git") {
+		t.Fatal("canonical binding lost")
+	}
+	foreign := filepath.Join(m.roots.Dev, "other", ".git", "worktrees", "foreign")
+	if err := os.MkdirAll(foreign, 0700); err != nil {
+		t.Fatal(err)
+	}
+	writeDirectFixture(t, filepath.Join(foreign, "commondir"), "../..\n")
+	writeDirectFixture(t, filepath.Join(w.path, ".git"), "gitdir: "+foreign+"\n")
+	if _, _, err := resolveCodexWorktreeGitMetadata(selected.Workspace, m.roots); err == nil {
+		t.Fatal("other repository metadata admitted")
+	}
+}
+
+func TestDirectWorkspaceGitNativeWorkcell(t *testing.T) {
+	if os.Getenv("MCP_DEVBOX_NATIVE_WORKCELL_TEST") != "1" {
+		t.Skip("requires intended Linux host Bubblewrap; run explicitly")
+	}
+	m, resolved, head := directWorkspaceFixture(t)
+	w, _, err := m.PrepareDirectWorkspace(context.Background(), resolved, head, "native-direct-git-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected, err := m.ResolveDirectWorkspace(context.Background(), resolved, w.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, argv := range [][]string{
+		{"git", "switch", "-c", "qa/native-direct-git"},
+		{"sh", "-c", "git init -b nested nested >/dev/null && test \"$(git -C nested symbolic-ref HEAD)\" = refs/heads/nested && test \"$(git rev-parse --show-toplevel)\" = /workspace"},
+	} {
+		r, err := RunDirectWorkcellCommand(context.Background(), DirectWorkcellCommandRequest{
+			OperationID: "eo_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Workspace: selected.Workspace, WorkspaceRoots: m.roots,
+			StateRoot: m.stateRoot, Argv: argv, TimeoutSeconds: 20,
+		}, nil)
+		if err != nil || r.ExitCode != 0 {
+			t.Fatalf("native step %d: %+v %v", i, r, err)
+		}
+	}
+}
+
 func TestDirectWorkspaceCleanupPreservesSourceAndLiveReferences(t *testing.T) {
 	for _, kind := range []string{"dirty", "ignored", "committed", "detached-commit", "toolbox", "stale-head", "clean"} {
 		t.Run(kind, func(t *testing.T) {

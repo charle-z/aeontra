@@ -57,6 +57,9 @@ func resolveCodexWorktreeGitMetadata(workspace Workspace, roots WorkspaceRoots) 
 		commonDir = filepath.Join(gitDir, commonDir)
 	}
 	commonDir = filepath.Clean(commonDir)
+	if workspace.ManagedGitCommonDir != "" && commonDir != filepath.Clean(workspace.ManagedGitCommonDir) {
+		return codexWorktreeGitMetadata{}, false, errors.New("linked Git metadata does not match its canonical repository binding")
+	}
 	worktreeMetadataRoot := filepath.Join(commonDir, "worktrees")
 	canonicalPath := filepath.Dir(commonDir)
 	if filepath.Base(commonDir) != ".git" || !pathInside(roots.Dev, canonicalPath) || canonicalPath == filepath.Clean(roots.Dev) ||
