@@ -15,6 +15,25 @@ import (
 	"time"
 )
 
+func TestProjectToolboxV2PreservesOlderScratchEnvironment(t *testing.T) {
+	args := (&ProjectToolboxManager{}).projectToolboxCreateArgs("tb_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "fixture", "sha256:"+strings.Repeat("a", 64), "/workspace", ProjectRuntimeRoots{Runtime: "/private/runtime", Cache: "/private/cache", Artifacts: "/private/artifacts"}, 1000, 1024, 64)
+	var legacy []string
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] == "--env" && !strings.HasPrefix(args[i+1], "MCP_DEVBOX_SCRATCH_ROOT=") {
+			legacy = append(legacy, args[i+1])
+		}
+	}
+	if !validProjectToolboxContainerEnvironment(legacy, projectToolboxRuntimeV2) {
+		t.Fatal("older valid v2 toolbox requires recreation just for a scratch hint")
+	}
+	if validProjectToolboxContainerEnvironment(append(legacy, "MCP_DEVBOX_SCRATCH_ROOT=/outside"), projectToolboxRuntimeV2) {
+		t.Fatal("unsafe scratch hint accepted")
+	}
+	if !validProjectToolboxContainerEnvironment(append(legacy, "MCP_DEVBOX_SCRATCH_ROOT=/runtime/scratch"), projectToolboxRuntimeV2) {
+		t.Fatal("new scratch hint rejected")
+	}
+}
+
 func TestProjectRuntimeRootsArePrivatePerWorkspace(t *testing.T) {
 	stateRoot := filepath.Join(t.TempDir(), "state")
 	workspace := Workspace{ID: "ws_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Path: t.TempDir(), Profile: WorkspaceProfileLinuxWorkcell, Mode: WorkspaceModeDev}

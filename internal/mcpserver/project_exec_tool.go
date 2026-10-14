@@ -11,6 +11,7 @@ import (
 )
 
 type projectExecParams struct {
+	WorktreeID     string            `json:"worktree_id,omitempty"`
 	Alias          string            `json:"alias"`
 	Target         string            `json:"target"`
 	IdempotencyKey string            `json:"idempotency_key"`
@@ -52,6 +53,7 @@ func (s *Server) addProjectExecTool(projectSchema map[string]any) {
 		InputSchema: closedObject(map[string]any{
 			"alias":           projectSchema["alias"],
 			"target":          projectSchema["target"],
+			"worktree_id":     stringSchema("optional direct managed workspace; omit to retain the canonical project", `^wt_[a-f0-9]{32}$`, 35),
 			"idempotency_key": stringSchema("caller-generated durable operation key", `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`, 128),
 			"argv": map[string]any{
 				"type": "array", "minItems": 1, "maxItems": 128,
@@ -91,6 +93,7 @@ func (s *Server) handleProjectExec(arguments json.RawMessage) (string, error) {
 	}
 	request := edge.OperationRequest{
 		Alias: params.Alias, TargetAlias: params.Target, Profile: "linux-workcell",
+		WorktreeID:     params.WorktreeID,
 		IdempotencyKey: params.IdempotencyKey, Argv: params.Argv, CWD: params.CWD,
 		Stdin: params.Stdin, Environment: params.Environment, TimeoutSeconds: params.TimeoutSeconds,
 	}

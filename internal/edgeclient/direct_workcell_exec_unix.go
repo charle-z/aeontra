@@ -325,6 +325,7 @@ func directWorkcellBubblewrapArgs(workspace, sandboxCWD string, request DirectWo
 		"GOPATH": "/runtime/go", "GOBIN": "/runtime/tools/bin", "GOMODCACHE": "/cache/go-mod", "GOCACHE": "/cache/go-build",
 		"MCP_DEVBOX_RUNTIME_ROOT": "/runtime", "MCP_DEVBOX_CACHE_ROOT": "/cache",
 		"MCP_DEVBOX_ARTIFACT_ROOT": "/artifacts",
+		"MCP_DEVBOX_SCRATCH_ROOT":  "/runtime/scratch",
 		"MCP_DEVBOX_PROFILE":       string(request.Workspace.Profile), "MCP_DEVBOX_MODE": string(request.Workspace.Mode),
 		"MCP_DEVBOX_NETWORK_POSTURE": LinuxWorkcellNetworkPosture,
 	}
