@@ -126,4 +126,7 @@ topology transitions and backend catalog rollouts.
 Linked workspaces retain normal local Git commands in both the trusted workcell and
 toolbox. If an older linked toolbox lacks its metadata mount, inspect status and use
 the existing explicit `project_toolbox_repair` with the same `worktree_id`; reconciliation
-preserves its rootfs and source. Canonical toolboxes do not need recreation.
+preserves source and private runtime/cache mounts, but rebuilds the writable rootfs
+from its recorded base image. Reinstall rootfs-only packages and keep durable work in
+the source/runtime/artifact roots before explicit repair. Canonical toolboxes do not
+need recreation for this metadata mapping.
