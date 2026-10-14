@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"path/filepath"
 	"strings"
 )
 
@@ -51,6 +52,15 @@ func (m *ProjectWorktreeManager) ResolveDirectWorkspace(ctx context.Context, res
 	if err != nil {
 		return ProjectResolution{}, ErrProjectWorktreeUnsafe
 	}
+	commonDir, err := m.runner.Run(ctx, resolved.Workspace.Path, []string{"rev-parse", "--git-common-dir"}, m.credential)
+	if err != nil {
+		return ProjectResolution{}, ErrProjectWorktreeUnsafe
+	}
+	workspace.ManagedGitCommonDir = strings.TrimSpace(commonDir)
+	if !filepath.IsAbs(workspace.ManagedGitCommonDir) {
+		workspace.ManagedGitCommonDir = filepath.Join(resolved.Workspace.Path, workspace.ManagedGitCommonDir)
+	}
+	workspace.ManagedGitCommonDir = filepath.Clean(workspace.ManagedGitCommonDir)
 	resolved.Workspace = workspace
 	return resolved, nil
 }

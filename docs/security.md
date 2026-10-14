@@ -865,3 +865,12 @@ Dated closure evidence belongs under [`baselines/`](baselines/). Live deployment
 comes from `/version` or `system_runtime_info`; the current public tool contract comes
 from [`tools.md`](tools.md). Historical evidence must not be rewritten to match current
 state.
+
+## Linked development workspaces
+
+Direct linked workspaces expose only their attested repository's shared Git metadata
+alongside the selected source tree. The canonical source tree and other repositories
+are not mounted. Git refs and objects remain repository-scoped shared state, as in a
+normal Git worktree. A private canonical binding rejects a pointer retargeted to another
+repository. Git retains ordinary discovery, including nested repositories; the executor
+does not force a global `GIT_DIR` or `GIT_WORK_TREE`.

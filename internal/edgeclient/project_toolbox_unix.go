@@ -68,29 +68,31 @@ var (
 )
 
 type ProjectToolboxManagerConfig struct {
-	StateRoot    string
-	Endpoint     *RootlessContainerEndpoint
-	Runner       ContainerCommandRunner
-	environment  rootlessContainerEnvironmentBuilder
-	cgroupParent string
-	NewID        func() (string, error)
-	NewServiceID func() (string, error)
-	NewHarnessID func() (string, error)
-	Now          func() time.Time
+	StateRoot      string
+	WorkspaceRoots WorkspaceRoots
+	Endpoint       *RootlessContainerEndpoint
+	Runner         ContainerCommandRunner
+	environment    rootlessContainerEnvironmentBuilder
+	cgroupParent   string
+	NewID          func() (string, error)
+	NewServiceID   func() (string, error)
+	NewHarnessID   func() (string, error)
+	Now            func() time.Time
 }
 
 type ProjectToolboxManager struct {
-	stateRoot    string
-	endpoint     *RootlessContainerEndpoint
-	runner       ContainerCommandRunner
-	environment  rootlessContainerEnvironmentBuilder
-	cgroupParent string
-	newID        func() (string, error)
-	newServiceID func() (string, error)
-	newHarnessID func() (string, error)
-	now          func() time.Time
-	artifactHash map[string]projectBrowserArtifactDigest
-	mu           sync.Mutex
+	stateRoot      string
+	workspaceRoots WorkspaceRoots
+	endpoint       *RootlessContainerEndpoint
+	runner         ContainerCommandRunner
+	environment    rootlessContainerEnvironmentBuilder
+	cgroupParent   string
+	newID          func() (string, error)
+	newServiceID   func() (string, error)
+	newHarnessID   func() (string, error)
+	now            func() time.Time
+	artifactHash   map[string]projectBrowserArtifactDigest
+	mu             sync.Mutex
 }
 
 type ProjectToolboxCreateRequest struct {
@@ -251,7 +253,7 @@ func OpenProjectToolboxManager(config ProjectToolboxManagerConfig) (*ProjectTool
 	if now == nil {
 		now = time.Now
 	}
-	return &ProjectToolboxManager{stateRoot: root, endpoint: endpoint, runner: runner, environment: environment, cgroupParent: cgroupParent, newID: newID, newServiceID: newServiceID, newHarnessID: newHarnessID, now: now, artifactHash: make(map[string]projectBrowserArtifactDigest)}, nil
+	return &ProjectToolboxManager{stateRoot: root, workspaceRoots: config.WorkspaceRoots, endpoint: endpoint, runner: runner, environment: environment, cgroupParent: cgroupParent, newID: newID, newServiceID: newServiceID, newHarnessID: newHarnessID, now: now, artifactHash: make(map[string]projectBrowserArtifactDigest)}, nil
 }
 
 func (manager *ProjectToolboxManager) Create(ctx context.Context, request ProjectToolboxCreateRequest) (ProjectToolboxSnapshot, bool, error) {
@@ -298,6 +300,10 @@ func (manager *ProjectToolboxManager) Create(ctx context.Context, request Projec
 		return ProjectToolboxSnapshot{}, false, ErrProjectToolboxUnsafeState
 	}
 	containerName := "mcp-toolbox-" + strings.TrimPrefix(toolboxID, "tb_")
+	gitMetadata, err := manager.linkedGitMetadata(request.Workspace)
+	if err != nil {
+		return ProjectToolboxSnapshot{}, false, err
+	}
 	if _, err := manager.run(ctx, "pull", projectToolboxBaseImage); err != nil {
 		return ProjectToolboxSnapshot{}, false, ErrProjectToolboxUnavailable
 	}
@@ -314,7 +320,7 @@ func (manager *ProjectToolboxManager) Create(ctx context.Context, request Projec
 	if err != nil {
 		return ProjectToolboxSnapshot{}, false, ErrProjectToolboxUnsafeState
 	}
-	createArgs := manager.projectToolboxCreateArgs(toolboxID, containerName, imageID, request.Workspace.Path, runtimeRoots, request.CPUMillis, request.MemoryMiB, request.ProcessLimit)
+	createArgs := manager.projectToolboxCreateArgs(toolboxID, containerName, imageID, request.Workspace.Path, runtimeRoots, request.CPUMillis, request.MemoryMiB, request.ProcessLimit, gitMetadata)
 	createOutput, err := manager.run(ctx, createArgs...)
 	containerID := strings.TrimSpace(string(createOutput))
 	if err != nil || !containerResourceIDPattern.MatchString(containerID) {
@@ -341,13 +347,21 @@ func (manager *ProjectToolboxManager) Create(ctx context.Context, request Projec
 	return snapshot, false, err
 }
 
-func (manager *ProjectToolboxManager) projectToolboxCreateArgs(toolboxID, containerName, imageID, workspacePath string, runtimeRoots ProjectRuntimeRoots, cpuMillis, memoryMiB, processLimit int) []string {
+func (manager *ProjectToolboxManager) linkedGitMetadata(workspace Workspace) (codexWorktreeGitMetadata, error) {
+	metadata, _, err := resolveCodexWorktreeGitMetadata(workspace, manager.workspaceRoots)
+	if err != nil {
+		return codexWorktreeGitMetadata{}, ErrProjectToolboxUnsafeState
+	}
+	return metadata, nil
+}
+
+func (manager *ProjectToolboxManager) projectToolboxCreateArgs(toolboxID, containerName, imageID, workspacePath string, runtimeRoots ProjectRuntimeRoots, cpuMillis, memoryMiB, processLimit int, gitMetadata ...codexWorktreeGitMetadata) []string {
 	args := []string{"create", "--name", containerName, "--label", projectToolboxLabelKey + "=" + toolboxID,
 		"--cpus", fmt.Sprintf("%.3f", float64(cpuMillis)/1000), "--memory", fmt.Sprintf("%dm", memoryMiB), "--pids-limit", fmt.Sprintf("%d", processLimit)}
 	if manager.cgroupParent != "" {
 		args = append(args, "--cgroup-parent", manager.cgroupParent)
 	}
-	return append(args,
+	args = append(args,
 		"--env", "MCP_DEVBOX_TOOLBOX_CONTAINER_ACCESS=disabled",
 		"--env", "PATH=/runtime/tools/bin:/runtime/cargo/bin:/runtime/go/bin:/runtime/pnpm:/runtime/tools/go/bin:/runtime/tools/cargo/bin:/usr/local/bin:/usr/bin:/bin",
 		"--env", "HOME=/runtime/home", "--env", "CARGO_HOME=/runtime/cargo", "--env", "RUSTUP_HOME=/runtime/rustup",
@@ -357,8 +371,11 @@ func (manager *ProjectToolboxManager) projectToolboxCreateArgs(toolboxID, contai
 		"--env", "MCP_DEVBOX_RUNTIME_ROOT=/runtime", "--env", "MCP_DEVBOX_CACHE_ROOT=/cache", "--env", "MCP_DEVBOX_ARTIFACT_ROOT=/artifacts",
 		"--env", "MCP_DEVBOX_SCRATCH_ROOT=/runtime/scratch",
 		"--volume", workspacePath+":/workspace:rw",
-		"--volume", runtimeRoots.Runtime+":/runtime:rw", "--volume", runtimeRoots.Cache+":/cache:rw", "--volume", runtimeRoots.Artifacts+":/artifacts:rw",
-		"--workdir", "/workspace", imageID, "sleep", "infinity")
+		"--volume", runtimeRoots.Runtime+":/runtime:rw", "--volume", runtimeRoots.Cache+":/cache:rw", "--volume", runtimeRoots.Artifacts+":/artifacts:rw")
+	if len(gitMetadata) == 1 && gitMetadata[0].CommonDir != "" {
+		args = append(args, "--volume", gitMetadata[0].CommonDir+":"+gitMetadata[0].CommonDir+":rw")
+	}
+	return append(args, "--workdir", "/workspace", imageID, "sleep", "infinity")
 }
 
 func normalizeProjectToolboxImageID(raw string) (string, error) {
@@ -649,6 +666,10 @@ func (manager *ProjectToolboxManager) recreateAfterMountMismatch(ctx context.Con
 	if record == nil || record.RuntimeVersion == "" {
 		return ErrProjectToolboxUnsafeState
 	}
+	gitMetadata, err := manager.linkedGitMetadata(workspace)
+	if err != nil {
+		return err
+	}
 	// This metadata-only proof intentionally excludes mounts, which are the
 	// reason for reconciliation. It still proves that the rootless container
 	// is this toolbox and carries the expected resource/security policy.
@@ -689,7 +710,7 @@ func (manager *ProjectToolboxManager) recreateAfterMountMismatch(ctx context.Con
 			_, _ = manager.run(context.Background(), "start", oldName)
 		}
 	}
-	createOutput, err := manager.run(ctx, manager.projectToolboxCreateArgs(record.ToolboxID, record.ContainerName, record.BaseImageID, workspace.Path, runtimeRoots, record.CPUMillis, record.MemoryMiB, record.ProcessLimit)...)
+	createOutput, err := manager.run(ctx, manager.projectToolboxCreateArgs(record.ToolboxID, record.ContainerName, record.BaseImageID, workspace.Path, runtimeRoots, record.CPUMillis, record.MemoryMiB, record.ProcessLimit, gitMetadata)...)
 	if err != nil || !containerResourceIDPattern.MatchString(strings.TrimSpace(string(createOutput))) {
 		restoreOld()
 		return ErrProjectToolboxUnavailable
@@ -1187,6 +1208,10 @@ func (manager *ProjectToolboxManager) verifyOwnershipReferenceMode(ctx context.C
 	if filepath.Clean(record.WorkspacePath) != filepath.Clean(workspace.Path) {
 		return fmt.Errorf("%w: workspace_path expected=%s observed=%s", ErrProjectToolboxIdentityMismatch, record.WorkspacePath, workspace.Path)
 	}
+	gitMetadata, metadataErr := manager.linkedGitMetadata(workspace)
+	if metadataErr != nil {
+		return metadataErr
+	}
 	workspaceFingerprint, fingerprintErr := projectRuntimeWorkspaceFingerprint(workspace.Path)
 	if fingerprintErr != nil {
 		return fmt.Errorf("%w: workspace fingerprint unavailable", ErrProjectToolboxIdentityMismatch)
@@ -1227,7 +1252,7 @@ func (manager *ProjectToolboxManager) verifyOwnershipReferenceMode(ctx context.C
 		}
 		workspaceFingerprint, fingerprintErr := projectRuntimeWorkspaceFingerprint(workspace.Path)
 		mountFingerprint := projectRuntimeMountFingerprint(workspace.Path, workspaceFingerprint, runtimeRoots, projectToolboxRuntimeV2)
-		if rootsErr != nil || fingerprintErr != nil || record.MountFingerprint != mountFingerprint || !validProjectToolboxMountsV2(mounts, workspace.Path, runtimeRoots) {
+		if rootsErr != nil || fingerprintErr != nil || record.MountFingerprint != mountFingerprint || !validProjectToolboxMountsV2(mounts, workspace.Path, runtimeRoots, gitMetadata) {
 			return fmt.Errorf("%w: runtime mount fingerprint=%s", ErrProjectToolboxMountMismatch, record.MountFingerprint)
 		}
 	} else if !validProjectToolboxMountsLegacy(mounts, workspace.Path) {
@@ -1266,12 +1291,15 @@ func validProjectToolboxMountsLegacy(mounts []struct {
 func validProjectToolboxMountsV2(mounts []struct {
 	Type, Source, Destination string
 	RW                        bool
-}, workspacePath string, roots ProjectRuntimeRoots) bool {
+}, workspacePath string, roots ProjectRuntimeRoots, gitMetadata ...codexWorktreeGitMetadata) bool {
 	want := map[string]string{
 		"/workspace": workspacePath,
 		"/runtime":   roots.Runtime,
 		"/cache":     roots.Cache,
 		"/artifacts": roots.Artifacts,
+	}
+	if len(gitMetadata) == 1 && gitMetadata[0].CommonDir != "" {
+		want[gitMetadata[0].CommonDir] = gitMetadata[0].CommonDir
 	}
 	if len(mounts) != len(want) {
 		return false

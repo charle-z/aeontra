@@ -122,3 +122,8 @@ For deployment observation, `platform_app_status` returns metadata only. Fetch
 bounded logs with `platform_app_logs` when needed. The coordinator status tool
 reports the published operation's kind, state, phase and revision for both
 topology transitions and backend catalog rollouts.
+
+Linked workspaces retain normal local Git commands in both the trusted workcell and
+toolbox. If an older linked toolbox lacks its metadata mount, inspect status and use
+the existing explicit `project_toolbox_repair` with the same `worktree_id`; reconciliation
+preserves its rootfs and source. Canonical toolboxes do not need recreation.

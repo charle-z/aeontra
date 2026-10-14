@@ -55,7 +55,7 @@ func executeProjectToolbox(ctx context.Context, stateRoot string, operation edge
 	}
 	managers := make([]projectToolboxOperations, 0, len(endpoints))
 	for _, endpoint := range endpoints {
-		manager, openErr := edgeclient.OpenProjectToolboxManager(edgeclient.ProjectToolboxManagerConfig{StateRoot: stateRoot, Endpoint: endpoint})
+		manager, openErr := edgeclient.OpenProjectToolboxManager(edgeclient.ProjectToolboxManagerConfig{StateRoot: stateRoot, WorkspaceRoots: roots, Endpoint: endpoint})
 		if openErr != nil {
 			if errors.Is(openErr, edgeclient.ErrProjectToolboxUnsafeState) {
 				return edge.OperationResult{}, safeProjectToolboxSelectionFailure(openErr)
