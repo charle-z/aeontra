@@ -119,10 +119,42 @@ func (c *GitHubClient) collectGitHubEvidence(ctx context.Context, repo, sha, bas
 	return summary, nil
 }
 
+func latestGitHubCheckRuns(checks []githubCheckRun) []githubCheckRun {
+	latest := make(map[string]githubCheckRun)
+	result := make([]githubCheckRun, 0, len(checks))
+	for _, check := range checks {
+		name := strings.TrimSpace(check.Name)
+		app := strings.TrimSpace(check.App.Slug)
+		if check.ID <= 0 || name == "" || app == "" {
+			result = append(result, check)
+			continue
+		}
+		key := app + "\x00" + name
+		current, ok := latest[key]
+		if !ok || check.ID > current.ID {
+			latest[key] = check
+		}
+	}
+	for _, check := range latest {
+		result = append(result, check)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Name != result[j].Name {
+			return result[i].Name < result[j].Name
+		}
+		return result[i].ID < result[j].ID
+	})
+	return result
+}
+
 func (c *GitHubClient) githubChecksAPIEvidence(ctx context.Context, repo, base string, checks githubCheckRunsResponse) (githubCheckSummary, error) {
-	summary := githubCheckSummary{Source: "checks_api", RunsTotal: len(checks.CheckRuns), EvidenceComplete: true}
-	present := make(map[string]struct{}, len(checks.CheckRuns))
-	for _, check := range checks.CheckRuns {
+	effective := latestGitHubCheckRuns(checks.CheckRuns)
+	summary := githubCheckSummary{Source: "checks_api", RunsTotal: len(effective), EvidenceComplete: true}
+	if superseded := len(checks.CheckRuns) - len(effective); superseded > 0 {
+		summary.Lines = append(summary.Lines, fmt.Sprintf("superseded_check_runs: %d", superseded))
+	}
+	present := make(map[string]struct{}, len(effective))
+	for _, check := range effective {
 		name := strings.TrimSpace(check.Name)
 		if name == "" {
 			summary.EvidenceComplete = false

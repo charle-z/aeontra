@@ -41,14 +41,20 @@ type githubPullResponse struct {
 		SHA string `json:"sha"`
 	} `json:"base"`
 }
+type githubCheckRun struct {
+	ID         int64  `json:"id"`
+	Name       string `json:"name"`
+	Status     string `json:"status"`
+	Conclusion string `json:"conclusion"`
+	HTMLURL    string `json:"html_url"`
+	App        struct {
+		Slug string `json:"slug"`
+	} `json:"app"`
+}
+
 type githubCheckRunsResponse struct {
-	TotalCount int `json:"total_count"`
-	CheckRuns  []struct {
-		Name       string `json:"name"`
-		Status     string `json:"status"`
-		Conclusion string `json:"conclusion"`
-		HTMLURL    string `json:"html_url"`
-	} `json:"check_runs"`
+	TotalCount int              `json:"total_count"`
+	CheckRuns  []githubCheckRun `json:"check_runs"`
 }
 type githubCombinedStatusResponse struct {
 	State      string `json:"state"`

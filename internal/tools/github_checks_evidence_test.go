@@ -42,7 +42,7 @@ type evidenceTestStatus struct {
 
 type evidenceFixture struct {
 	checkStatus  int
-	checkPages   map[int][]map[string]string
+	checkPages   map[int][]githubCheckRun
 	checkTotal   int
 	actionsCode  int
 	runPages     map[int][]evidenceTestRun
@@ -63,6 +63,12 @@ func greenRun(id, workflowID int64, name string, attempt int) evidenceTestRun {
 
 func greenJob(id int64, name string) evidenceTestJob {
 	return evidenceTestJob{ID: id, Name: name, Status: "completed", Conclusion: "success"}
+}
+
+func greenCheck(id int64, app, name string) githubCheckRun {
+	check := githubCheckRun{ID: id, Name: name, Status: "completed", Conclusion: "success"}
+	check.App.Slug = app
+	return check
 }
 
 func newEvidenceServer(t *testing.T, fixture evidenceFixture) *httptest.Server {
@@ -136,9 +142,35 @@ func collectEvidence(t *testing.T, fixture evidenceFixture) (githubCheckSummary,
 func TestGitHubEvidenceUsesChecksAPIWhenAvailable(t *testing.T) {
 	summary, err := collectEvidence(t, evidenceFixture{
 		checkTotal: 1,
-		checkPages: map[int][]map[string]string{1: {{"name": "Verify", "status": "completed", "conclusion": "success"}}},
+		checkPages: map[int][]githubCheckRun{1: {greenCheck(10, "github-actions", "Verify")}},
 	})
 	if err != nil || summary.Source != "checks_api" || summary.RunsTotal != 1 || summary.JobsTotal != 0 || !summary.EvidenceComplete || !summary.AllChecksGreen {
+		t.Fatalf("summary=%+v err=%v", summary, err)
+	}
+}
+
+func TestGitHubEvidenceUsesLatestCheckRunPerAppAndName(t *testing.T) {
+	failed := greenCheck(10, "github-actions", "Rootless")
+	failed.Conclusion = "failure"
+	green := greenCheck(11, "github-actions", "Rootless")
+	summary, err := collectEvidence(t, evidenceFixture{
+		checkTotal: 2,
+		checkPages: map[int][]githubCheckRun{1: {failed, green}},
+	})
+	if err != nil || summary.RunsTotal != 1 || summary.Failed != 0 || !summary.AllChecksGreen || !strings.Contains(strings.Join(summary.Lines, "\n"), "superseded_check_runs: 1") {
+		t.Fatalf("summary=%+v err=%v", summary, err)
+	}
+}
+
+func TestGitHubEvidenceKeepsSameNameFromDifferentApps(t *testing.T) {
+	green := greenCheck(10, "github-actions", "Verify")
+	failed := greenCheck(11, "security-bot", "Verify")
+	failed.Conclusion = "failure"
+	summary, err := collectEvidence(t, evidenceFixture{
+		checkTotal: 2,
+		checkPages: map[int][]githubCheckRun{1: {green, failed}},
+	})
+	if err != nil || summary.RunsTotal != 2 || summary.Failed != 1 || summary.AllChecksGreen {
 		t.Fatalf("summary=%+v err=%v", summary, err)
 	}
 }
@@ -225,7 +257,7 @@ func TestGitHubEvidenceLatestRerunPendingDoesNotHide(t *testing.T) {
 func TestGitHubEvidenceCommitStatusFailureBlocks(t *testing.T) {
 	summary, err := collectEvidence(t, evidenceFixture{
 		checkTotal:  1,
-		checkPages:  map[int][]map[string]string{1: {{"name": "Verify", "status": "completed", "conclusion": "success"}}},
+		checkPages:  map[int][]githubCheckRun{1: {greenCheck(10, "github-actions", "Verify")}},
 		statusTotal: 1, statusState: "failure", statusPages: map[int][]evidenceTestStatus{1: {{Context: "legacy", State: "failure"}}},
 	})
 	if err != nil || summary.CommitStatuses != 1 || summary.Failed == 0 || summary.AllChecksGreen {
