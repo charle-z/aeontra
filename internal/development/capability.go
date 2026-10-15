@@ -324,6 +324,15 @@ func (p ResolutionPolicy) Allows(attestation EnvironmentAttestation) bool {
 	return index < len(p.allowed) && p.allowed[index] == attestation.Class
 }
 
+func (p ResolutionPolicy) AllowsClass(class ExecutionClass) bool {
+	tier, ok := class.Tier()
+	if !ok || tier > p.maxTier {
+		return false
+	}
+	index := sort.Search(len(p.allowed), func(i int) bool { return p.allowed[i] >= class })
+	return index < len(p.allowed) && p.allowed[index] == class
+}
+
 func (p ResolutionPolicy) valid() bool {
 	if p.maxTier < TierL3Sandbox || p.maxTier > TierIsolatedRunner || len(p.allowed) == 0 {
 		return false
