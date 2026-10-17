@@ -1,0 +1,2 @@
+MCP Devbox Trusted Linux Workcell OK
+workspace=ws_7c4686f5d9244bbad30ae705d4b660c5
