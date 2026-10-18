@@ -1,0 +1,8 @@
+# Normalize line endings; keep LF for Go sources and scripts
+* text=auto eol=lf
+*.go text eol=lf
+*.md text eol=lf
+*.sh text eol=lf
+*.exe binary
+*.png binary
+*.zip binary

@@ -1,0 +1,301 @@
+.table-panel {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  padding: 0.3rem 1rem 0.8rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+th,
+td {
+  padding: 0.18rem 1ch;
+  text-align: left;
+  white-space: nowrap;
+}
+
+th {
+  color: var(--vga-cyan);
+}
+
+td {
+  color: var(--vga-white);
+}
+
+td[data-tone="ok"] { color: var(--vga-green); }
+td[data-tone="warn"] { color: var(--vga-red); }
+td[data-tone="dim"] { color: var(--vga-gray); }
+
+.state-flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  padding: 0.6rem 1rem;
+}
+
+.state-flow span {
+  border: 1px solid var(--vga-gray-low);
+  padding: 0 0.7ch;
+  color: var(--vga-gray);
+}
+
+.empty-note,
+.panel-note,
+.graph-note {
+  margin: 0;
+  padding: 0.5rem 1rem;
+  color: var(--vga-gray);
+}
+
+.graph-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  margin: 0.4rem 1rem 1rem;
+  border: 1px solid var(--vga-cyan);
+  background: var(--vga-blue-dark);
+  overflow: hidden;
+}
+
+.graph-canvas {
+  position: relative;
+  width: 100%;
+  height: clamp(320px, 52vh, 560px);
+  min-height: 320px;
+  flex: none;
+  border-bottom: 1px solid var(--vga-cyan);
+  overflow: hidden;
+  touch-action: none;
+}
+
+.brain-graph {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 320px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.brain-graph:active { cursor: grabbing; }
+.graph-pan-surface { fill: transparent; pointer-events: all; }
+.graph-world line { stroke: #2c66c8; stroke-width: 1; stroke-dasharray: 4 4; transition: opacity 120ms linear, stroke-width 120ms linear; }
+.graph-world line.graph-edge-related { stroke: var(--vga-cyan); stroke-width: 2.4; stroke-dasharray: none; }
+.graph-world line.graph-edge-muted { opacity: 0.22; }
+
+.graph-node {
+  cursor: pointer;
+  outline: none;
+  transition: opacity 120ms linear;
+}
+
+.graph-node-hit {
+  fill: transparent;
+  stroke: none;
+  pointer-events: all;
+}
+
+.graph-node-visual {
+  fill: var(--vga-white);
+  stroke: var(--vga-blue-dark);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.graph-node[data-trust="curated"] .graph-node-visual { fill: var(--vga-yellow); }
+.graph-node[data-related="false"] { opacity: 0.32; }
+.graph-node[data-selected="true"],
+.graph-node[data-active="true"],
+.graph-node[data-related="true"] { opacity: 1; }
+
+.graph-node-halo,
+.graph-node-focus {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.graph-node-halo {
+  stroke: var(--vga-cyan);
+  stroke-width: 3;
+}
+
+.graph-node-focus {
+  display: none;
+  stroke: var(--vga-white);
+  stroke-width: 2;
+  stroke-dasharray: 3 3;
+}
+
+.graph-node:focus-visible .graph-node-focus { display: block; }
+
+.graph-label {
+  pointer-events: none;
+  font-size: 12px;
+}
+
+.graph-label rect {
+  fill: var(--vga-blue-dark);
+  stroke: var(--vga-gray-low);
+  stroke-width: 1;
+}
+
+.graph-label text {
+  fill: var(--vga-white);
+  font: 12px "Cascadia Mono", "IBM Plex Mono", Consolas, "Courier New", monospace;
+}
+
+.graph-label[data-priority="0"] rect { stroke: var(--vga-cyan); stroke-width: 2; }
+.graph-label[data-priority="0"] text { fill: var(--vga-yellow); }
+.graph-label[data-priority="1"] rect { stroke: var(--vga-white); }
+
+.graph-controls {
+  position: absolute;
+  z-index: 3;
+  top: 8px;
+  right: 8px;
+  width: 116px;
+  height: 36px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 2px;
+  background: var(--vga-blue-dark);
+}
+
+.graph-controls button {
+  width: 32px;
+  height: 28px;
+  border: 1px solid var(--vga-white);
+  padding: 0;
+  background: var(--vga-gray);
+  color: var(--vga-black);
+  cursor: pointer;
+}
+
+.graph-detail {
+  flex: none;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.65rem 0.8rem;
+  background: var(--vga-blue);
+  color: var(--vga-white);
+  overflow-wrap: anywhere;
+}
+
+.graph-detail:focus-visible {
+  outline: 2px dotted var(--vga-white);
+  outline-offset: -4px;
+}
+
+.graph-detail h3 {
+  margin: 0 0 0.45rem;
+  color: var(--vga-cyan);
+  font-size: inherit;
+}
+
+.graph-detail p,
+.graph-detail dl,
+.graph-detail dd { margin: 0; }
+
+.graph-detail dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.35rem 1.2rem;
+}
+
+.graph-detail dl div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.5rem;
+}
+
+.graph-detail dt { color: var(--vga-gray); }
+.graph-detail dd { color: var(--vga-yellow); }
+.graph-detail dl div:nth-child(2),
+.graph-detail dl div:nth-child(3) { grid-column: span 2; }
+
+.graph-empty {
+  min-height: 320px;
+  display: grid;
+  place-content: center;
+  gap: 0.4rem;
+  text-align: center;
+}
+
+.graph-empty p,
+.graph-empty small { margin: 0; }
+.graph-empty p { color: var(--vga-yellow); }
+.graph-empty small { color: var(--vga-gray); }
+
+@media (max-width: 720px) {
+  th,
+  td { padding-inline: 0.6ch; }
+
+  .graph-wrap { margin-inline: 0.45rem; }
+  .graph-canvas,
+  .brain-graph { min-height: 330px; height: min(52vh, 430px); }
+  .graph-detail dl { grid-template-columns: 1fr; }
+  .graph-detail dl div,
+  .graph-detail dl div:nth-child(2),
+  .graph-detail dl div:nth-child(3) { grid-column: auto; grid-template-columns: 11ch minmax(0, 1fr); }
+  .graph-note { white-space: normal; }
+}
+
+
+.filter-bar,
+.stream-bar,
+.paging-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.45rem 1rem;
+  padding: 0.45rem 1rem;
+  border-block: 1px solid var(--vga-gray-low);
+  background: var(--vga-blue-dark);
+}
+
+.filter-bar label {
+  display: grid;
+  gap: 0.15rem;
+  color: var(--vga-cyan);
+}
+
+.filter-bar select,
+.filter-bar input,
+.paging-bar button {
+  border: 1px solid var(--vga-white);
+  padding: 0.12rem 0.4rem;
+  background: var(--vga-gray);
+  color: var(--vga-black);
+}
+
+.filter-bar input { width: 22ch; }
+.paging-bar { justify-content: space-between; color: var(--vga-gray); }
+.paging-bar button { cursor: pointer; }
+.paging-bar button:disabled { cursor: default; color: var(--vga-gray-low); }
+.stream-bar { align-items: center; color: var(--vga-gray); }
+.stream-bar span[data-tone="ok"] { color: var(--vga-green); }
+.stream-bar span[data-tone="warn"] { color: var(--vga-red); }
+.stream-bar span[data-tone="dim"] { color: var(--vga-yellow); }
+.table-scroll time { color: var(--vga-cyan); }
+
+@media (max-width: 720px) {
+  .filter-bar label { flex: 1 1 12rem; }
+  .filter-bar select,
+  .filter-bar input { width: 100%; }
+}

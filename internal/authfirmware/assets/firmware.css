@@ -1,0 +1,242 @@
+:root {
+  color-scheme: dark;
+  font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+  background: #000000;
+  color: #ffffff;
+  --bios-blue: #0000a8;
+  --bios-blue-dark: #000050;
+  --bios-cyan: #54fcfc;
+  --bios-white: #ffffff;
+  --bios-gray: #a8a8a8;
+  --bios-gray-dark: #545454;
+  --bios-black: #000000;
+  --bios-yellow: #fcfc54;
+  --bios-red: #fc5454;
+  --bios-green: #54fc54;
+}
+
+* {
+  box-sizing: border-box;
+  border-radius: 0;
+}
+
+html,
+body {
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: var(--bios-black);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.firmware-auth {
+  width: min(720px, 100%);
+  border: 2px solid var(--bios-gray);
+  background: var(--bios-blue);
+  box-shadow: 10px 10px 0 var(--bios-blue-dark);
+}
+
+.firmware-titlebar,
+.firmware-keybar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem 1.5ch;
+  padding: 0.25rem 0.75rem;
+  background: var(--bios-gray);
+  color: var(--bios-black);
+  font-weight: 700;
+}
+
+.firmware-titlebar p,
+.firmware-keybar p {
+  margin: 0;
+}
+
+.firmware-screen {
+  padding: 1rem;
+}
+
+.firmware-screen h1,
+.firmware-screen h2,
+.firmware-screen p,
+.firmware-screen dl {
+  margin-top: 0;
+}
+
+.firmware-screen h1 {
+  margin-bottom: 0.35rem;
+  color: var(--bios-white);
+  font-size: clamp(1.25rem, 4vw, 1.8rem);
+}
+
+.firmware-screen h2 {
+  margin-bottom: 0.5rem;
+  color: var(--bios-cyan);
+  font-size: 1rem;
+  text-transform: uppercase;
+}
+
+.firmware-lead,
+.firmware-note {
+  color: var(--bios-gray);
+}
+
+.firmware-status {
+  display: inline-block;
+  margin-bottom: 1rem;
+  color: var(--bios-green);
+  font-weight: 700;
+}
+
+.firmware-status[data-state="locked"],
+.firmware-alert {
+  color: var(--bios-red);
+}
+
+.firmware-alert {
+  border: 1px solid var(--bios-red);
+  padding: 0.5rem 0.7rem;
+  background: var(--bios-blue-dark);
+  font-weight: 700;
+}
+
+.firmware-panel {
+  margin-top: 1rem;
+  border: 1px solid var(--bios-white);
+  padding: 0.85rem;
+  background: var(--bios-blue-dark);
+}
+
+.firmware-panel--secondary {
+  border-color: var(--bios-gray-dark);
+}
+
+.firmware-grid {
+  display: grid;
+  grid-template-columns: minmax(8rem, 13rem) minmax(0, 1fr);
+  gap: 0.25rem 1ch;
+  margin-bottom: 1rem;
+}
+
+.firmware-grid dt {
+  color: var(--bios-cyan);
+}
+
+.firmware-grid dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--bios-yellow);
+}
+
+label {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--bios-white);
+  font-weight: 700;
+}
+
+input[type="password"] {
+  width: 100%;
+  min-height: 44px;
+  border: 2px solid var(--bios-gray);
+  padding: 0.55rem 0.65rem;
+  background: var(--bios-black);
+  color: var(--bios-white);
+  caret-color: var(--bios-cyan);
+}
+
+input:focus-visible,
+a:focus-visible,
+button:focus-visible {
+  outline: 3px solid var(--bios-yellow);
+  outline-offset: 3px;
+}
+
+.firmware-action {
+  display: inline-block;
+  min-height: 44px;
+  margin-top: 0.8rem;
+  border: 2px solid var(--bios-white);
+  padding: 0.55rem 1rem;
+  background: var(--bios-gray);
+  color: var(--bios-black);
+  box-shadow: 4px 4px 0 var(--bios-black);
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.firmware-action--primary {
+  width: 100%;
+  background: var(--bios-cyan);
+}
+
+.firmware-action:hover {
+  background: var(--bios-white);
+}
+
+.firmware-keybar {
+  border-top: 2px solid var(--bios-white);
+  font-size: 0.9rem;
+}
+
+.firmware-keybar b {
+  color: var(--bios-blue-dark);
+}
+
+@media (max-width: 560px) {
+  body {
+    display: block;
+    padding: 0;
+    font-size: 14px;
+  }
+
+  .firmware-auth {
+    min-height: 100vh;
+    border-width: 0;
+    box-shadow: none;
+  }
+
+  .firmware-screen {
+    padding: 0.8rem;
+  }
+
+  .firmware-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .firmware-grid dd {
+    margin-bottom: 0.4rem;
+  }
+
+  .firmware-action {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation: none !important;
+    transition: none !important;
+  }
+}

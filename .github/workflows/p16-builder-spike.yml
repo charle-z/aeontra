@@ -1,0 +1,266 @@
+name: P16 private rootless builder candidate
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rootless-buildkit-candidate:
+    name: Rootless BuildKit candidate fixture
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify private builder contracts
+        run: go test ./internal/buildspike ./packaging/builder ./internal/coveragegate -count=1
+
+      - name: Install reviewed package resources
+        run: |
+          sudo install -d -o root -g root -m 0755 /usr/share/mcp-devbox-builder-candidate
+          sudo install -o root -g root -m 0755 packaging/builder/install-prerequisites.sh /usr/share/mcp-devbox-builder-candidate/install-prerequisites.sh
+          sudo install -o root -g root -m 0755 packaging/builder/stage-official-v0.31.2.sh /usr/share/mcp-devbox-builder-candidate/stage-official-v0.31.2.sh
+          sudo install -o root -g root -m 0755 packaging/builder/install-preverified.sh /usr/share/mcp-devbox-builder-candidate/install-preverified.sh
+          sudo install -o root -g root -m 0755 packaging/builder/remove.sh /usr/share/mcp-devbox-builder-candidate/remove.sh
+          sudo install -o root -g root -m 0644 packaging/builder/buildkitd.toml /usr/share/mcp-devbox-builder-candidate/buildkitd.toml
+          sudo install -o root -g root -m 0644 packaging/builder/mcp-devbox-buildkit.service /usr/share/mcp-devbox-builder-candidate/mcp-devbox-buildkit.service
+          sudo install -o root -g root -m 0644 packaging/builder/mcp-devbox-buildkit-runc.apparmor /usr/share/mcp-devbox-builder-candidate/mcp-devbox-buildkit-runc.apparmor
+
+      - name: Install rootless host prerequisites
+        run: sudo /usr/share/mcp-devbox-builder-candidate/install-prerequisites.sh
+
+      - name: Stage pinned official BuildKit release
+        run: sudo /usr/share/mcp-devbox-builder-candidate/stage-official-v0.31.2.sh
+
+      - name: Install and verify rootless service
+        run: |
+          sudo /usr/share/mcp-devbox-builder-candidate/install-preverified.sh
+          sudo systemd-analyze verify /etc/systemd/system/mcp-devbox-buildkit.service
+          sudo test -f /etc/apparmor.d/mcp-devbox-buildkit-runc
+          sudo cmp -s /etc/apparmor.d/mcp-devbox-buildkit-runc /usr/share/mcp-devbox-builder-candidate/mcp-devbox-buildkit-runc.apparmor
+          {
+            printf 'setting\tvalue\n'
+            for setting in apparmor_restrict_unprivileged_userns apparmor_restrict_unprivileged_unconfined; do
+              path="/proc/sys/kernel/$setting"
+              if test -r "$path"; then
+                printf '%s\t%s\n' "$setting" "$(cat "$path")"
+              else
+                printf '%s\tunsupported\n' "$setting"
+              fi
+            done
+          } > "$RUNNER_TEMP/host-posture.tsv"
+          sudo systemctl is-active --quiet mcp-devbox-buildkit.service
+          socket=/run/mcp-devbox-buildkit/buildkit/buildkitd.sock
+          sudo test -S "$socket"
+          sudo runuser -u mcp-build -- /usr/local/lib/mcp-devbox-builder/buildctl --addr "unix://$socket" debug workers
+          sudo systemctl show mcp-devbox-buildkit.service \
+            --property=User --property=Group --property=KillMode \
+            --property=ProtectProc \
+            --property=MemoryHigh --property=MemoryMax --property=TasksMax \
+            | tee "$RUNNER_TEMP/builder-properties.txt" >/dev/null
+          if sudo grep -Eq '^RestrictNamespaces=' /etc/systemd/system/mcp-devbox-buildkit.service; then
+            echo 'unexpected systemd namespace filter in builder unit' >&2
+            exit 1
+          fi
+          grep -Fx 'User=mcp-build' "$RUNNER_TEMP/builder-properties.txt"
+          grep -Fx 'Group=mcp-build' "$RUNNER_TEMP/builder-properties.txt"
+          grep -Fx 'KillMode=control-group' "$RUNNER_TEMP/builder-properties.txt"
+          grep -Fx 'ProtectProc=default' "$RUNNER_TEMP/builder-properties.txt"
+          grep -Fx 'MemoryHigh=1342177280' "$RUNNER_TEMP/builder-properties.txt"
+          grep -Fx 'MemoryMax=1879048192' "$RUNNER_TEMP/builder-properties.txt"
+          grep -Fx 'TasksMax=512' "$RUNNER_TEMP/builder-properties.txt"
+
+      - name: Prove service cgroup ownership and subtree
+        run: |
+          main_pid="$(sudo systemctl show mcp-devbox-buildkit.service --property=MainPID --value)"
+          test "$main_pid" -gt 1
+          cgroup="$(sudo awk -F: '$1 == "0" {print $3}' "/proc/$main_pid/cgroup")"
+          case "$cgroup" in
+            */mcp-devbox-buildkit.service) ;;
+            *) echo "unexpected builder cgroup: $cgroup" >&2; exit 1 ;;
+          esac
+          builder_uid="$(id -u mcp-build)"
+          processes="$RUNNER_TEMP/builder-processes.txt"
+          : > "$processes"
+          sudo find "/sys/fs/cgroup$cgroup" -name cgroup.procs -type f -exec cat {} + | sort -nu | while read -r pid; do
+            test -r "/proc/$pid/status" || continue
+            uid="$(sudo awk '/^Uid:/ {print $2}' "/proc/$pid/status")"
+            test "$uid" = "$builder_uid"
+            command="$(sudo cat "/proc/$pid/comm")"
+            printf '%s %s %s\n' "$pid" "$uid" "$command" | tee -a "$processes"
+          done
+          grep -Eq ' rootlesskit$' "$processes"
+          grep -Eq ' buildkitd$' "$processes"
+
+      - name: Classify hosted-runner runc reproducibility
+        run: |
+          set -Eeuo pipefail
+          fixture=/var/lib/mcp-devbox-builder-fixture
+          integrated_context="$fixture/integrated-context"
+          external_context="$fixture/external-context"
+          integrated_first="$fixture/integrated-first"
+          integrated_second="$fixture/integrated-second"
+          external_output="$fixture/external-output"
+          cache=/var/cache/mcp-devbox-buildkit/fixture
+          classification="$RUNNER_TEMP/runc-reproducibility.tsv"
+          printf 'status\treason\n' > "$classification"
+          sudo install -d -o mcp-build -g mcp-build -m 0700 \
+            "$integrated_context" "$external_context" \
+            "$integrated_first" "$integrated_second" "$external_output" "$cache"
+          printf 'FROM busybox:1.37.0\nRUN echo p16-runc-ok > /ok\n' \
+            | sudo tee "$integrated_context/Dockerfile" >/dev/null
+          printf '# syntax=docker/dockerfile:1.7\nFROM busybox:1.37.0\nRUN echo p16-external-runc-ok > /ok\n' \
+            | sudo tee "$external_context/Dockerfile" >/dev/null
+          sudo chown -R mcp-build:mcp-build "$fixture" "$cache"
+          socket=/run/mcp-devbox-buildkit/buildkit/buildkitd.sock
+
+          set +e
+          sudo runuser -u mcp-build -- /usr/local/lib/mcp-devbox-builder/buildctl \
+            --addr "unix://$socket" build --progress plain \
+            --frontend dockerfile.v0 \
+            --local "context=$integrated_context" --local "dockerfile=$integrated_context" \
+            --opt filename=Dockerfile --no-cache \
+            --export-cache "type=local,dest=$cache,mode=max,reset=true" \
+            --output "type=local,dest=$integrated_first" \
+            2>&1 | tee "$RUNNER_TEMP/integrated-first-build.log"
+          first_status=${PIPESTATUS[0]}
+          set -e
+
+          if test "$first_status" -ne 0; then
+            if grep -F 'runc run failed' "$RUNNER_TEMP/integrated-first-build.log" >/dev/null \
+              && grep -F 'error mounting "proc" to rootfs at "/proc"' "$RUNNER_TEMP/integrated-first-build.log" >/dev/null \
+              && grep -F 'operation not permitted' "$RUNNER_TEMP/integrated-first-build.log" >/dev/null; then
+              reason='GitHub-hosted Ubuntu 24.04 denies the nested rootless proc mount required by runc'
+              printf 'not-reproducible\t%s\n' "$reason" >> "$classification"
+              printf '::warning title=Host-specific runc acceptance moved to VPS::%s. The target VPS preflights are the acceptance gate.\n' "$reason"
+              exit 0
+            fi
+            message="$(tail -n 24 "$RUNNER_TEMP/integrated-first-build.log")"
+            message=${message//'%'/'%25'}
+            message=${message//$'\r'/'%0D'}
+            message=${message//$'\n'/' | '}
+            printf '::error title=Unexpected integrated runc failure::%s\n' "$message"
+            exit "$first_status"
+          fi
+
+          sudo runuser -u mcp-build -- grep -Fx 'p16-runc-ok' "$integrated_first/ok"
+
+          sudo runuser -u mcp-build -- /usr/local/lib/mcp-devbox-builder/buildctl \
+            --addr "unix://$socket" build --progress plain \
+            --frontend dockerfile.v0 \
+            --local "context=$integrated_context" --local "dockerfile=$integrated_context" \
+            --opt filename=Dockerfile \
+            --import-cache "type=local,src=$cache" \
+            --export-cache "type=local,dest=$cache,mode=max,reset=true" \
+            --output "type=local,dest=$integrated_second" \
+            2>&1 | tee "$RUNNER_TEMP/integrated-second-build.log"
+          sudo runuser -u mcp-build -- grep -Fx 'p16-runc-ok' "$integrated_second/ok"
+          grep -Eq 'CACHED|cached' "$RUNNER_TEMP/integrated-second-build.log"
+
+          sudo runuser -u mcp-build -- /usr/local/lib/mcp-devbox-builder/buildctl \
+            --addr "unix://$socket" build --progress plain \
+            --frontend dockerfile.v0 \
+            --local "context=$external_context" --local "dockerfile=$external_context" \
+            --opt filename=Dockerfile --no-cache \
+            --output "type=local,dest=$external_output" \
+            2>&1 | tee "$RUNNER_TEMP/external-frontend-build.log"
+          sudo runuser -u mcp-build -- grep -Fx 'p16-external-runc-ok' "$external_output/ok"
+
+          sudo runuser -u mcp-build -- /usr/local/lib/mcp-devbox-builder/buildctl \
+            --addr "unix://$socket" du -v \
+            2>&1 | tee "$RUNNER_TEMP/cache-usage.txt"
+          test -s "$RUNNER_TEMP/cache-usage.txt"
+          cache_usage_output_bytes="$(stat -c '%s' "$RUNNER_TEMP/cache-usage.txt")"
+          test "$cache_usage_output_bytes" -gt 0
+          test "$cache_usage_output_bytes" -le 1048576
+          sudo grep -F 'maxUsedSpace = "4GB"' /etc/mcp-devbox-builder/buildkitd.toml \
+            | tee "$RUNNER_TEMP/cache-policy.txt"
+          test -s "$RUNNER_TEMP/cache-policy.txt"
+          printf 'reproducible\tall integrated, cached and external runc checks passed\n' >> "$classification"
+
+      - name: Require explicit runc acceptance boundary
+        run: |
+          classification="$RUNNER_TEMP/runc-reproducibility.tsv"
+          test -s "$classification"
+          status="$(awk -F '\t' 'NR == 2 {print $1}' "$classification")"
+          case "$status" in
+            reproducible)
+              grep -Fx $'reproducible\tall integrated, cached and external runc checks passed' "$classification"
+              ;;
+            not-reproducible)
+              grep -Fx $'not-reproducible\tGitHub-hosted Ubuntu 24.04 denies the nested rootless proc mount required by runc' "$classification"
+              echo 'Hosted-runner runtime acceptance is explicitly non-blocking; target VPS preflights remain mandatory.'
+              ;;
+            *)
+              echo "missing or invalid runc reproducibility classification: $status" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Verify stop kills the complete service cgroup
+        run: |
+          main_pid="$(sudo systemctl show mcp-devbox-buildkit.service --property=MainPID --value)"
+          sudo systemctl stop mcp-devbox-buildkit.service
+          for _ in $(seq 1 30); do
+            if ! sudo kill -0 "$main_pid" 2>/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "builder process survived service stop" >&2
+          exit 1
+
+      - name: Verify conservative removal
+        run: |
+          sudo /usr/share/mcp-devbox-builder-candidate/remove.sh
+          test ! -e /etc/systemd/system/mcp-devbox-buildkit.service
+          test ! -e /usr/local/lib/mcp-devbox-builder/buildkitd
+          test -d /var/lib/mcp-devbox-buildkit
+          test -d /var/cache/mcp-devbox-buildkit
+          id mcp-build
+          test -d /var/lib/mcp-devbox-builder-staging
+
+      - name: Upload bounded fixture evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: p16-rootless-buildkit-candidate-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/builder-properties.txt
+            ${{ runner.temp }}/builder-processes.txt
+            ${{ runner.temp }}/host-posture.tsv
+            ${{ runner.temp }}/runc-reproducibility.tsv
+            ${{ runner.temp }}/integrated-first-build.log
+            ${{ runner.temp }}/integrated-second-build.log
+            ${{ runner.temp }}/external-frontend-build.log
+            ${{ runner.temp }}/cache-usage.txt
+            ${{ runner.temp }}/cache-policy.txt
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Cleanup fixture state
+        if: always()
+        run: |
+          sudo systemctl disable --now mcp-devbox-buildkit.service >/dev/null 2>&1 || true
+          sudo rm -rf \
+            /usr/share/mcp-devbox-builder-candidate \
+            /etc/apparmor.d/mcp-devbox-buildkit-runc \
+            /var/lib/mcp-devbox-builder-staging \
+            /var/lib/mcp-devbox-builder-fixture \
+            /var/lib/mcp-devbox-buildkit \
+            /var/cache/mcp-devbox-buildkit \
+            /run/mcp-devbox-buildkit
+          sudo userdel mcp-build >/dev/null 2>&1 || true

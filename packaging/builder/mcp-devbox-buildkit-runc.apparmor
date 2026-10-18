@@ -1,0 +1,12 @@
+# Dedicated AppArmor user-namespace grant for the reviewed private runc binary.
+# The profile remains otherwise unconfined; it does not disable Ubuntu's
+# system-wide unprivileged-user-namespace restriction.
+abi <abi/4.0>,
+include <tunables/global>
+
+profile mcp-devbox-buildkit-runc /usr/local/lib/mcp-devbox-builder/buildkit-runc flags=(unconfined) {
+  userns,
+
+  # Site-specific additions and overrides.
+  include if exists <local/mcp-devbox-buildkit-runc>
+}

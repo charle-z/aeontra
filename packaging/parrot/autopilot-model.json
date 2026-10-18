@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "provider": "opencode-local",
+  "endpoint": "http://127.0.0.1:4096/v1/next-action"
+}

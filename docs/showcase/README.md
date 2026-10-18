@@ -1,0 +1,22 @@
+# Public showcase evidence
+
+`pixelgrama-evidence.json` is the single canonical source for Pixelgrama evidence used by the MCP Devbox presentation.
+
+The file stays under `docs/showcase` because it is public documentation and reviewable evidence, while `evidence.go` embeds those exact bytes into the Go binary. The public server exposes the embedded resource at:
+
+```text
+/showcase/pixelgrama-evidence.json
+```
+
+This design adds no runtime GitHub or Pixelgrama dependency. An invalid, incomplete, missing, or unrecognized manifest fails Go tests and prevents the landing handler from starting with partial evidence.
+
+Schema version 1 validates:
+
+- the exact Pixelgrama repository, branch, production URL, wall route, and version endpoint;
+- closed JSON fields, HTTPS URLs, lowercase 40-character Git SHAs, successful public checks, CubePath, and Coolify;
+- a separate historical execution section and current production observation;
+- absence of obvious credential material, private filesystem paths, and private device, runtime, or workspace identifiers;
+- an honest authority status when the exact historical policy mode is not publicly verifiable;
+- direct operations separately from consequential operations whose public result is visible but whose one-time plan artifacts remain private.
+
+The manifest is static evidence. The landing must not query GitHub on page load, and the public resource grants no control-plane authority.

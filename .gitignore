@@ -1,0 +1,26 @@
+# Binaries (anchored to repo root so cmd/mcp-devbox/ source is NOT ignored)
+/bin/
+/dist/
+/mcp-devbox
+/mcp-devbox.exe
+*.exe
+*.test
+*.out
+
+# Go
+/vendor/
+node_modules/
+
+# Local runtime / audit artifacts
+*.log
+audit.log
+.agent-memory/handoffs/local-*
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Local config with secrets (never commit)
+*.local.json
+config.local.*

@@ -1,0 +1,15 @@
+{
+  "opencode": {
+    "repository": "https://github.com/anomalyco/opencode.git",
+    "version": "1.18.1",
+    "tag": "v1.18.1",
+    "commit": "99f638d8293f6985726ba509da602296c4963497"
+  },
+  "ai_sdk_provider": {
+    "package": "@ai-sdk/provider",
+    "version": "3.0.8",
+    "repository": "https://github.com/vercel/ai.git",
+    "tag": "@ai-sdk/provider@3.0.8",
+    "commit": "0808471734"
+  }
+}

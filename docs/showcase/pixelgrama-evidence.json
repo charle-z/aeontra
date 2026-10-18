@@ -1,0 +1,167 @@
+{
+  "schema_version": 1,
+  "project": {
+    "name": "Pixelgrama",
+    "repository": "https://github.com/charle-z/pixelgrama",
+    "base_branch": "main",
+    "production_url": "https://pixelgrama.mcp-devbox-charlez.duckdns.org",
+    "primary_public_route": "https://pixelgrama.mcp-devbox-charlez.duckdns.org/wall",
+    "version_url": "https://pixelgrama.mcp-devbox-charlez.duckdns.org/version",
+    "request_summary": "Build a public bilingual 16×16 pixel-art postcard wall with a closed data contract, deterministic rendering, no accounts or analytics, tested publication through GitHub, and deployment through Coolify on CubePath.",
+    "public_sessions": []
+  },
+  "historical_execution": {
+    "pull_requests": [
+      {
+        "number": 1,
+        "url": "https://github.com/charle-z/pixelgrama/pull/1",
+        "head_sha": "4900532c70ef2d14d65f9ab3a7ab9c5e58607ad5",
+        "purpose": "Initial tested Pixelgrama implementation.",
+        "checks": [
+          {
+            "name": "test",
+            "conclusion": "success",
+            "url": "https://github.com/charle-z/pixelgrama/actions/runs/30237877935/job/89889031330"
+          }
+        ]
+      },
+      {
+        "number": 15,
+        "url": "https://github.com/charle-z/pixelgrama/pull/15",
+        "head_sha": "689aa8eada37ad7e1dc3ad55dd7f387938526923",
+        "purpose": "Deterministic bilingual daily challenge.",
+        "checks": [
+          {
+            "name": "test",
+            "conclusion": "success",
+            "url": "https://github.com/charle-z/pixelgrama/actions/runs/30362085220/job/90284027026"
+          }
+        ]
+      },
+      {
+        "number": 16,
+        "url": "https://github.com/charle-z/pixelgrama/pull/16",
+        "head_sha": "8e751287eba5de37e3b04180bc6ca4e3f1a15d23",
+        "purpose": "Deterministic weekly mosaic evidence before the current production revision.",
+        "checks": [
+          {
+            "name": "test",
+            "conclusion": "success",
+            "url": "https://github.com/charle-z/pixelgrama/actions/runs/30366953096/job/90300539164"
+          }
+        ]
+      },
+      {
+        "number": 17,
+        "url": "https://github.com/charle-z/pixelgrama/pull/17",
+        "head_sha": "c6d1a92d718cef9affdc1c69bff0f9201a325054",
+        "purpose": "Versioned fixed palettes and public SQLite-derived statistics.",
+        "checks": [
+          {
+            "name": "test",
+            "conclusion": "success",
+            "url": "https://github.com/charle-z/pixelgrama/actions/runs/30389068227/job/90375648625"
+          }
+        ]
+      }
+    ],
+    "source_commits": [
+      {
+        "sha": "4900532c70ef2d14d65f9ab3a7ab9c5e58607ad5",
+        "role": "initial_pull_request_head",
+        "url": "https://github.com/charle-z/pixelgrama/commit/4900532c70ef2d14d65f9ab3a7ab9c5e58607ad5"
+      },
+      {
+        "sha": "689aa8eada37ad7e1dc3ad55dd7f387938526923",
+        "role": "daily_challenge_pull_request_head",
+        "url": "https://github.com/charle-z/pixelgrama/commit/689aa8eada37ad7e1dc3ad55dd7f387938526923"
+      },
+      {
+        "sha": "8e751287eba5de37e3b04180bc6ca4e3f1a15d23",
+        "role": "weekly_mosaic_pull_request_head",
+        "url": "https://github.com/charle-z/pixelgrama/commit/8e751287eba5de37e3b04180bc6ca4e3f1a15d23"
+      },
+      {
+        "sha": "c6d1a92d718cef9affdc1c69bff0f9201a325054",
+        "role": "current_feature_pull_request_head",
+        "url": "https://github.com/charle-z/pixelgrama/commit/c6d1a92d718cef9affdc1c69bff0f9201a325054"
+      },
+      {
+        "sha": "c6eaeae4561c450459cf31b4dc6b4b560abf7cf2",
+        "role": "current_source_main",
+        "url": "https://github.com/charle-z/pixelgrama/commit/c6eaeae4561c450459cf31b4dc6b4b560abf7cf2"
+      }
+    ]
+  },
+  "production_observation": {
+    "observed_commit": "c6eaeae4561c450459cf31b4dc6b4b560abf7cf2",
+    "source_main_commit": "c6eaeae4561c450459cf31b4dc6b4b560abf7cf2",
+    "matches_source_main": true,
+    "verified_on": "2026-07-28",
+    "routes": [
+      {
+        "path": "/",
+        "observed_status": 200,
+        "final_url": "https://pixelgrama.mcp-devbox-charlez.duckdns.org/wall",
+        "redirected": true,
+        "purpose": "Canonical production URL, deliberately redirected to the public wall."
+      },
+      {
+        "path": "/wall",
+        "observed_status": 200,
+        "final_url": "https://pixelgrama.mcp-devbox-charlez.duckdns.org/wall",
+        "redirected": false,
+        "purpose": "Primary public demonstration route."
+      },
+      {
+        "path": "/version",
+        "observed_status": 200,
+        "final_url": "https://pixelgrama.mcp-devbox-charlez.duckdns.org/version",
+        "redirected": false,
+        "purpose": "Public deployed commit and source provenance."
+      }
+    ],
+    "infrastructure": {
+      "provider": "CubePath",
+      "platform": "Coolify"
+    }
+  },
+  "authority_posture": {
+    "status": "not_publicly_verified",
+    "statement": "The public evidence proves the bounded repository, validation, publication, and production result, but it does not publish enough information to identify the exact read-only, ask, or allow mode used for every historical operation."
+  },
+  "operations": {
+    "direct": [
+      {
+        "name": "Repository inspection, bounded source changes, and test execution",
+        "verification": "public_process_documented",
+        "evidence_url": "https://github.com/charle-z/pixelgrama#built-through-mcp-devbox"
+      }
+    ],
+    "plan_protected": [
+      {
+        "name": "Branch publication and pull-request operations",
+        "verification": "result_public_plan_artifact_private",
+        "evidence_url": "https://github.com/charle-z/pixelgrama/pulls?q=is%3Apr+is%3Aclosed"
+      },
+      {
+        "name": "Coolify production deployment",
+        "verification": "result_public_plan_artifact_private",
+        "evidence_url": "https://pixelgrama.mcp-devbox-charlez.duckdns.org/version"
+      }
+    ]
+  },
+  "perimeter": {
+    "statement": "This manifest covers only public Pixelgrama source history, public GitHub validation, and the observed public production result used by the MCP Devbox presentation.",
+    "includes": [
+      "Public charle-z/pixelgrama repository, commits, pull requests, and successful checks",
+      "Public production URL, wall route, and version endpoint",
+      "CubePath as infrastructure provider and Coolify as deployment platform"
+    ],
+    "excludes": [
+      "Credentials, authenticated request data, and deployment configuration values",
+      "Device, runtime, workspace, and application identifiers",
+      "Private audit records, approvals, and one-time plan identifiers"
+    ]
+  }
+}

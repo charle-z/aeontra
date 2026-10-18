@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+
+rm -f /etc/polkit-1/rules.d/49-mcp-devbox-updater.rules
+
+if [ "$1" = remove ] || [ "$1" = deconfigure ]; then
+  if [ -s /etc/mcp-devbox/edge-user ]; then
+    EDGE_USER="$(cat /etc/mcp-devbox/edge-user)"
+    systemctl disable --now "mcp-devbox-opencode-edge@${EDGE_USER}.service" || true
+  fi
+fi
+
+# Identity, keys, workspaces, checkpoints and release rollback state are preserved.
+exit 0

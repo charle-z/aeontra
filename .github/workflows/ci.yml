@@ -1,0 +1,184 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.5"
+          cache: true
+
+      - name: Set up pinned pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.13.1
+          run_install: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install console dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Verify and build console
+        run: pnpm console:verify
+
+      - name: Check formatting
+        run: |
+          files="$(gofmt -l .)"
+          test -z "$files" || { echo "$files"; exit 1; }
+
+      - name: Verify MCP instance replacement continuity
+        run: go test ./internal/mcpserver -run '^TestRedeployE2E' -count=1
+
+      - name: Test with atomic coverage
+        run: go test ./... -coverprofile=coverage.out -covermode=atomic -count=1
+
+      - name: Enforce package coverage
+        run: go run ./cmd/coverage-gate --profile coverage.out
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+      - name: Validate GitHub Actions
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+
+
+  responsive-graph:
+    name: Responsive Brain graph
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up pinned pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.13.1
+          run_install: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install console dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Install Chromium
+        run: pnpm --dir web/console exec playwright install --with-deps chromium
+
+      - name: Run responsive graph tests
+        run: pnpm console:test:graph
+
+      - name: Upload graph screenshots and report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: brain-graph-responsive-${{ github.sha }}
+          path: |
+            web/console/test-results/graph
+            web/console/playwright-report
+          if-no-files-found: error
+          retention-days: 14
+
+  race:
+    name: Race detector
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CGO_ENABLED: "1"
+      CC: gcc
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.5"
+          cache: true
+
+      - name: Set up pinned pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.13.1
+          run_install: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install console dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build console assets for Go tests
+        run: pnpm console:build
+
+      - name: Run race detector
+        run: go test -race ./... -count=1
+
+  staticcheck:
+    name: Staticcheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.5"
+          cache: true
+
+      - name: Run staticcheck
+        env:
+          XDG_CACHE_HOME: ${{ runner.temp }}/staticcheck-cache
+        run: go run honnef.co/go/tools/cmd/staticcheck@v0.7.0 ./...
+
+  govulncheck:
+    name: Govulncheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.5"
+          cache: true
+
+      - name: Run govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...

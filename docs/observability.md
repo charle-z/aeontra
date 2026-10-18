@@ -1,0 +1,157 @@
+# Structured observability
+
+P7 adds a private, content-free JSONL operational stream. It complements the richer
+append-only audit log; it does not replace it.
+
+## Persistent installation
+
+No extra service or port is required. The production image uses the existing private
+`/state` volume and defaults to:
+
+```text
+MCP_DEVBOX_STATE_ROOT=/state
+MCP_DEVBOX_OBSERVABILITY=file
+MCP_DEVBOX_OBSERVABILITY_MAX_BYTES=16777216
+```
+
+This creates `/state/logs/observability.jsonl`, `/state/logs/audit.jsonl`, and
+`/state/telemetry/metrics.db`. Events are one JSON object per line and contain only
+the closed fields documented below. `both` additionally mirrors observability to
+stderr; `off` disables JSONL emission but not the content-free aggregate store.
+
+## Optional file mode
+
+```text
+MCP_DEVBOX_OBSERVABILITY=file
+MCP_DEVBOX_OBSERVABILITY_PATH=/state/logs/observability.jsonl
+MCP_DEVBOX_OBSERVABILITY_MAX_BYTES=16777216
+```
+
+Use `both` to retain stderr and the file. File/both mode requires a writable private
+mount. Recommended container mount:
+
+```text
+/state  -> private persistent volume owned by the MCP runtime uid
+```
+
+The daemon creates directories with `0700`, files with `0600`, rotates at the byte
+limit, and keeps four total fixed segments (active plus `.1`, `.2`, `.3`). Audit uses
+the same secure writer with four 32 MiB segments. The fallback outside the production
+image is `<primary-root>/.agent-memory/state`. Symlink files/ancestors and broadly
+accessible target directories are rejected.
+
+## Persistent metrics
+
+Embedded SQLite stores only hourly and daily aggregates, with no listener. The DB has
+a 128 MiB maximum page target. Hourly buckets are retained for seven days and daily
+buckets for 90 days. Pruning runs at startup and every 256 observed events.
+
+Exact counters are `request_count`, `tool_call_count`, `input_bytes`, `output_bytes`,
+`http_duration_ms`, `tool_duration_ms`, measurable `external_wait_ms`, outcomes, 4xx
+and 5xx. Closed dimensions are global plus optional opaque `project_id` and `task_id`,
+transport, route, tool and outcome. Prompts, params, results, paths, IPs, credentials,
+cookies, Brain content and model reasoning have no schema column.
+
+`tokens_estimate = bytes / 4` is labeled
+`estimate_bytes_div_4_not_billing`. It is display-only, never provider billing or
+claimed as actual model tokens.
+
+## Flags
+
+Equivalent flags override environment values:
+
+```text
+--observability off|stderr|file|both
+--observability-path /absolute/private/path.jsonl
+--observability-max-bytes 16777216
+```
+
+Allowed byte range: 1 MiB through 1 GiB. Invalid mode, relative path, out-of-range
+size, or unwritable file causes startup to fail before MCP begins serving.
+
+## Event schema
+
+Fields are omitted when not applicable:
+
+```json
+{
+  "schema_version": 2,
+  "time": "RFC3339Nano UTC",
+  "level": "info|error",
+  "component": "server|http|mcp",
+  "event": "server_start|server_stop|server_drain_start|server_drain_end|http_request|rpc_request|mcp_session_created|mcp_session_reinitialized|mcp_session_rejected",
+  "request_id": "server-generated opaque id",
+  "transport": "stdio|http|internal",
+  "route": "mcp|health|version|oauth|other",
+  "method": "initialize|tools/list|tools/call|ping|notification|other",
+  "tool": "known public MCP tool name",
+  "project_id": "optional safe opaque id",
+  "task_id": "optional safe opaque id",
+  "outcome": "success|accepted|denied|error|cancelled",
+  "status_code": 200,
+  "duration_ms": 4,
+  "input_bytes": 120,
+  "output_bytes": 80,
+  "http_duration_ms": 4,
+  "tool_duration_ms": 3,
+  "external_wait_ms": 0,
+  "error_class": "authentication_failed|parse_error|invalid_params|unknown_method|unknown_tool|tool_error|session_missing|session_unknown|session_expired|server_draining|transport_error|internal_error",
+  "commit": "git sha",
+  "tool_count": 62,
+  "catalog_hash": "sha256:...",
+  "root_count": 1,
+  "boot_id": "ephemeral process id",
+  "reconnect_count": 2
+}
+```
+
+There is no free-form message or attributes map. `boot_id` is regenerated for every process and carries no authority. `reconnect_count` is an aggregate of recognized reinitializations where a client explicitly supplied a previous `Mcp-Session-Id`; the raw session value is never stored or emitted. A one-way session digest is persisted outside observability so the logical session survives process replacement. Session rejection events classify missing, unknown, revoked, expired, or draining state without exposing the identifier. The current commit and catalog hash are attached so operators can separate server replacement from a stale client presentation.
+
+## Data that is never emitted
+
+Prompts, bodies, params, tool arguments, results, source, file content, paths,
+repository names, commands, targets, URLs, query strings, headers, bearer tokens,
+OAuth identities, usernames, email addresses, IPs, domains, or raw errors.
+
+`X-MCP-Request-ID` is generated by the server. Client-provided correlation values are
+ignored. `Mcp-Session-Id`, `Authorization`, cookies and OAuth payloads are never copied
+into observability. An unknown session can indicate expiry, revocation, another authenticated
+principal, or invalid input; a normal instance replacement preserves the session. The server does not claim a stale client catalog unless external
+deployment evidence proves the prior hash.
+
+## Updating
+
+1. Preserve the prior audit file; the runtime never deletes or rewrites it.
+2. Ensure `/state` is writable by UID/GID 10001.
+3. Deploy with `MCP_DEVBOX_STATE_ROOT=/state` and verify all three new paths.
+4. Confirm `0700` directories, `0600` files and fixed rotation.
+5. Archive the old audit manually only if policy permits.
+
+If `--audit` still names a legacy file in a broadly accessible directory, remove the
+override or move it into a dedicated `0700` directory. Startup fails closed rather
+than weakening the new writer. The legacy file is not deleted.
+
+## Rollback
+
+Deploy the previous known-good binary while retaining `/state`; old binaries ignore
+the new paths. The prior audit remains untouched. `MCP_DEVBOX_OBSERVABILITY=off`
+disables JSONL only; content-free metrics remain active in the new binary.
+
+## Troubleshooting
+
+- **Startup rejects mode:** use exactly `off`, `stderr`, `file`, or `both`.
+- **Path rejected:** use an absolute path controlled by the administrator.
+- **Permission denied:** fix mount ownership for the runtime uid; do not run the MCP as
+  root solely to write logs.
+- **No events in stderr:** confirm the platform captures container stderr and mode is
+  not `off` or `file`.
+- **Segments `.1` through `.3`:** expected fixed four-segment rotation.
+- **Missing request correlation:** inspect the response `X-MCP-Request-ID`; the client
+  cannot choose this value.
+- **Need request content:** use the private audit/evidence workflow where authorized;
+  do not expand observability fields.
+
+For connector incidents, correlate event timestamps and request ids with
+`docs/runbooks/client-connector-reliability.md`. Absence of server errors while health,
+commit, and request completions remain stable supports a client/transport presentation
+classification; it does not prove an OpenAI root cause.

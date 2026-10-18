@@ -1,0 +1,653 @@
+package mcpserver
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/charle-z/mcp-devbox/internal/buildinfo"
+	"github.com/charle-z/mcp-devbox/internal/console"
+	"github.com/charle-z/mcp-devbox/internal/landing"
+	"github.com/charle-z/mcp-devbox/internal/oauth"
+	"github.com/charle-z/mcp-devbox/internal/observability"
+)
+
+// maxHTTPBody caps a single MCP request body. MCP messages are small; this bounds
+// memory and abuse over the network transport.
+const (
+	maxHTTPBody                = 4 << 20 // 4 MiB
+	maxHTTPBatchItems          = 128
+	defaultHTTPShutdownTimeout = 8 * time.Second
+)
+
+// DefaultMCPPath is the endpoint that speaks MCP (streamable-HTTP subset).
+const DefaultMCPPath = "/mcp"
+
+// HTTPHandler returns an http.Handler that exposes the MCP tools over a
+// streamable-HTTP subset (single endpoint, JSON-RPC over POST). Authentication is
+// MANDATORY: every /mcp request must present a valid credential, else 401.
+//
+// Two auth modes coexist during the transition. A static Authorization bearer
+// is accepted when token != "". Query-string credentials are always rejected.
+// When oauthProvider != nil, its discovery + flow
+// endpoints are mounted and a valid OAuth access token is accepted; a 401 then carries a
+// WWW-Authenticate header pointing at the Protected Resource Metadata so clients such as
+// ChatGPT can bootstrap the OAuth flow. The same Server.handle path (and therefore the
+// same Policy, Service, and redaction) is reused — no tool or policy logic is duplicated.
+//
+// All request bodies are treated as untrusted input. Tool results still carry repo
+// file contents as DATA, never instructions.
+func (s *Server) HTTPHandler(token string, oauthProvider *oauth.Provider) http.Handler {
+	return s.HTTPHandlerWithOptions(token, oauthProvider, HTTPOptions{})
+}
+
+// HTTPHandlerWithOptions preserves the existing MCP/OAuth routes, mounts the
+// unauthenticated presentation-only landing, and adds the authenticated console
+// configured by opts.
+func (s *Server) HTTPHandlerWithOptions(token string, oauthProvider *oauth.Provider, opts HTTPOptions) http.Handler {
+	return s.httpHandlerWithRuntime(token, oauthProvider, opts, newHTTPServerLifecycle(), s.configuredHTTPSessionStore(), newHTTPTransportTelemetry())
+}
+
+func (s *Server) httpHandlerWithLifecycle(token string, oauthProvider *oauth.Provider, opts HTTPOptions, lifecycle *httpServerLifecycle) http.Handler {
+	return s.httpHandlerWithRuntime(token, oauthProvider, opts, lifecycle, s.configuredHTTPSessionStore(), newHTTPTransportTelemetry())
+}
+
+func (s *Server) httpHandlerWithState(token string, oauthProvider *oauth.Provider, opts HTTPOptions, lifecycle *httpServerLifecycle, sessions *httpSessionStore) http.Handler {
+	return s.httpHandlerWithRuntime(token, oauthProvider, opts, lifecycle, sessions, newHTTPTransportTelemetry())
+}
+
+func (s *Server) httpHandlerWithRuntime(token string, oauthProvider *oauth.Provider, opts HTTPOptions, lifecycle *httpServerLifecycle, sessions *httpSessionStore, telemetry *httpTransportTelemetry) http.Handler {
+	runtimeInfo := s.mustRuntimeInfo()
+	mux := http.NewServeMux()
+	landingHandler, err := landing.New()
+	if err != nil {
+		panic(fmt.Sprintf("invalid landing configuration: %v", err))
+	}
+	landingHandler.Register(mux)
+
+	if oauthProvider != nil {
+		oauthProvider.RegisterRoutes(mux)
+	}
+
+	// authenticate returns one stable logical principal while still validating the
+	// current credential on every request. OAuth access-token rotation therefore does
+	// not rotate the MCP session identity.
+	authenticate := func(r *http.Request) (string, bool) {
+		if token != "" && authOK(r, token) {
+			return "static-owner", true
+		}
+		if oauthProvider != nil {
+			return oauthProvider.Principal(r)
+		}
+		return "", false
+	}
+	authorized := func(r *http.Request) bool {
+		_, ok := authenticate(r)
+		return ok
+	}
+	// challenge sets the correct WWW-Authenticate header for a 401. When OAuth is on it
+	// points at the exact Protected Resource Metadata (RFC 9728 §5.1).
+	challenge := func(w http.ResponseWriter) {
+		if oauthProvider != nil {
+			w.Header().Set("WWW-Authenticate", oauthProvider.ChallengeHeader())
+		} else {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="mcp-devbox"`)
+		}
+	}
+
+	consoleHandler, err := console.New(console.Config{
+		StaticToken: token,
+		Runtime: console.Status{
+			Status:          runtimeInfo.Status,
+			Version:         runtimeInfo.Version,
+			ProtocolVersion: runtimeInfo.ProtocolVersion,
+			Commit:          runtimeInfo.Commit,
+			ToolCount:       runtimeInfo.ToolCount,
+			CatalogHash:     runtimeInfo.CatalogHash,
+		},
+		Authorize:       authorized,
+		OAuthProvider:   oauthProvider,
+		TaskJournal:     s.journal,
+		DataProvider:    s.consoleDataProvider(token, oauthProvider, opts.EdgeState),
+		Session:         console.SessionConfig{Path: opts.ConsoleSessionPath},
+		DefaultTimezone: opts.ConsoleTimezone,
+	})
+	if err != nil {
+		panic(fmt.Sprintf("invalid console configuration: %v", err))
+	}
+	consoleHandler.Register(mux)
+	if opts.EdgeHandler != nil {
+		mux.Handle("/edge/v1/", opts.EdgeHandler)
+	}
+
+	// Unauthenticated liveness probe. It reports the running version + git commit so a
+	// deploy can be confirmed to have shipped the latest code (no sensitive information).
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "ok mcp-devbox "+buildinfo.Version+" "+buildinfo.Commit+"\n")
+	})
+
+	// Readiness is separate from liveness. During a normal replacement the process
+	// remains alive long enough to finish active work, but it must stop receiving new
+	// sessions before the listener is closed.
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", http.MethodGet)
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		if !lifecycle.Ready() {
+			http.Error(w, "draining", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "ready\n")
+	})
+
+	mux.HandleFunc("/version", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", http.MethodGet)
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(runtimeInfo)
+	})
+
+	mux.HandleFunc(DefaultMCPPath, func(w http.ResponseWriter, r *http.Request) {
+		observeSessionReject := func(validation httpSessionValidation) {
+			s.emitHTTPSessionEvent(r, observability.EventMCPSessionRejected, observability.OutcomeDenied, sessionValidationErrorClass(validation), telemetry.ReconnectCount())
+		}
+		switch r.Method {
+		case http.MethodPost:
+			principal, ok := authenticate(r)
+			if !ok {
+				challenge(w)
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			s.handleHTTPPost(w, r, lifecycle, sessions, telemetry, principal, runtimeInfo.CatalogHash)
+		case http.MethodGet:
+			principal, ok := authenticate(r)
+			if !ok {
+				challenge(w)
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			sessionID, record, ok := validateHTTPSessionObserved(w, r, sessions, principal, runtimeInfo.CatalogHash, true, observeSessionReject)
+			if !ok {
+				return
+			}
+			if s.clients != nil {
+				s.clients.Put(sessionID, record.Capabilities)
+			}
+			handleHTTPGetSSE(w, r, lifecycle)
+		case http.MethodDelete:
+			principal, ok := authenticate(r)
+			if !ok {
+				challenge(w)
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			sessionID, _, ok := validateHTTPSessionObserved(w, r, sessions, principal, runtimeInfo.CatalogHash, true, observeSessionReject)
+			if !ok {
+				return
+			}
+			if _, err := sessions.DeleteBound(sessionID, principal); err != nil {
+				writeHTTPSessionError(w, http.StatusServiceUnavailable, "MCP session storage is temporarily unavailable")
+				return
+			}
+			if s.clients != nil {
+				s.clients.Delete(sessionID)
+			}
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			w.Header().Set("Allow", "GET, POST, DELETE")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	return s.withHTTPObservability(withRuntimeHeaders(mux, runtimeInfo))
+}
+
+func withRuntimeHeaders(next http.Handler, info RuntimeInfo) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("X-MCP-Server-Commit", info.Commit)
+		w.Header().Set("X-MCP-Catalog-Hash", info.CatalogHash)
+		w.Header().Set("X-MCP-Tool-Count", fmt.Sprintf("%d", info.ToolCount))
+		next.ServeHTTP(w, r)
+	})
+}
+
+type requestIDContextKey struct{}
+
+type observabilityResponseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *observabilityResponseWriter) WriteHeader(status int) {
+	if w.status != 0 {
+		return
+	}
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *observabilityResponseWriter) Write(data []byte) (int, error) {
+	if w.status == 0 {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(data)
+}
+
+func (w *observabilityResponseWriter) Flush() {
+	if w.status == 0 {
+		w.WriteHeader(http.StatusOK)
+	}
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+// Unwrap preserves optional ResponseController interfaces of the underlying writer.
+func (w *observabilityResponseWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
+func (s *Server) withHTTPObservability(next http.Handler) http.Handler {
+	runtimeInfo := s.mustRuntimeInfo()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		started := time.Now()
+		requestID := observability.NewRequestID()
+		w.Header().Set("X-MCP-Request-ID", requestID)
+		recorder := &observabilityResponseWriter{ResponseWriter: w}
+		ctx := context.WithValue(r.Context(), requestIDContextKey{}, requestID)
+		next.ServeHTTP(recorder, r.WithContext(ctx))
+		status := recorder.status
+		if status == 0 {
+			status = http.StatusOK
+		}
+		outcome := observability.OutcomeSuccess
+		level := observability.LevelInfo
+		errorClass := observability.ErrorNone
+		switch {
+		case status == http.StatusAccepted:
+			outcome = observability.OutcomeAccepted
+		case status == http.StatusUnauthorized || status == http.StatusForbidden:
+			outcome = observability.OutcomeDenied
+			level = observability.LevelError
+			errorClass = observability.ErrorAuthentication
+		case status >= http.StatusBadRequest:
+			outcome = observability.OutcomeError
+			level = observability.LevelError
+			errorClass = observability.ErrorTransport
+		}
+		if s.observer != nil {
+			duration := time.Since(started).Milliseconds()
+			_ = s.observer.Emit(observability.Event{
+				Level:          level,
+				Component:      observability.ComponentHTTP,
+				Name:           observability.EventHTTPRequest,
+				RequestID:      requestID,
+				Transport:      observability.TransportHTTP,
+				Route:          normalizedRoute(r.URL.Path),
+				Outcome:        outcome,
+				StatusCode:     status,
+				DurationMS:     duration,
+				HTTPDurationMS: duration,
+				ErrorClass:     errorClass,
+				Commit:         runtimeInfo.Commit,
+				ToolCount:      runtimeInfo.ToolCount,
+				CatalogHash:    runtimeInfo.CatalogHash,
+				BootID:         s.BootID(),
+			})
+		}
+	})
+}
+
+func requestIDFromContext(ctx context.Context) string {
+	if requestID, ok := ctx.Value(requestIDContextKey{}).(string); ok && requestID != "" {
+		return requestID
+	}
+	return observability.NewRequestID()
+}
+
+func normalizedRoute(path string) observability.Route {
+	switch {
+	case path == DefaultMCPPath:
+		return observability.RouteMCP
+	case path == "/healthz", path == "/readyz":
+		return observability.RouteHealth
+	case path == "/version":
+		return observability.RouteVersion
+	case path == "/console", strings.HasPrefix(path, "/console/"):
+		return observability.RouteConsole
+	case strings.HasPrefix(path, "/.well-known/"),
+		strings.HasPrefix(path, "/oauth/"),
+		path == "/authorize",
+		path == "/token",
+		path == "/register":
+		return observability.RouteOAuth
+	default:
+		return observability.RouteOther
+	}
+}
+
+// authOK authorizes only an Authorization: Bearer header. Credentials in
+// query parameters are intentionally ignored so secrets cannot enter URL history,
+// proxy logs, screenshots or referrers. An empty configured token denies all.
+func authOK(r *http.Request, token string) bool {
+	if token == "" {
+		return false
+	}
+	const prefix = "Bearer "
+	header := r.Header.Get("Authorization")
+	if !strings.HasPrefix(header, prefix) {
+		return false
+	}
+	provided := strings.TrimSpace(header[len(prefix):])
+	return subtle.ConstantTimeCompare([]byte(provided), []byte(token)) == 1
+}
+
+func newHTTPSessionID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err == nil {
+		return hex.EncodeToString(b[:])
+	}
+	return fmt.Sprintf("mcp-devbox-%d", time.Now().UnixNano())
+}
+
+// handleHTTPGetSSE serves the server->client SSE stream. The catalog is immutable
+// for the lifetime of a process, so a restart must not fabricate tools/list_changed.
+// Clients observe a real deployed contract change by creating a fresh session and
+// calling tools/list on the replacement instance.
+func handleHTTPGetSSE(w http.ResponseWriter, r *http.Request, lifecycle *httpServerLifecycle) {
+	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate, no-transform")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+
+	flusher, _ := w.(http.Flusher)
+	writeChunk := func(s string) bool {
+		if _, err := io.WriteString(w, s); err != nil {
+			return false
+		}
+		if flusher != nil {
+			flusher.Flush()
+		}
+		return true
+	}
+
+	if !writeChunk(": mcp-devbox stream open\n\n") {
+		return
+	}
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+	ctx := r.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-lifecycle.DrainDone():
+			return
+		case <-ticker.C:
+			if !writeChunk(": ping\n\n") {
+				return
+			}
+		}
+	}
+}
+
+// handleHTTPPost reads one JSON-RPC message (or a batch array) and replies. A lone
+// notification/response yields 202 Accepted with no body; a request yields 200 with
+// an application/json response; a batch yields a JSON array of the non-empty replies.
+func (s *Server) handleHTTPPost(w http.ResponseWriter, r *http.Request, lifecycle *httpServerLifecycle, sessions *httpSessionStore, telemetry *httpTransportTelemetry, principal, catalogHash string) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxHTTPBody))
+	if err != nil {
+		// MaxBytesReader signals oversize via its error; report 413.
+		var mbErr *http.MaxBytesError
+		if errors.As(err, &mbErr) {
+			http.Error(w, "request too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	inputBytes := len(body)
+	trimmed := strings.TrimSpace(string(body))
+	if trimmed == "" {
+		http.Error(w, "empty body", http.StatusBadRequest)
+		return
+	}
+	initializing := containsInitialize([]byte(trimmed))
+	if initializing && lifecycle.Draining() {
+		s.emitHTTPSessionEvent(r, observability.EventMCPSessionRejected, observability.OutcomeDenied, observability.ErrorServerDraining, telemetry.ReconnectCount())
+		w.Header().Set("Retry-After", "1")
+		http.Error(w, "server draining; retry initialize after replacement", http.StatusServiceUnavailable)
+		return
+	}
+
+	var sessionID string
+	if initializing {
+		params := initializeRequestParams([]byte(trimmed))
+		capabilities := parseClientCapabilities(params, time.Now().UTC())
+		priorSessionID := strings.TrimSpace(r.Header.Get("Mcp-Session-Id"))
+		if priorSessionID != "" {
+			_, validation, err := sessions.ValidateBound(priorSessionID, principal, catalogHash, true)
+			if err != nil {
+				writeHTTPSessionError(w, http.StatusServiceUnavailable, "MCP session storage is temporarily unavailable")
+				return
+			}
+			if validation == httpSessionValid {
+				sessionID = priorSessionID
+				if err := sessions.UpdateCapabilitiesBound(sessionID, principal, catalogHash, capabilities); err != nil {
+					writeHTTPSessionError(w, http.StatusServiceUnavailable, "MCP session storage is temporarily unavailable")
+					return
+				}
+			}
+		}
+		if sessionID == "" {
+			created, err := sessions.CreateBound(principal, catalogHash, capabilities)
+			if err != nil {
+				writeHTTPSessionError(w, http.StatusServiceUnavailable, "MCP session storage is temporarily unavailable")
+				return
+			}
+			sessionID = created
+		}
+		w.Header().Set("Mcp-Session-Id", sessionID)
+		eventName, reconnectCount := telemetry.recordInitialize(r)
+		s.emitHTTPSessionEvent(r, eventName, observability.OutcomeSuccess, observability.ErrorNone, reconnectCount)
+	} else {
+		sessionID, record, ok := validateHTTPSessionObserved(w, r, sessions, principal, catalogHash, true, func(validation httpSessionValidation) {
+			s.emitHTTPSessionEvent(r, observability.EventMCPSessionRejected, observability.OutcomeDenied, sessionValidationErrorClass(validation), telemetry.ReconnectCount())
+		})
+		if !ok {
+			return
+		}
+		if s.clients != nil {
+			s.clients.Put(sessionID, record.Capabilities)
+		}
+	}
+
+	// JSON-RPC batch (array) support.
+	if trimmed[0] == '[' {
+		responses := s.handleBatchObservedSession([]byte(trimmed), observability.TransportHTTP, requestIDFromContext(r.Context()), sessionID)
+		if len(responses) == 0 {
+			s.payload.record(inputBytes, 0)
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
+		var output bytes.Buffer
+		output.WriteByte('[')
+		for i, resp := range responses {
+			if i > 0 {
+				output.WriteByte(',')
+			}
+			output.Write(resp)
+		}
+		output.WriteByte(']')
+		s.payload.record(inputBytes, output.Len())
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(output.Bytes())
+		return
+	}
+
+	resp := s.handleObservedSession([]byte(trimmed), observability.TransportHTTP, requestIDFromContext(r.Context()), sessionID)
+	if resp == nil {
+		// Notification: nothing to return.
+		s.payload.record(inputBytes, 0)
+		w.WriteHeader(http.StatusAccepted)
+		return
+	}
+	s.payload.record(inputBytes, len(resp))
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(resp)
+}
+
+func initializeRequestParams(raw []byte) json.RawMessage {
+	var message struct {
+		Method string          `json:"method"`
+		Params json.RawMessage `json:"params"`
+	}
+	if json.Unmarshal(raw, &message) == nil && message.Method == "initialize" {
+		return message.Params
+	}
+	var batch []struct {
+		Method string          `json:"method"`
+		Params json.RawMessage `json:"params"`
+	}
+	if json.Unmarshal(raw, &batch) == nil {
+		for _, message := range batch {
+			if message.Method == "initialize" {
+				return message.Params
+			}
+		}
+	}
+	return nil
+}
+
+func containsInitialize(raw []byte) bool {
+	var msg struct {
+		Method string `json:"method"`
+	}
+	if json.Unmarshal(raw, &msg) == nil && msg.Method == "initialize" {
+		return true
+	}
+	var batch []struct {
+		Method string `json:"method"`
+	}
+	if json.Unmarshal(raw, &batch) == nil {
+		for _, msg := range batch {
+			if msg.Method == "initialize" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// handleBatch processes one internal JSON-RPC batch.
+func (s *Server) handleBatch(raw []byte) [][]byte {
+	return s.handleBatchObserved(raw, observability.TransportInternal, observability.NewRequestID())
+}
+
+// handleBatchObserved processes each element of a JSON-RPC batch, dropping notification
+// replies and sharing one server-generated request id across the transport operation.
+func (s *Server) handleBatchObserved(raw []byte, transport observability.Transport, requestID string) [][]byte {
+	return s.handleBatchObservedSession(raw, transport, requestID, string(transport))
+}
+
+func (s *Server) handleBatchObservedSession(raw []byte, transport observability.Transport, requestID, sessionKey string) [][]byte {
+	started := time.Now()
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	token, err := decoder.Token()
+	if err != nil || token != json.Delim('[') {
+		s.emitRPCFailure(transport, requestID, observability.ErrorParse, started)
+		return [][]byte{mustMarshal(errorResponse(nil, -32700, "parse error"))}
+	}
+
+	out := make([][]byte, 0)
+	count := 0
+	for decoder.More() {
+		count++
+		if count > maxHTTPBatchItems {
+			s.emitRPCFailure(transport, requestID, observability.ErrorInvalidParams, started)
+			return [][]byte{mustMarshal(errorResponse(nil, -32600, "invalid request: batch too large"))}
+		}
+		var message json.RawMessage
+		if err := decoder.Decode(&message); err != nil {
+			s.emitRPCFailure(transport, requestID, observability.ErrorParse, started)
+			return [][]byte{mustMarshal(errorResponse(nil, -32700, "parse error"))}
+		}
+		if response := s.handleObservedSession(message, transport, requestID, sessionKey); response != nil {
+			out = append(out, response)
+		}
+	}
+	if count == 0 {
+		s.emitRPCFailure(transport, requestID, observability.ErrorInvalidParams, started)
+		return [][]byte{mustMarshal(errorResponse(nil, -32600, "invalid request: empty batch"))}
+	}
+	if _, err := decoder.Token(); err != nil {
+		s.emitRPCFailure(transport, requestID, observability.ErrorParse, started)
+		return [][]byte{mustMarshal(errorResponse(nil, -32700, "parse error"))}
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		s.emitRPCFailure(transport, requestID, observability.ErrorParse, started)
+		return [][]byte{mustMarshal(errorResponse(nil, -32700, "parse error"))}
+	}
+	return out
+}
+
+// ServeHTTP starts an HTTP server bound to addr that serves the MCP endpoint with
+// mandatory auth, shutting down gracefully when ctx is cancelled. At least one auth
+// mechanism must be configured: it refuses to start only when there is neither a static
+// token NOR an OAuth provider (fail closed — never serve MCP unauthenticated).
+func (s *Server) ServeHTTP(ctx context.Context, addr, token string, oauthProvider *oauth.Provider) error {
+	return s.ServeHTTPWithOptions(ctx, addr, token, oauthProvider, HTTPOptions{})
+}
+
+// ServeHTTPWithOptions starts the existing HTTP transport with additive presentation
+// options. Authentication remains mandatory and the MCP wire contract is unchanged.
+func (s *Server) ServeHTTPWithOptions(ctx context.Context, addr, token string, oauthProvider *oauth.Provider, opts HTTPOptions) error {
+	if token == "" && oauthProvider == nil {
+		return errors.New("http transport requires auth: set a bearer token or enable OAuth (refusing to start without auth)")
+	}
+	telemetry := newHTTPTransportTelemetry()
+	lifecycle := newHTTPServerLifecycle().WithObserver(func(name observability.EventName, duration time.Duration, outcome observability.Outcome, errorClass observability.ErrorClass) {
+		s.emitHTTPDrainEvent(name, duration, outcome, errorClass, telemetry.ReconnectCount())
+	})
+	sessions := s.configuredHTTPSessionStore()
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("http server listen: %w", err)
+	}
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           s.httpHandlerWithRuntime(token, oauthProvider, opts, lifecycle, sessions, telemetry),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+	return serveHTTPListener(ctx, srv, listener, lifecycle, defaultHTTPShutdownTimeout, func() {
+		sessions.Reset()
+		if s.clients != nil {
+			s.clients.Reset()
+		}
+	})
+}
