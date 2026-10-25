@@ -27,7 +27,11 @@ services:
       MCP_DEVBOX_SANDBOX_MAX_OUTPUT_BYTES: "1048576"
       MCP_DEVBOX_SANDBOX_MAX_CONCURRENT: "2"
     volumes:
-      - /run/user/10001/podman/podman.sock:/run/user/10001/podman/podman.sock
+      - type: bind
+        source: /run/user/10001/podman/podman.sock
+        target: /run/user/10001/podman/podman.sock
+        bind:
+          create_host_path: false
       - type: bind
         source: ${MCP_DEVBOX_SANDBOX_RUNNER_WORKSPACE_SOURCE:?set the backend repository storage mountpoint}
         target: /srv/aeontra-l3/workspace

@@ -37,10 +37,10 @@ func TestContainerBuildsUseOfficialMirrorsWithoutChangingPinnedContent(t *testin
 		"../../Dockerfile.sandbox-runner", "../../test/opencode-e2e/Dockerfile",
 	}
 	pins := map[string]string{
-		"node:22-alpine3.22":       "cd7807368cf24826297cbad5dca1a44972ccfd770647db52a8c7589eb4599ac8",
-		"node:24-bookworm-slim":    "3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03",
-		"golang:1.26.9-alpine3.24": "cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0",
-		"golang:1.26.9-bookworm":   "d9c68c2c51161e12fd77e4c6320687c9cd86e1af1e3ad6e6cd63ff970641453c",
+		"node:22-alpine3.22":        "cd7807368cf24826297cbad5dca1a44972ccfd770647db52a8c7589eb4599ac8",
+		"node:24-bookworm-slim":     "3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03",
+		"golang:1.26.10-alpine3.24": "27f2d3b83cfc5803c8078f8e730af0f7c431bf067afaec8f60a36fb763187cba",
+		"golang:1.26.10-bookworm":   "632dff7351799a5a9954a48dc06670ade72ee44e8c351cdc0e5a57af2fea21af",
 	}
 	for _, path := range paths {
 		body, err := os.ReadFile(path)

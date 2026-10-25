@@ -2,18 +2,23 @@ FROM cgr.dev/chainguard/wolfi-base@sha256:6a8dca4c2153cfc11d559cfa6172c187b89642
 RUN apk add --no-cache \
       bash=5.3-r12 \
       build-base=1-r9 \
-      ca-certificates=20260413-r1 \
+      ca-certificates=20260909-r3 \
+      ca-certificates-bundle=20260909-r3 \
       git=2.55.0-r4 \
       glibc-2.44=2.44-r8 \
       glibc-2.44-dev=2.44-r8 \
       glibc-2.44-locale-posix=2.44-r8 \
-      go-1.26=1.26.9-r0 \
+      go-1.26=1.26.10-r0 \
       jq=1.8.2-r1 \
       ld-linux-2.44=2.44-r8 \
       libcrypt1-2.44=2.44-r8 \
+      libbrotlicommon1=1.2.1-r1 \
+      libbrotlidec1=1.2.1-r1 \
+      libbrotlienc1=1.2.1-r1 \
       libcrypto3=3.6.5-r1 \
+      libcurl-openssl4=8.23.0-r2 \
       libssl3=3.6.5-r1 \
-      nodejs-24=24.19.0-r0 \
+      nodejs-24=24.22.1-r2 \
       npm=12.0.2-r0 \
       py3.14-pip=26.2.1-r2 \
       py3.14-pip-base=26.2.1-r2 \
@@ -38,36 +43,46 @@ RUN zlib_commit=4d03c63b8648ab83053a6f00d304a5d6f9aa1ed7 \
  && printf '%s\n' "$zlib_commit" > /usr/share/aeontra/security/zlib-gzwrite-fix \
  && rm -rf "$zlib_archive" "/tmp/zlib-${zlib_commit}" /tmp/zlib-gznonblock
 RUN brace_archive=/tmp/brace-expansion-5.0.11.tgz \
- && undici_archive=/tmp/undici-6.28.1.tgz \
+ && undici_archive=/tmp/undici-6.29.1.tgz \
+ && node_gyp_undici_archive=/tmp/undici-8.12.2.tgz \
  && ip_archive=/tmp/ip-address-10.3.1.tgz \
  && NPM_CONFIG_CACHE=/tmp/npm-cache npm pack --ignore-scripts --pack-destination /tmp brace-expansion@5.0.11 \
- && NPM_CONFIG_CACHE=/tmp/npm-cache npm pack --ignore-scripts --pack-destination /tmp undici@6.28.1 \
+ && NPM_CONFIG_CACHE=/tmp/npm-cache npm pack --ignore-scripts --pack-destination /tmp undici@6.29.1 \
+ && NPM_CONFIG_CACHE=/tmp/npm-cache npm pack --ignore-scripts --pack-destination /tmp undici@8.12.2 \
  && NPM_CONFIG_CACHE=/tmp/npm-cache npm pack --ignore-scripts --pack-destination /tmp ip-address@10.3.1 \
  && printf '%s  %s\n' 67bb5a1b4d4a8ff497d845a0b891ffe6b7233aea2202641315cec88d0fff15eb "$brace_archive" \
       | busybox sha256sum -c - \
- && printf '%s  %s\n' e18191aac9c0ff43dac7fe9b10b7041a22d07addb7b66a6e8ac14a52a5b69b74 "$undici_archive" \
+ && printf '%s  %s\n' 29c4b8e0b2d86cb8795571c1959012ce057a14ecfd34858335f47c31e770a04f "$undici_archive" \
+      | busybox sha256sum -c - \
+ && printf '%s  %s\n' a765b5e63ab5c6b1b91a59072c88f7857b36f47b09c376762241d177279cdefd "$node_gyp_undici_archive" \
       | busybox sha256sum -c - \
  && printf '%s  %s\n' ad1790063beea11a312c801df30d58e147de762f4f77787552376eb7424623e5 "$ip_archive" \
       | busybox sha256sum -c - \
- && mkdir -p /tmp/brace-unpack /tmp/undici-unpack /tmp/ip-unpack \
+ && mkdir -p /tmp/brace-unpack /tmp/undici-unpack /tmp/node-gyp-undici-unpack /tmp/ip-unpack \
  && busybox tar -xzf "$brace_archive" -C /tmp/brace-unpack \
  && busybox tar -xzf "$undici_archive" -C /tmp/undici-unpack \
+ && busybox tar -xzf "$node_gyp_undici_archive" -C /tmp/node-gyp-undici-unpack \
  && busybox tar -xzf "$ip_archive" -C /tmp/ip-unpack \
  && rm -rf /usr/lib/node_modules/npm/node_modules/brace-expansion \
              /usr/lib/node_modules/npm/node_modules/undici \
+             /usr/lib/node_modules/node-gyp/node_modules/undici \
              /usr/lib/node_modules/npm/node_modules/ip-address \
  && mkdir -p /usr/lib/node_modules/npm/node_modules/brace-expansion \
              /usr/lib/node_modules/npm/node_modules/undici \
+             /usr/lib/node_modules/node-gyp/node_modules/undici \
              /usr/lib/node_modules/npm/node_modules/ip-address \
  && cp -a /tmp/brace-unpack/package/. /usr/lib/node_modules/npm/node_modules/brace-expansion/ \
  && cp -a /tmp/undici-unpack/package/. /usr/lib/node_modules/npm/node_modules/undici/ \
+ && cp -a /tmp/node-gyp-undici-unpack/package/. /usr/lib/node_modules/node-gyp/node_modules/undici/ \
  && cp -a /tmp/ip-unpack/package/. /usr/lib/node_modules/npm/node_modules/ip-address/ \
  && test "$(node -p "require('/usr/lib/node_modules/npm/node_modules/brace-expansion/package.json').version")" = 5.0.11 \
- && test "$(node -p "require('/usr/lib/node_modules/npm/node_modules/undici/package.json').version")" = 6.28.1 \
+ && test "$(node -p "require('/usr/lib/node_modules/npm/node_modules/undici/package.json').version")" = 6.29.1 \
+ && test "$(node -p "require('/usr/lib/node_modules/node-gyp/node_modules/undici/package.json').version")" = 8.12.2 \
+ && test "$(find /usr/lib/node_modules -path '*/undici/package.json' -type f | wc -l)" -eq 2 \
  && test "$(find /usr/lib/node_modules/npm -path '*/brace-expansion/package.json' -type f | wc -l)" -eq 1 \
  && test "$(find /usr/lib/node_modules/npm -path '*/undici/package.json' -type f | wc -l)" -eq 1 \
  && test "$(node -p "require('/usr/lib/node_modules/npm/node_modules/ip-address/package.json').version")" = 10.3.1 \
- && rm -rf "$brace_archive" "$undici_archive" "$ip_archive" /tmp/brace-unpack /tmp/undici-unpack /tmp/ip-unpack /tmp/npm-cache
+ && rm -rf "$brace_archive" "$undici_archive" "$node_gyp_undici_archive" "$ip_archive" /tmp/brace-unpack /tmp/undici-unpack /tmp/node-gyp-undici-unpack /tmp/ip-unpack /tmp/npm-cache
 RUN cache_archive=/tmp/http-cache-semantics-4.3.0.tgz \
  && NPM_CONFIG_CACHE=/tmp/npm-cache npm pack --ignore-scripts --pack-destination /tmp http-cache-semantics@4.3.0 \
  && printf '%s  %s\n' d75e1e6a11587954da5e2f0e2b5c4b397a16d28cc2f7bdf64e9027fc2fe593ee "$cache_archive" \

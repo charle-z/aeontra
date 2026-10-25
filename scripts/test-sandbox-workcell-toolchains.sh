@@ -58,6 +58,7 @@ EOF
 cat >"$fixture/node/smoke.test.js" <<'EOF'
 const test = require('node:test');
 const assert = require('node:assert/strict');
+assert.equal(process.versions.undici, '7.30.1');
 
 test('runtime', () => assert.equal(2 + 2, 4));
 EOF
@@ -91,7 +92,11 @@ node - <<'JAVASCRIPT'
 const assert = require('node:assert/strict');
 const root = '/usr/lib/node_modules/npm/node_modules/';
 assert.equal(require(root + 'brace-expansion/package.json').version, '5.0.11');
-assert.equal(require(root + 'undici/package.json').version, '6.28.1');
+assert.equal(require(root + 'undici/package.json').version, '6.29.1');
+const { createRequire } = require('node:module');
+const nodeGypRequire = createRequire('/usr/lib/node_modules/node-gyp/package.json');
+assert.equal(nodeGypRequire('undici/package.json').version, '8.12.2');
+assert.equal(typeof nodeGypRequire('undici').fetch, 'function');
 assert.equal(require(root + 'http-cache-semantics/package.json').version, '4.3.0');
 const CachePolicy = require(root + 'http-cache-semantics');
 const request = { url: 'https://example.test/public', method: 'GET', headers: {} };

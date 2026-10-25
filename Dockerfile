@@ -20,7 +20,7 @@ RUN GOMAXPROCS=${BUILD_GOMAXPROCS} \
 	UV_THREADPOOL_SIZE=${BUILD_UV_THREADPOOL_SIZE} \
 	pnpm console:build
 
-FROM public.ecr.aws/docker/library/golang:1.26.9-alpine3.24@sha256:cdfd4fe2da6b225d8b40c6b7a105736e548e83ff56d5d8f9394446eeb5eb84e0 AS build
+FROM public.ecr.aws/docker/library/golang:1.26.10-alpine3.24@sha256:27f2d3b83cfc5803c8078f8e730af0f7c431bf067afaec8f60a36fb763187cba AS build
 
 # GIT_SHA is the commit being built. Coolify (or any CI) should pass it with
 # --build-arg GIT_SHA=$(git rev-parse HEAD). It is baked into the binary via -ldflags so
@@ -47,8 +47,8 @@ RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
 	-ldflags="-s -w -X github.com/charle-z/mcp-devbox/internal/buildinfo.Commit=${GIT_SHA} -X github.com/charle-z/mcp-devbox/internal/buildinfo.BuiltAt=${BUILD_TIME}" \
 	-o /out/mcp-devbox ./cmd/mcp-devbox
 
-# Retain the Go toolchain and Node runtime. Repository-code execution and package
-# management belong to the private L3 executor or Edge, not the public backend.
+# Retain Go and supported Node LTS without npm. Repository-code execution and
+# package management belong to the private L3 executor or Edge, not this backend.
 FROM cgr.dev/chainguard/wolfi-base:latest@sha256:1d95114038f76513a9ace6fca107d5582b08c65981f81f61cb56bf7fd2ef216d
 
 # OCI metadata (good practice; helps registries/scanners identify the image).
@@ -60,8 +60,9 @@ LABEL org.opencontainers.image.title="Aeontra" \
 COPY --from=build /usr/local/go /usr/local/go
 
 RUN apk upgrade --no-cache \
-	&& apk add --no-cache ca-certificates curl git libstdc++ nodejs-22 glibc-2.44=2.44-r8 glibc-2.44-locale-posix=2.44-r8 ld-linux-2.44=2.44-r8 libcrypt1-2.44=2.44-r8 libssl3=3.6.5-r1 libcrypto3=3.6.5-r1 \
-	&& test "$(node --version)" = v22.23.2 \
+	&& apk add --no-cache ca-certificates=20260909-r3 ca-certificates-bundle=20260909-r3 curl libbrotlicommon1=1.2.1-r1 libbrotlidec1=1.2.1-r1 libbrotlienc1=1.2.1-r1 libcurl-openssl4=8.23.0-r2 git libstdc++ nodejs-24=24.22.1-r2 glibc-2.44=2.44-r8 glibc-2.44-locale-posix=2.44-r8 ld-linux-2.44=2.44-r8 libcrypt1-2.44=2.44-r8 libssl3=3.6.5-r1 libcrypto3=3.6.5-r1 \
+	&& test "$(node --version)" = v24.22.1 \
+	&& test "$(node -p process.versions.undici)" = 7.30.1 \
 	&& test ! -e /usr/local/lib/node_modules/npm \
 	&& test ! -e /usr/lib/node_modules/npm \
 	&& ! command -v npm \
