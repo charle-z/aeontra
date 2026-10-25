@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM public.ecr.aws/docker/library/golang:1.26.10-alpine3.24@sha256:27f2d3b83cfc5803c8078f8e730af0f7c431bf067afaec8f60a36fb763187cba AS build
+FROM docker.io/library/golang:1.26.10-alpine3.24@sha256:27f2d3b83cfc5803c8078f8e730af0f7c431bf067afaec8f60a36fb763187cba AS build
 ARG GIT_SHA=unknown
 ARG BUILD_TIME=unknown
 WORKDIR /src

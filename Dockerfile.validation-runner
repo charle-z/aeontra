@@ -1,11 +1,11 @@
-FROM public.ecr.aws/docker/library/golang:1.26.10-alpine3.24@sha256:27f2d3b83cfc5803c8078f8e730af0f7c431bf067afaec8f60a36fb763187cba AS build
+FROM docker.io/library/golang:1.26.10-alpine3.24@sha256:27f2d3b83cfc5803c8078f8e730af0f7c431bf067afaec8f60a36fb763187cba AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd/validation-runner ./cmd/validation-runner
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/validation-runner ./cmd/validation-runner
 
-FROM public.ecr.aws/docker/library/golang:1.26.10-alpine3.24@sha256:27f2d3b83cfc5803c8078f8e730af0f7c431bf067afaec8f60a36fb763187cba AS docker-cli
+FROM docker.io/library/golang:1.26.10-alpine3.24@sha256:27f2d3b83cfc5803c8078f8e730af0f7c431bf067afaec8f60a36fb763187cba AS docker-cli
 ARG DOCKER_CLI_VERSION=29.7.2
 ARG DOCKER_CLI_COMMIT=a7dcaa6fdb6ed04aacbfdc76357fdae01605609e
 ARG DOCKER_CLI_SOURCE_SHA256=225b7ab2a15f5230b482df8461069cd4bce38891266fb9898d4188d0a3cbf54a

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM public.ecr.aws/docker/library/node:22-alpine3.22@sha256:cd7807368cf24826297cbad5dca1a44972ccfd770647db52a8c7589eb4599ac8 AS console-build
+FROM docker.io/library/node:22-alpine3.22@sha256:cd7807368cf24826297cbad5dca1a44972ccfd770647db52a8c7589eb4599ac8 AS console-build
 
 # The production VPS has two vCPUs. Keep image assembly to one logical CPU by
 # default so the live control plane, Coolify and Traefik retain scheduler time.
@@ -20,7 +20,7 @@ RUN GOMAXPROCS=${BUILD_GOMAXPROCS} \
 	UV_THREADPOOL_SIZE=${BUILD_UV_THREADPOOL_SIZE} \
 	pnpm console:build
 
-FROM public.ecr.aws/docker/library/golang:1.26.10-alpine3.24@sha256:27f2d3b83cfc5803c8078f8e730af0f7c431bf067afaec8f60a36fb763187cba AS build
+FROM docker.io/library/golang:1.26.10-alpine3.24@sha256:27f2d3b83cfc5803c8078f8e730af0f7c431bf067afaec8f60a36fb763187cba AS build
 
 # GIT_SHA is the commit being built. Coolify (or any CI) should pass it with
 # --build-arg GIT_SHA=$(git rev-parse HEAD). It is baked into the binary via -ldflags so

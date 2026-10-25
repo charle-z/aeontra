@@ -30,7 +30,7 @@ func TestOfficialCIFixtureImagesUseImmutableRegistryReferences(t *testing.T) {
 	}
 }
 
-func TestContainerBuildsUseOfficialMirrorsWithoutChangingPinnedContent(t *testing.T) {
+func TestContainerBuildsUseOfficialRegistryWithoutChangingPinnedContent(t *testing.T) {
 	paths := []string{
 		"../../Dockerfile", "../../Dockerfile.site", "../../Dockerfile.front-door",
 		"../../Dockerfile.front-door-coordinator", "../../Dockerfile.validation-runner",
@@ -52,15 +52,15 @@ func TestContainerBuildsUseOfficialMirrorsWithoutChangingPinnedContent(t *testin
 			if len(fields) < 2 || fields[0] != "FROM" || strings.HasPrefix(fields[1], "cgr.dev/") || fields[1] == "scratch" {
 				continue
 			}
-			const prefix = "public.ecr.aws/docker/library/"
+			const prefix = "docker.io/library/"
 			image := fields[1]
 			if !strings.HasPrefix(image, prefix) {
-				t.Errorf("%s: builder image must use the official mirror: %s", path, image)
+				t.Errorf("%s: builder image must use the official upstream registry: %s", path, image)
 				continue
 			}
 			name, digest, ok := strings.Cut(strings.TrimPrefix(image, prefix), "@sha256:")
 			if !ok || pins[name] == "" || digest != pins[name] {
-				t.Errorf("%s: mirror changed reviewed image content: %s", path, image)
+				t.Errorf("%s: registry reference changed reviewed image content: %s", path, image)
 			}
 		}
 	}
