@@ -297,6 +297,11 @@ jobs:
             if [ "$delay" -ne 0 ]; then
               sleep "$delay"
             fi
+            if [ "$delay" -eq 15 ]; then
+              # The official mirror can exhaust its shared anonymous data quota.
+              # Preserve the immutable content identity at the upstream registry.
+              P12_POSTGRES_IMAGE="docker.io/library/postgres@${P12_POSTGRES_IMAGE##*@}"
+            fi
             if docker pull "$P12_POSTGRES_IMAGE"; then
               postgres_image_id="$(docker image inspect --format '{{.Id}}' "$P12_POSTGRES_IMAGE")"
               case "$postgres_image_id" in
