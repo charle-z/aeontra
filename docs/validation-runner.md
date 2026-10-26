@@ -85,7 +85,7 @@ needed for the runner. It is reachable only from the MCP container on the Docker
 network. Check its health from the VPS, not from the Internet:
 
 ```bash
-docker exec mcp-devbox-validation-runner wget -qO- http://127.0.0.1:8787/healthz
+docker exec mcp-devbox-validation-runner curl -fsS --max-time 2 http://127.0.0.1:8787/healthz
 ```
 
 ## ChatGPT workflow after activation

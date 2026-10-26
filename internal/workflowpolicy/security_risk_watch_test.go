@@ -86,11 +86,11 @@ func TestSecurityRiskWatchInventoryMatchesVerifiedWorkcell(t *testing.T) {
 	}
 	w := inventory.Workcell
 	if w.Repository != "ghcr.io/charle-z/aeontra-sandbox-workcell" ||
-		w.IndexDigest != "sha256:a57995ced48e5d50c48b49934e078a4c865dba356e32a2f59ec26b7b27c15223" ||
-		w.ManifestDigest != "sha256:e5368a7ff87330b4b3b42088a0927f9c5036d8e473c68b2ccc51ddf1d008186e" ||
-		w.ImageID != "sha256:1106476e2a9fce831f1f5abd6aafd9cf9770b0771ba065934de4aa03a2444c3d" ||
-		w.Revision != "e73ccea716e518531737db013b4caea3a4a9d298" ||
-		w.RecipeSHA256 != "11ebaa13b523eac95e2471341e4289025571e903b5059446e3d61452b422111f" {
+		w.IndexDigest != "sha256:d94a47e1f26098e34d9051d4f2b7cf6c118296f6d040c3722f6f738ec18faa8a" ||
+		w.ManifestDigest != "sha256:a24285f7478ef4bc981a742edbc9fac3fa3453c3e7fb93ba88913054086d89e7" ||
+		w.ImageID != "sha256:d6ef8463bdb194429c7fd02fbb34fb43477f12b28967d700d416d55597068c7c" ||
+		w.Revision != "295622828b2a3001464e0e06147ceeacbedd4b20" ||
+		w.RecipeSHA256 != "1291d68a46f1714a0343baa2c6e96499f947c173030a8b28bd39e445fb3977b0" {
 		t.Fatal("workcell identities differ from the verified protected image release")
 	}
 	// The watch checks the recipe in this exact revision with a full checkout.
@@ -99,7 +99,7 @@ func TestSecurityRiskWatchInventoryMatchesVerifiedWorkcell(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"deployed-workcell", "does not discover production", "Coolify", "no image rebuild", "24 hours", "7 days", "larger transfer", "2026-10-09-workcell-rollout.md"} {
+	for _, required := range []string{"deployed-workcell", "does not discover production", "Coolify", "no image rebuild", "24 hours", "7 days", "larger transfer", "2026-10-26-workcell-rollout.md"} {
 		if !strings.Contains(strings.Join(strings.Fields(string(doc)), " "), required) {
 			t.Errorf("watch runbook missing limitation %q", required)
 		}
