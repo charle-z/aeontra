@@ -64,6 +64,11 @@ out, the paired identity remains available: diagnose with `mcp-edge doctor`, the
 onboarding without creating another code. Completion reports bundle validation and
 service activation; local doctor and remote capability checks remain separate.
 
+The CLI executes the full preflight embedded in its verified signed binary, with a
+45-second deadline. Updating the signed bundle also updates this check; an older
+Debian package helper cannot select an obsolete harness. The installer retains the
+same reviewed preflight source for its initial package checks.
+
 ## 5. Verify
 
 Run the local read-only checks:
@@ -88,6 +93,41 @@ filesystem namespace. If the command reports
 `openat2` call. Do not hand-edit the packaged unit or bypass Bubblewrap.
 
 ## Update, rollback, and removal
+
+### WSL availability after closing terminals
+
+WSL systemd services do not keep the distribution running by themselves. For a
+workstation Edge that should remain available while its Windows owner is logged in,
+use the optional host-side installer from the reviewed source checkout:
+
+```powershell
+.\scripts\edge-wsl-availability.ps1 -Mode Plan -Distribution parrot -LinuxUser charles
+.\scripts\edge-wsl-availability.ps1 -Mode Install -Distribution parrot -LinuxUser charles -Root 'D:\Aeontra\Wsl'
+.\scripts\edge-wsl-availability.ps1 -Mode Status -Distribution parrot -LinuxUser charles
+```
+
+Select the actual distribution, Linux Edge user and an installation directory on any
+suitable disk. The example drive is not a product default. Installation runs Edge
+doctor first and registers one limited, current-user logon task. Its hidden Windows
+process runs only `wsl.exe --exec /usr/bin/sleep infinity`; systemd still owns the
+single Edge daemon. Three bounded restart attempts handle an unexpected task exit.
+No Windows administrator credentials, service restart, distro shutdown, global WSL
+configuration or networking change is required.
+
+Rollback removes only the exact identity-bound task; its small installed script is
+retained for inspection:
+
+```powershell
+.\scripts\edge-wsl-availability.ps1 -Mode Remove -Distribution parrot -LinuxUser charles
+```
+
+This is an opt-in workstation lifetime anchor, not remote wake-on-LAN. Logout, Windows
+sleep/shutdown and an explicit WSL termination can still interrupt availability. Check
+`edge_connectivity_status` after reconnecting; reconcile durable operations before
+retrying effects. Microsoft documents the lifetime limitation in its
+[WSL systemd guide](https://learn.microsoft.com/en-us/windows/wsl/systemd).
+
+### Signed component updates
 
 Request updates and rollback only through the paired control plane's closed operations:
 

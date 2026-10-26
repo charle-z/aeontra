@@ -32,7 +32,7 @@ func normalizeProjectWorktreeRequest(kind OperationKind, request OperationReques
 	base := OperationRequest{Alias: request.Alias, TargetAlias: request.TargetAlias, Profile: request.Profile}
 	switch kind {
 	case OperationProjectWorktreeCreate:
-		if !projectWorktreeCommitPattern.MatchString(request.WorktreeBaseCommit) || (request.WorktreeRole != "reader" && request.WorktreeRole != "writer") ||
+		if !projectWorktreeCommitPattern.MatchString(request.WorktreeBaseCommit) || (request.WorktreeRole != "reader" && request.WorktreeRole != "writer" && request.WorktreeRole != "direct") ||
 			!projectWorkJobIDPattern.MatchString(request.WorkJobID) || !projectWorkLeaseIDPattern.MatchString(request.WorkLeaseID) || request.WorkFence == 0 ||
 			len(request.IdempotencyKey) < 8 || !projectOperationIdempotencyPattern.MatchString(request.IdempotencyKey) {
 			return OperationRequest{}, errors.New("project worktree create request is invalid")
@@ -49,18 +49,27 @@ func normalizeProjectWorktreeRequest(kind OperationKind, request OperationReques
 			return OperationRequest{}, errors.New("project worktree status request is invalid")
 		}
 		base.WorktreeID = request.WorktreeID
+		if request.WorktreeRole == "direct" {
+			base.WorktreeRole = "direct"
+		}
 		base.WorktreeAncestorCommits = request.WorktreeAncestorCommits
 	case OperationProjectWorktreeList:
 		if request.WorktreeLimit < 1 || request.WorktreeLimit > 100 {
 			return OperationRequest{}, errors.New("project worktree list request is invalid")
 		}
 		base.WorktreeLimit = request.WorktreeLimit
+		if request.WorktreeRole == "direct" {
+			base.WorktreeRole = "direct"
+		}
 	case OperationProjectWorktreeCleanup:
 		if !projectWorktreeIDPattern.MatchString(request.WorktreeID) || !projectWorkJobIDPattern.MatchString(request.WorkJobID) || !projectWorkLeaseIDPattern.MatchString(request.WorkLeaseID) || request.WorkFence == 0 ||
 			len(request.IdempotencyKey) < 8 || !projectOperationIdempotencyPattern.MatchString(request.IdempotencyKey) {
 			return OperationRequest{}, errors.New("project worktree cleanup request is invalid")
 		}
 		base.WorktreeID, base.WorkJobID, base.WorkLeaseID, base.WorkFence, base.IdempotencyKey = request.WorktreeID, request.WorkJobID, request.WorkLeaseID, request.WorkFence, request.IdempotencyKey
+		if request.WorktreeRole == "direct" && projectWorktreeCommitPattern.MatchString(request.WorktreeBaseCommit) {
+			base.WorktreeRole, base.WorktreeBaseCommit = request.WorktreeRole, request.WorktreeBaseCommit
+		}
 	default:
 		return OperationRequest{}, errors.New("project worktree operation is invalid")
 	}
@@ -75,12 +84,22 @@ func emptyProjectWorktreeRequestFields(request OperationRequest) bool {
 }
 
 func hasProjectWorktreeResult(result OperationResult) bool {
-	return len(result.WorktreeAncestorCommits) != 0 || result.WorktreeAncestorsVerified || result.WorktreeID != "" || result.WorktreeState != "" || result.WorktreeRole != "" || result.WorktreeBaseCommit != "" || result.WorktreeBranch != "" ||
+	return result.WorkspaceStorage != nil || len(result.WorktreeAncestorCommits) != 0 || result.WorktreeAncestorsVerified || result.WorktreeID != "" || result.WorktreeState != "" || result.WorktreeRole != "" || result.WorktreeBaseCommit != "" || result.WorktreeBranch != "" ||
 		result.WorktreeEvidenceKnown || result.WorktreeHeadCommit != "" || result.WorktreeClean || result.WorktreeCommitsAheadBase != 0 || result.WorktreeChangedPathCount != 0 ||
 		result.WorkJobID != "" || result.WorkLeaseID != "" || result.WorkFence != 0 || result.WorktreeCreatedAt != "" || result.WorktreeUpdatedAt != "" || len(result.Worktrees) != 0
 }
 
 func validProjectWorktreeResultForKind(kind OperationKind, result OperationResult) bool {
+	if result.WorkspaceStorage != nil {
+		v := result.WorkspaceStorage
+		if kind != OperationProjectWorktreeStatus || v.RuntimeBytes < 0 || v.CacheBytes < 0 || v.ArtifactBytes < 0 || v.ScratchBytes < 0 || v.ScratchBytes > v.RuntimeBytes || v.ScratchBudgetBytes < 0 || v.ScannedEntries < 0 || v.ScannedEntries > 10000 ||
+			(v.RetentionState != "unreferenced" && v.RetentionState != "retained" && v.RetentionState != "unknown") {
+			return false
+		}
+		if v.ScratchBudgetState != "unconfigured" && v.ScratchBudgetState != "normal" && v.ScratchBudgetState != "over_budget" && v.ScratchBudgetState != "unknown" && v.ScratchBudgetState != "invalid" {
+			return false
+		}
+	}
 	if !validWorktreeAncestorCommits(result.WorktreeAncestorCommits) || (len(result.WorktreeAncestorCommits) != 0) != result.WorktreeAncestorsVerified ||
 		(kind != OperationProjectWorktreeStatus && (result.WorktreeAncestorsVerified || len(result.WorktreeAncestorCommits) != 0)) {
 		return false
@@ -111,11 +130,11 @@ func validProjectWorktreeResultForKind(kind OperationKind, result OperationResul
 	if kind == OperationProjectWorktreeCleanup && result.WorktreeState != "removed" {
 		return false
 	}
-	if kind != OperationProjectWorktreeCleanup && result.WorktreeState != "ready" {
+	if kind != OperationProjectWorktreeCleanup && kind != OperationProjectWorktreeStatus && result.WorktreeState != "ready" {
 		return false
 	}
 	hasEvidence := result.WorktreeEvidenceKnown || result.WorktreeHeadCommit != "" || result.WorktreeClean || result.WorktreeCommitsAheadBase != 0 || result.WorktreeChangedPathCount != 0
-	if kind == OperationProjectWorktreeStatus {
+	if kind == OperationProjectWorktreeStatus && result.WorktreeState == "ready" {
 		if !result.WorktreeEvidenceKnown || !projectWorktreeCommitPattern.MatchString(result.WorktreeHeadCommit) ||
 			result.WorktreeCommitsAheadBase < 0 || result.WorktreeCommitsAheadBase > 10000 || result.WorktreeChangedPathCount < 0 || result.WorktreeChangedPathCount > 10000 ||
 			((result.WorktreeHeadCommit == result.WorktreeBaseCommit) != (result.WorktreeCommitsAheadBase == 0)) {
@@ -125,6 +144,7 @@ func validProjectWorktreeResultForKind(kind OperationKind, result OperationResul
 		return false
 	}
 	metadata := result
+	metadata.WorkspaceStorage = nil
 	metadata.WorktreeID, metadata.WorktreeState, metadata.WorktreeRole, metadata.WorktreeBaseCommit, metadata.WorktreeBranch = "", "", "", "", ""
 	metadata.WorktreeEvidenceKnown, metadata.WorktreeHeadCommit, metadata.WorktreeClean = false, "", false
 	metadata.WorktreeAncestorCommits, metadata.WorktreeAncestorsVerified = nil, false

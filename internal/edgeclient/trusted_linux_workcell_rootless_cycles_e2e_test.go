@@ -144,7 +144,7 @@ func p12RunRootlessCycle(t *testing.T, endpoint *RootlessContainerEndpoint, runt
 		}
 	}()
 
-	containerfile := "FROM docker.io/library/alpine:3.20\nCOPY fixture.txt /fixture.txt\nCMD [\"/bin/sh\",\"-c\",\"test -f /fixture.txt && echo p12-image-ready\"]\n"
+	containerfile := "FROM docker.io/library/alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc\nCOPY fixture.txt /fixture.txt\nCMD [\"/bin/sh\",\"-c\",\"test -f /fixture.txt && echo p12-image-ready\"]\n"
 	if err := os.WriteFile(filepath.Join(workspace, "Containerfile"), []byte(containerfile), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -302,11 +302,14 @@ func p12ComposeCycleE2E(t *testing.T, endpoint *RootlessContainerEndpoint, image
 	}
 	prefix := rootlessEnginePrefix(endpoint)
 	ready := false
+	var lastReadErr error
+	var lastReadOutput []byte
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
 		readCtx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 		result, readErr := execContainerCommandRunner{}.Run(readCtx, endpoint.Executable, append(prefix, "exec", composeContainer, "cat", "/data/result"), p12RootlessEnv(endpoint))
 		cancel()
+		lastReadErr, lastReadOutput = readErr, result
 		if readErr == nil && strings.TrimSpace(string(result)) == "compose-ready" {
 			ready = true
 			break
@@ -320,6 +323,9 @@ func p12ComposeCycleE2E(t *testing.T, endpoint *RootlessContainerEndpoint, image
 		}
 	}
 	if !ready {
+		if lastReadErr != nil {
+			t.Logf("rootless command failed: %v output=%s", lastReadErr, p12BoundedDiagnostic(string(lastReadOutput)))
+		}
 		t.Fatal("podman-compose service did not persist its readiness marker")
 	}
 	if err := down(); err != nil {

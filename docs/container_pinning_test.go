@@ -64,7 +64,7 @@ func TestWorkflowInlineDockerfileBaseImagesArePinnedByDigest(t *testing.T) {
 func TestRootlessPostgresFixtureIsPinnedByDigest(t *testing.T) {
 	workflow := readDoc(t, "../.github/workflows/trusted-linux-workcell-e2e.yml")
 	for _, marker := range []string{
-		"P12_POSTGRES_IMAGE: docker.io/library/postgres:17-alpine@sha256:",
+		"P12_POSTGRES_IMAGE: public.ecr.aws/docker/library/postgres@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73",
 		"docker pull \"$P12_POSTGRES_IMAGE\"",
 		"docker image inspect --format '{{.Id}}' \"$P12_POSTGRES_IMAGE\"",
 	} {

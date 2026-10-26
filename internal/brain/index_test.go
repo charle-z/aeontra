@@ -125,6 +125,23 @@ func TestReindexSearchBacklinksAndBrokenLinks(t *testing.T) {
 	}
 }
 
+func TestSearchFindsExactSlugWithoutMatchingTitleOrBody(t *testing.T) {
+	store, root := openIndexedStore(t)
+	writeSourceForIndex(t, root, TrustWorking, "runtime-audit-2026-10-09", "agent:codex", "Command recovery", "Durable execution evidence.")
+	writeSourceForIndex(t, root, TrustCurated, "related-note", AuthorOwner, "Runtime audit 2026 10 09", "Related evidence.")
+	if _, err := store.Reindex(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	results, err := store.Search(context.Background(), "runtime-audit-2026-10-09", 1)
+	if err != nil || len(results) != 1 || results[0].Slug != "runtime-audit-2026-10-09" {
+		t.Fatalf("exact slug results=%+v err=%v", results, err)
+	}
+	results, err = store.Search(context.Background(), "runtime-audit-2026-10-09", 5)
+	if err != nil || len(results) != 2 || results[0].Slug != "runtime-audit-2026-10-09" || results[1].Slug != "related-note" {
+		t.Fatalf("exact and full-text results=%+v err=%v", results, err)
+	}
+}
+
 func TestSearchTreatsQueryAsPlainTextNotFTSSyntax(t *testing.T) {
 	store, root := openIndexedStore(t)
 	seedIndexSources(t, root)

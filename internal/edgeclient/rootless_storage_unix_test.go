@@ -36,7 +36,7 @@ func TestRootlessContainerStorageDriverUsesClosedEngineSpecificInfo(t *testing.T
 			name:     "podman",
 			endpoint: &RootlessContainerEndpoint{Engine: "podman", SocketPath: "/run/user/1000/podman/podman.sock", Executable: "/usr/bin/podman"},
 			output:   "overlay\n",
-			wantArgs: []string{"--url", "unix:///run/user/1000/podman/podman.sock", "info", "--format", "{{.Store.GraphDriverName}}"},
+			wantArgs: []string{"--remote", "--url", "unix:///run/user/1000/podman/podman.sock", "info", "--format", "{{.Store.GraphDriverName}}"},
 			want:     "overlay",
 		},
 		{

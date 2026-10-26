@@ -17,9 +17,8 @@ import (
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/edgeclient"
+	"github.com/charle-z/mcp-devbox/packaging/parrot"
 )
-
-const onboardingPreflightPath = "/usr/local/libexec/mcp-devbox/onboarding-preflight"
 
 var onboardingUserPattern = regexp.MustCompile("^[a-z_][a-z0-9_-]{0,31}$")
 
@@ -28,8 +27,18 @@ var loadOnboardingIdentity = edgeclient.LoadIdentity
 var pairOnboardingIdentity = edgeclient.Pair
 var currentOnboardingUser = user.Current
 var runOnboardingPreflight = func() error {
-	return exec.Command(onboardingPreflightPath).Run()
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	return onboardingPreflightCommand(ctx).Run()
 }
+
+func onboardingPreflightCommand(ctx context.Context) *exec.Cmd {
+	command := exec.CommandContext(ctx, "/bin/bash", "-s")
+	command.Stdin = strings.NewReader(parrot.OnboardingPreflight)
+	command.WaitDelay = time.Second
+	return command
+}
+
 var waitOnboardingService = func(service string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {

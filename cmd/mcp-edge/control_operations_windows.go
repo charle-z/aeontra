@@ -15,6 +15,9 @@ import (
 )
 
 func executeWindowsControlOperation(ctx context.Context, stateRoot string, processes *edgeclient.ProjectProcessManager, workspaceCount int, operation edge.Operation) (edge.OperationResult, string) {
+	if operation.Request.WorktreeID != "" || operation.Request.WorktreeRole == "direct" {
+		return edge.OperationResult{}, "project_workspace_unavailable_windows"
+	}
 	switch operation.Kind {
 	case edge.OperationProjectPrepare:
 		return executeWindowsProjectPrepare(ctx, stateRoot, operation.Request)

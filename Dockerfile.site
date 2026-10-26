@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM golang:1.26.6-alpine3.24@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS build
+FROM docker.io/library/golang:1.26.10-alpine3.24@sha256:27f2d3b83cfc5803c8078f8e730af0f7c431bf067afaec8f60a36fb763187cba AS build
 
 ARG GIT_SHA=unknown
 ARG BUILD_TIME=unknown
@@ -25,7 +25,7 @@ LABEL org.opencontainers.image.title="Aeontra public site" \
 	org.opencontainers.image.source="https://github.com/charle-z/aeontra"
 
 RUN apk upgrade --no-cache \
-	&& apk add --no-cache ca-certificates curl libssl3=3.6.5-r1 libcrypto3=3.6.5-r1 \
+	&& apk add --no-cache ca-certificates=20260909-r3 ca-certificates-bundle=20260909-r3 curl libbrotlicommon1=1.2.1-r1 libbrotlidec1=1.2.1-r1 libbrotlienc1=1.2.1-r1 libcurl-openssl4=8.23.0-r2 glibc-2.44=2.44-r8 glibc-2.44-locale-posix=2.44-r8 ld-linux-2.44=2.44-r8 libcrypt1-2.44=2.44-r8 libssl3=3.6.5-r1 libcrypto3=3.6.5-r1 \
 	&& addgroup -S -g 10001 aeontra \
 	&& adduser -S -D -H -u 10001 -G aeontra aeontra \
 	&& (find / -xdev -perm /6000 -type f -exec chmod a-s {} + 2>/dev/null || true)

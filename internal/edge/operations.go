@@ -251,6 +251,19 @@ type ProjectWorktreeSummary struct {
 	UpdatedAt   string `json:"updated_at"`
 }
 
+// ProjectWorkspaceStorage contains bounded accounting, never paths or filenames.
+type ProjectWorkspaceStorage struct {
+	RuntimeBytes       int64  `json:"runtime_bytes"`
+	CacheBytes         int64  `json:"cache_bytes"`
+	ArtifactBytes      int64  `json:"artifact_bytes"`
+	ScratchBytes       int64  `json:"scratch_bytes"`
+	ScratchBudgetBytes int64  `json:"scratch_budget_bytes,omitempty"`
+	ScratchBudgetState string `json:"scratch_budget_state"`
+	ScannedEntries     int    `json:"scanned_entries"`
+	Complete           bool   `json:"complete"`
+	RetentionState     string `json:"retention_state"`
+}
+
 // ProjectClaimSummary is the safe, path-free representation of one durable
 // project registry claim returned by recovery operations.
 type ProjectClaimSummary struct {
@@ -496,6 +509,7 @@ type OperationResult struct {
 	WorktreeCreatedAt                string                          `json:"worktree_created_at,omitempty"`
 	WorktreeUpdatedAt                string                          `json:"worktree_updated_at,omitempty"`
 	Worktrees                        []ProjectWorktreeSummary        `json:"worktrees,omitempty"`
+	WorkspaceStorage                 *ProjectWorkspaceStorage        `json:"workspace_storage,omitempty"`
 	TestProfileID                    string                          `json:"test_profile_id,omitempty"`
 	TestProfileDigest                string                          `json:"test_profile_digest,omitempty"`
 	TestTimeoutSeconds               int                             `json:"test_timeout_seconds,omitempty"`

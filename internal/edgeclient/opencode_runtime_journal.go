@@ -42,8 +42,9 @@ type OpenCodeRuntimeEntry struct {
 }
 
 type OpenCodeRuntimeJournal struct {
-	db  *sql.DB
-	now func() time.Time
+	db        *sql.DB
+	now       func() time.Time
+	stateRoot string
 }
 
 func OpenOpenCodeRuntimeJournal(stateRoot string) (*OpenCodeRuntimeJournal, error) {
@@ -63,7 +64,7 @@ func OpenOpenCodeRuntimeJournal(stateRoot string) (*OpenCodeRuntimeJournal, erro
 		return nil, errors.New("OpenCode runtime journal is unavailable")
 	}
 	db.SetMaxOpenConns(1)
-	journal := &OpenCodeRuntimeJournal{db: db, now: time.Now}
+	journal := &OpenCodeRuntimeJournal{db: db, now: time.Now, stateRoot: filepath.Clean(stateRoot)}
 	for _, statement := range []string{
 		`PRAGMA journal_mode=DELETE`,
 		`PRAGMA synchronous=FULL`,
@@ -155,6 +156,11 @@ func (j *OpenCodeRuntimeJournal) Begin(ctx context.Context, runtimeID, workspace
 	if j == nil || j.db == nil || !remoteRuntimeIDPattern.MatchString(runtimeID) || !workspaceIDPattern.MatchString(workspaceID) || !goalDigestPattern.MatchString(goalDigest) || providerProfile != remoteProviderProfile {
 		return OpenCodeRuntimeEntry{}, false, errors.New("OpenCode runtime identity is invalid")
 	}
+	release, err := acquireProjectRuntimeGate(ctx, j.stateRoot, workspaceID, false)
+	if err != nil {
+		return OpenCodeRuntimeEntry{}, false, err
+	}
+	defer release()
 	now := j.now().UTC()
 	result, err := j.db.ExecContext(ctx, `INSERT OR IGNORE INTO local_opencode_runtimes(runtime_id,workspace_id,goal_digest,provider_profile,state,created_at,updated_at) VALUES(?,?,?,?,'starting',?,?)`, runtimeID, workspaceID, goalDigest, providerProfile, now.UnixNano(), now.UnixNano())
 	if err != nil {

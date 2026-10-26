@@ -26,12 +26,13 @@ place registry credentials in the public MCP container or a launched workcell.
 
 The reference workcell uses a digest-pinned Wolfi base and exact package versions for
 Go, Rust, Node/npm, Python, the C/C++ compiler baseline and common command-line
-utilities. Its three replaced npm transitive packages (`brace-expansion`, `undici`,
-and `ip-address`) are fetched over HTTPS and verified
+utilities. Its four replaced npm transitive packages (`brace-expansion`, `undici`,
+`ip-address`, and `http-cache-semantics`) are fetched over HTTPS and verified
 by SHA-256. The security workflow builds this exact image, emits an SPDX SBOM and
-rejects unaccepted High or Critical Grype findings. The single expiring approval is
-defined in [the security model](../security.md#temporary-container-risk-acceptance);
-it preserves the raw finding and does not declare remediation. Treat any package-version change
+rejects unaccepted High or Critical Grype findings. The historical expiring approval
+in [the security model](../security.md#temporary-container-risk-acceptance) applies
+only to its exact older image and finding; the updated image must pass its own gate.
+Treat any package-version change
 as a reviewed image update and repeat that gate before publishing a new digest.
 
 The fixed L3 capability matrix is deliberately smaller than a general development
@@ -168,6 +169,29 @@ backend container's mount source with the configured runner source, confirm one 
 repository is visible inside the new runner, and execute `pwd` through `sandbox_exec`
 with that exact repository selected. A green `/v1/status` alone verifies the engine and
 image, not the contents of a selected workspace.
+
+### Rootless API startup and socket recovery
+
+Start the dedicated account's rootless Podman API before creating the runner. Keep
+its user service (or socket unit) enabled and enable systemd linger for that account
+when it must remain available without an interactive login. Verify a listening Unix
+socket owned by the runner UID; an active user manager alone is not engine readiness.
+Do not substitute the host's rootful Docker or Podman endpoint.
+
+The reference socket bind uses `create_host_path: false`. A missing source therefore
+fails deployment rather than creating a root-owned directory at the socket path.
+Compose short bind syntax can create that directory before the user service starts,
+preventing its `RuntimeDirectory` setup and leaving both services unavailable.
+
+For an older deployment with this failure, stop only the runner and its dedicated
+rootless API unit. Inspect the exact socket path and parent, including ownership,
+symlinks, mounts and contents. Back up the service configuration. Remove an accidental
+directory only after proving it is empty, using nonrecursive `rmdir`; retain any
+unexpected contents for investigation. Restore the parent to the dedicated UID with
+mode `0700`, start its existing user API unit, and verify the rootless engine and
+approved image identity. Recreate the runner with the long bind syntax after the
+socket is ready. A restart does not replace an existing container's mount bindings.
+Do not delete engine storage, receipts or repository volumes as part of this repair.
 
 ### Protocol rollout and workspace selection
 

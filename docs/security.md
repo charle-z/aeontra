@@ -224,12 +224,36 @@ root, outside the source checkout. Only the exact roots are mounted into the sel
 workcell or rootless toolbox. Existing legacy `.mcp-devbox` data is not removed or
 silently adopted as authority.
 
+Direct MCP writers may opt into an exact-base managed worktree without another model
+runtime. Private registry markers distinguish these workspaces from leased worker
+worktrees. Every selection binds project, target, repository and canonical workspace;
+a caller-provided `worktree_id` cannot select a model worker or another project.
+Normal dirty state and branch changes remain usable. The canonical checkout remains
+the compatibility default when no explicit worktree is selected.
+
+Direct cleanup revalidates the exact expected HEAD under the per-workspace exclusive
+guard. It preserves dirty/untracked/ignored source and active resource references;
+committed work remains on a verified attached branch that cleanup never deletes.
+Detached/unknown heads and unknown retention state block this new source cleanup; it never
+means permission to delete. Populated artifacts, branches and durable receipts survive
+successful explicit cleanup. No session timeout or chat termination triggers deletion.
+Bounded byte accounting and an optional scratch-budget warning do not claim a hard
+filesystem quota or authorize reclamation. Status and captured process control remain
+available independently of those warnings.
+
 Project claims and toolbox records carry an owner-bound identity and generation. Stale
 claims can be identified and reconciled without scanning unrelated repositories. A
 toolbox can be restarted or reconciled only when its workspace, mount policy, rootless
 engine identity and ownership still validate; otherwise it fails closed and can be
 controlled-recreated without deleting the source workspace. Schema migrations are
 additive and reject unknown newer schemas.
+
+Rootless engine CLI scratch is per-call and owner-only, outside project source and
+runtime roots. The client receives a temporary `XDG_RUNTIME_DIR`; engine authority
+remains the validated absolute user-owned socket passed explicitly in argv and the
+controlled environment. The temporary directory is removed after success, failure or
+cancellation. This does not change systemd filesystem protections or expose a host
+engine socket to a workcell.
 
 The Edge scheduler uses bounded shared capacity for independent project, Git inspection,
 process and toolbox operations. Signed bundle update, rollback and repair acquire an
@@ -421,6 +445,13 @@ a writer checkout. Expired leases must reclaim the same worktree with a strictly
 fence before work resumes; stale claims, completion and cleanup fail closed. Terminal
 cleanup requires an exact fence and a clean tree, preserves each worker branch, and
 never guesses how commits should be integrated.
+On Linux, explicit terminal worktree cleanup also reclaims that workspace's
+unreferenced private runtime and cache roots. Active process/model journals,
+retained toolboxes and browser sessions preserve their runtime/cache roots. Populated artifact
+roots, branches and durable task evidence remain intact. A per-workspace guard
+excludes cleanup from concurrent commands and launch registration; ordinary
+commands share it and unrelated workspaces are independent. No global prune or
+cleanup on chat termination is performed.
 Managed model responses also cross a completion gate before persistence and again at
 the loopback adapter. `active` requires a real offered tool call, `blocked` requires an
 explicit failure/cancellation, and `complete` requires a non-truncated stop response
@@ -712,6 +743,18 @@ acknowledges kill without exiting. The creation time is revalidated on that same
 before termination, and `interrupt` has no forced fallback. The worker-owned Job Object
 kills its contained descendants when the wrapper exits.
 
+An admitted Linux worker can finish before its workload PID can be inspected. It may
+report a known terminal exit only after waiting for its own exact spawned launcher;
+sandbox commands also require valid launcher metadata. No child PID is fabricated.
+Live workloads still require ownership, process-group and start-time attestation before
+signals or stdin control. Readiness and exit receipt races preserve the original exit.
+
+`edge_connectivity_status` reports server-received authenticated contact time from the
+private Edge database. Signature, nonce and active-device checks precede the contact
+write in the existing transaction. Replays, forged signatures and caller timestamps
+cannot refresh contact. This evidence grants no execution authority and does not prove
+host power or readiness. The read performs no Edge RPC and does not change admission.
+
 The process journal also records the owner-bound repository, claim generation, selected
 profile and mode, and workspace binding captured at start. These fields are used for
 authorization after a project alias is released or reassociated; a later Git change
@@ -775,12 +818,20 @@ Redaction is not a substitute for keeping secrets out of inputs and storage.
 ### Temporary container risk acceptance
 
 Container scans retain their original reports. A reviewed risk acceptance is a
-separate gate input, not a corrected or unaffected VEX statement. The current
+separate gate input, not a corrected or unaffected VEX statement. The historical
 approval in `security/accepted-risks/http-cache-semantics-20261003.json` expires
 on 2026-10-17 at 13:24 UTC. It applies only to CVE-2026-93748 / GHSA-ch52-4w7c-c8xp,
 `http-cache-semantics` 4.2.0 at its exact bundled-npm path in the reviewed sandbox
 workcell. The gate verifies the scanned OCI configuration ID against the verified
 image ID and binds the approval to the workcell Dockerfile SHA-256.
+
+New workcell builds install the official `http-cache-semantics` 4.3.0 package
+with a verified archive SHA-256 and run the ordinary High threshold without that
+approval. The historical file remains for the exact deployed image monitored by
+the daily watch; it is not extended or rebound to new images. The upstream
+maintainer disputes CVE-2026-93748, and the advisory currently lists versions
+through 4.2.0. Updating beyond that range is not proof of a new shared-cache
+security guarantee; arbitrary project use still needs correct cache policy.
 
 Accepted findings remain visible as warnings with their owner and expiry. Other
 advisories, package versions or locations, Critical/Unknown severity, an available
@@ -814,3 +865,12 @@ Dated closure evidence belongs under [`baselines/`](baselines/). Live deployment
 comes from `/version` or `system_runtime_info`; the current public tool contract comes
 from [`tools.md`](tools.md). Historical evidence must not be rewritten to match current
 state.
+
+## Linked development workspaces
+
+Direct linked workspaces expose only their attested repository's shared Git metadata
+alongside the selected source tree. The canonical source tree and other repositories
+are not mounted. Git refs and objects remain repository-scoped shared state, as in a
+normal Git worktree. A private canonical binding rejects a pointer retargeted to another
+repository. Git retains ordinary discovery, including nested repositories; the executor
+does not force a global `GIT_DIR` or `GIT_WORK_TREE`.

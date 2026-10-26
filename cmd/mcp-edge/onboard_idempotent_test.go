@@ -16,7 +16,27 @@ import (
 	"time"
 
 	"github.com/charle-z/mcp-devbox/internal/edgeclient"
+	"github.com/charle-z/mcp-devbox/packaging/parrot"
 )
+
+func TestOnboardingPreflightUsesEmbeddedSourceAndSeparateInput(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	command := onboardingPreflightCommand(ctx)
+	if command.Path != "/bin/bash" || strings.Join(command.Args, " ") != "/bin/bash -s" {
+		t.Fatalf("unexpected preflight argv: %v", command.Args)
+	}
+	body, err := io.ReadAll(command.Stdin)
+	if err != nil || string(body) != parrot.OnboardingPreflight {
+		t.Fatalf("preflight must use the embedded reviewed script: %v", err)
+	}
+	if command.Stdout != nil || command.Stderr != nil || command.WaitDelay != time.Second {
+		t.Fatal("preflight must retain bounded private output and cancellation")
+	}
+	if err := command.Run(); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled preflight ran: %v", err)
+	}
+}
 
 func TestOnboardReusesValidIdentityWithoutPairingCodeOrDeviceIDOutput(t *testing.T) {
 	restoreOnboardingHooks(t)

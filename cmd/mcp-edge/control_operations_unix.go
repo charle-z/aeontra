@@ -70,7 +70,7 @@ func runControlOperationWorker(ctx context.Context, stateRoot string, transport 
 		}
 		lease, err := transport.LeaseOperation(ctx, time.Minute)
 		if err != nil {
-			fmt.Fprintln(stderr, "mcp-edge: control operation polling failed safely")
+			logControlOperationFailure(stderr, "polling", "", err)
 			if !waitControlOperation(ctx, 5*time.Second) {
 				return
 			}
@@ -83,23 +83,28 @@ func runControlOperationWorker(ctx context.Context, stateRoot string, transport 
 			continue
 		}
 		result, code, cancelRequested, gateHeld, exclusive, lifecycleErr := executeControlOperationWithProgressAndGate(ctx, stateRoot, transport, processes, tests, browsers, controlGate, *lease)
-		if lifecycleErr != nil {
+		if !controlResultCanComplete(lifecycleErr) {
 			if gateHeld {
 				controlGate.release(exclusive)
 			}
-			fmt.Fprintln(stderr, "mcp-edge: control operation progress failed safely")
+			logControlOperationFailure(stderr, "progress", lease.Operation.ID, lifecycleErr)
 			continue
+		}
+		if lifecycleErr != nil {
+			logControlOperationFailure(stderr, "finalizing", lease.Operation.ID, lifecycleErr)
 		}
 		if cancelRequested {
 			if err = acknowledgeControlOperationCancellation(ctx, stateRoot, transport, *lease); err != nil {
-				fmt.Fprintln(stderr, "mcp-edge: control operation cancellation failed safely")
+				logControlOperationFailure(stderr, "cancellation", lease.Operation.ID, err)
 			}
 			if gateHeld {
 				controlGate.release(exclusive)
 			}
 			continue
 		}
-		if code == "" {
+		// Foreground argv uses an existing registered workspace and creates no
+		// bindings. Its completed result does not require a registry announcement.
+		if code == "" && lease.Operation.Kind != edge.OperationProjectExec {
 			registry, openErr := edgeclient.OpenWorkspaceRegistry(stateRoot)
 			if openErr == nil {
 				workspaces, listErr := registry.List()
@@ -123,7 +128,7 @@ func runControlOperationWorker(ctx context.Context, stateRoot string, transport 
 		}
 		cancel()
 		if err != nil {
-			fmt.Fprintln(stderr, "mcp-edge: control operation completion failed safely")
+			logControlOperationFailure(stderr, "completion", lease.Operation.ID, err)
 		}
 		if gateHeld {
 			controlGate.release(exclusive)
@@ -213,7 +218,7 @@ func executeProjectGitHubStatus(ctx context.Context, stateRoot string, operation
 }
 
 func executeProjectGitSync(ctx context.Context, stateRoot string, operation edge.Operation) (edge.OperationResult, string) {
-	credential, workspaces, projects, _, code := openProjectControlState(stateRoot)
+	credential, workspaces, projects, roots, code := openProjectControlState(stateRoot)
 	if code != "" {
 		return edge.OperationResult{}, code
 	}
@@ -222,6 +227,10 @@ func executeProjectGitSync(ctx context.Context, stateRoot string, operation edge
 	resolved, err := projects.Resolve(ctx, operation.Request.Alias, operation.Request.TargetAlias)
 	if err != nil {
 		return edge.OperationResult{}, safeProjectControlFailure(err)
+	}
+	resolved, err = resolveDirectProjectWorkspace(ctx, stateRoot, credential, workspaces, roots, resolved, operation.Request.WorktreeID)
+	if err != nil {
+		return edge.OperationResult{}, safeProjectWorktreeFailure(err)
 	}
 	runner := edgeclient.NewDevGitCommandRunner(stateRoot, "/usr/local/bin:/usr/bin:/bin")
 	var result edge.OperationResult
@@ -398,6 +407,11 @@ func projectControlResult(ctx context.Context, projects *edgeclient.ProjectRegis
 }
 
 func safeProjectControlFailure(err error) string {
+	if errors.Is(err, edgeclient.ErrProjectWorktreeInvalid) || errors.Is(err, edgeclient.ErrProjectWorktreeNotFound) || errors.Is(err, edgeclient.ErrProjectWorktreeConflict) ||
+		errors.Is(err, edgeclient.ErrProjectWorktreeStaleFence) || errors.Is(err, edgeclient.ErrProjectWorktreeBaseChanged) || errors.Is(err, edgeclient.ErrProjectWorktreeDirty) ||
+		errors.Is(err, edgeclient.ErrProjectWorktreeUnsafe) || errors.Is(err, edgeclient.ErrProjectWorktreeUnavailable) || errors.Is(err, edgeclient.ErrProjectWorktreeBusy) {
+		return safeProjectWorktreeFailure(err)
+	}
 	var projectFailure *edgeclient.ProjectError
 	if errors.As(err, &projectFailure) {
 		code := string(projectFailure.Code)
@@ -418,6 +432,22 @@ type bundleOperationReceipt struct {
 
 const bundleReceiptFile = "bundle-operation-receipt.json"
 
+var startBundleUnit = func(ctx context.Context, unit string) error {
+	command := exec.CommandContext(ctx, "/usr/bin/systemctl", "start", unit)
+	command.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C", "LC_ALL=C"}
+	command.Stdout = io.Discard
+	command.Stderr = io.Discard
+	return command.Run()
+}
+
+var queryBundleUnit = func(ctx context.Context, args ...string) (string, error) {
+	command := exec.CommandContext(ctx, "/usr/bin/systemctl", args...)
+	command.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C", "LC_ALL=C"}
+	command.Stderr = io.Discard
+	output, err := command.Output()
+	return string(output), err
+}
+
 func executeBundleControl(ctx context.Context, stateRoot string, operation edge.Operation) (edge.OperationResult, string) {
 	if ctx == nil {
 		return edge.OperationResult{}, "operation_invalid"
@@ -432,30 +462,35 @@ func executeBundleControl(ctx context.Context, stateRoot string, operation edge.
 		if receipt.OperationID != operation.ID || receipt.Kind != operation.Kind {
 			return edge.OperationResult{}, "updater_busy"
 		}
-		if !waitBundleUnitInactive(ctx, unit, 15*time.Minute) {
-			return edge.OperationResult{}, "updater_timeout"
+		if code := waitBundleUnitCompletion(ctx, unit, 15*time.Minute); code != "" {
+			return edge.OperationResult{}, code
 		}
 		return collectEdgeDiagnostic(stateRoot, false)
 	case !errors.Is(receiptErr, os.ErrNotExist):
 		return edge.OperationResult{}, "updater_receipt_invalid"
+	}
+	if err := ctx.Err(); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return edge.OperationResult{}, "cancelled"
+		}
+		return edge.OperationResult{}, "updater_timeout"
 	}
 	if err := writeBundleReceipt(stateRoot, bundleOperationReceipt{OperationID: operation.ID, Kind: operation.Kind}); err != nil {
 		return edge.OperationResult{}, "updater_receipt_unavailable"
 	}
 	startCtx, cancel := context.WithTimeout(ctx, 16*time.Minute)
 	defer cancel()
-	command := exec.CommandContext(startCtx, "/usr/bin/systemctl", "start", unit)
-	command.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C", "LC_ALL=C"}
-	command.Stdout = io.Discard
-	command.Stderr = io.Discard
-	if err := command.Run(); err != nil {
-		clearBundleReceipt(stateRoot, operation.ID)
+	if err := startBundleUnit(startCtx, unit); err != nil {
+		// Cancelling the systemctl client does not stop the root oneshot. Keep
+		// its receipt across caller shutdown so the next lease observes the
+		// existing transaction instead of starting the updater a second time.
 		if errors.Is(startCtx.Err(), context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
 			return edge.OperationResult{}, "cancelled"
 		}
 		if errors.Is(startCtx.Err(), context.DeadlineExceeded) {
 			return edge.OperationResult{}, "updater_timeout"
 		}
+		clearBundleReceipt(stateRoot, operation.ID)
 		return edge.OperationResult{}, "updater_failed"
 	}
 	return collectEdgeDiagnostic(stateRoot, false)
@@ -473,31 +508,56 @@ func bundleOperationUnit(kind edge.OperationKind) string {
 	return ""
 }
 
-func waitBundleUnitInactive(ctx context.Context, unit string, timeout time.Duration) bool {
+func waitBundleUnitCompletion(ctx context.Context, unit string, timeout time.Duration) string {
 	if ctx == nil || timeout <= 0 {
-		return false
+		return "operation_invalid"
 	}
-	deadline := time.NewTimer(timeout)
-	defer deadline.Stop()
+	waitCtx, cancelWait := context.WithTimeout(ctx, timeout)
+	defer cancelWait()
 	for {
-		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		command := exec.CommandContext(probeCtx, "/usr/bin/systemctl", "is-active", "--quiet", unit)
-		command.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C", "LC_ALL=C"}
-		command.Stdout = io.Discard
-		command.Stderr = io.Discard
-		err := command.Run()
+		if err := waitCtx.Err(); err != nil {
+			if errors.Is(err, context.Canceled) {
+				return "cancelled"
+			}
+			return "updater_timeout"
+		}
+		probeCtx, cancel := context.WithTimeout(waitCtx, 5*time.Second)
+		output, err := queryBundleUnit(probeCtx, "show", "--property=LoadState", "--property=ActiveState", "--property=Result", unit)
 		cancel()
 		if err != nil {
-			return ctx.Err() == nil
+			if waitCtx.Err() != nil {
+				continue
+			}
+			return "updater_state_unavailable"
+		}
+		properties := make(map[string]string, 3)
+		for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+			key, value, ok := strings.Cut(line, "=")
+			if !ok || properties[key] != "" || (key != "LoadState" && key != "ActiveState" && key != "Result") || value == "" {
+				return "updater_state_unavailable"
+			}
+			properties[key] = value
+		}
+		if len(properties) != 3 || properties["LoadState"] != "loaded" {
+			return "updater_state_unavailable"
+		}
+		switch properties["ActiveState"] {
+		case "inactive":
+			if properties["Result"] == "success" {
+				return ""
+			}
+			return "updater_failed"
+		case "failed":
+			return "updater_failed"
+		case "activating", "active", "reloading", "deactivating":
+			// A oneshot is activating until its ExecStart finishes.
+		default:
+			return "updater_state_unavailable"
 		}
 		timer := time.NewTimer(time.Second)
 		select {
-		case <-ctx.Done():
+		case <-waitCtx.Done():
 			timer.Stop()
-			return false
-		case <-deadline.C:
-			timer.Stop()
-			return false
 		case <-timer.C:
 		}
 	}

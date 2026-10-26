@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -34,7 +35,7 @@ type projectToolboxOperations interface {
 }
 
 func executeProjectToolbox(ctx context.Context, stateRoot string, operation edge.Operation) (edge.OperationResult, string) {
-	_, workspaces, projects, _, code := openProjectControlState(stateRoot)
+	credential, workspaces, projects, roots, code := openProjectControlState(stateRoot)
 	if code != "" {
 		return edge.OperationResult{}, code
 	}
@@ -44,13 +45,17 @@ func executeProjectToolbox(ctx context.Context, stateRoot string, operation edge
 	if err != nil {
 		return edge.OperationResult{}, safeProjectControlFailure(err)
 	}
+	resolved, err = resolveDirectProjectWorkspace(ctx, stateRoot, credential, workspaces, roots, resolved, operation.Request.WorktreeID)
+	if err != nil {
+		return edge.OperationResult{}, safeProjectWorktreeFailure(err)
+	}
 	endpoints, err := edgeclient.DiscoverRootlessContainerEndpoints(os.Geteuid(), "")
 	if err != nil || len(endpoints) == 0 {
 		return edge.OperationResult{}, safeProjectToolboxSelectionFailure(edgeclient.ErrProjectToolboxEndpointUnavailable)
 	}
 	managers := make([]projectToolboxOperations, 0, len(endpoints))
 	for _, endpoint := range endpoints {
-		manager, openErr := edgeclient.OpenProjectToolboxManager(edgeclient.ProjectToolboxManagerConfig{StateRoot: stateRoot, Endpoint: endpoint})
+		manager, openErr := edgeclient.OpenProjectToolboxManager(edgeclient.ProjectToolboxManagerConfig{StateRoot: stateRoot, WorkspaceRoots: roots, Endpoint: endpoint})
 		if openErr != nil {
 			if errors.Is(openErr, edgeclient.ErrProjectToolboxUnsafeState) {
 				return edge.OperationResult{}, safeProjectToolboxSelectionFailure(openErr)
@@ -61,6 +66,7 @@ func executeProjectToolbox(ctx context.Context, stateRoot string, operation edge
 	}
 	manager, err := selectProjectToolboxManager(ctx, managers, resolved, operation)
 	if err != nil {
+		logProjectToolboxFailure(os.Stderr, operation.ID, err)
 		return edge.OperationResult{}, safeProjectToolboxSelectionFailure(err)
 	}
 	return collectProjectToolbox(ctx, manager, resolved, operation)
@@ -68,6 +74,8 @@ func executeProjectToolbox(ctx context.Context, stateRoot string, operation edge
 
 func safeProjectToolboxSelectionFailure(err error) string {
 	switch {
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return "cancelled"
 	case errors.Is(err, edgeclient.ErrProjectToolboxEndpointUnavailable):
 		return "project_toolbox_endpoint_unavailable"
 	case errors.Is(err, edgeclient.ErrProjectToolboxOwnershipInspectUnavailable):
@@ -112,6 +120,8 @@ func selectProjectToolboxManager(ctx context.Context, managers []projectToolboxO
 	for _, manager := range managers {
 		_, err := manager.Status(ctx, request)
 		switch {
+		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+			return nil, err
 		case err == nil:
 			if operation.Kind == edge.OperationProjectToolboxCreate && notFoundManager != nil && unavailableErr == nil {
 				return notFoundManager, nil
@@ -134,6 +144,8 @@ func selectProjectToolboxManager(ctx context.Context, managers []projectToolboxO
 		case operation.Kind == edge.OperationProjectToolboxRepair && (errors.Is(err, edgeclient.ErrProjectToolboxContainerUnavailable) || errors.Is(err, edgeclient.ErrProjectToolboxMountMismatch) || errors.Is(err, edgeclient.ErrProjectToolboxIdentityMismatch)):
 			_, repairErr := manager.Reconcile(ctx, edgeclient.ProjectToolboxReconcileRequest{ProjectAlias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias, Workspace: resolved.Workspace})
 			switch {
+			case errors.Is(repairErr, context.Canceled), errors.Is(repairErr, context.DeadlineExceeded):
+				return nil, repairErr
 			case repairErr == nil:
 				return manager, nil
 			case errors.Is(repairErr, edgeclient.ErrProjectToolboxContainerMissing):
@@ -241,7 +253,10 @@ func collectProjectToolbox(ctx context.Context, manager projectToolboxOperations
 		return edge.OperationResult{}, "operation_invalid"
 	}
 	if err != nil {
+		logProjectToolboxFailure(os.Stderr, operation.ID, err)
 		switch {
+		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+			return edge.OperationResult{}, "cancelled"
 		case errors.Is(err, edgeclient.ErrProjectToolboxEndpointUnavailable):
 			return edge.OperationResult{}, "project_toolbox_endpoint_unavailable"
 		case errors.Is(err, edgeclient.ErrProjectToolboxOwnershipInspectUnavailable):
@@ -263,8 +278,6 @@ func collectProjectToolbox(ctx context.Context, manager projectToolboxOperations
 				return edge.OperationResult{}, "project_toolbox_service_not_found"
 			}
 			return edge.OperationResult{}, "project_toolbox_not_found"
-		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
-			return edge.OperationResult{}, "cancelled"
 		default:
 			return edge.OperationResult{}, "project_toolbox_failed"
 		}
@@ -298,4 +311,15 @@ func collectProjectToolbox(ctx context.Context, manager projectToolboxOperations
 		result.ToolboxServiceUpdatedAt = service.UpdatedAt.UTC().Format(time.RFC3339Nano)
 	}
 	return result, ""
+}
+
+func logProjectToolboxFailure(w io.Writer, operationID string, err error) {
+	stage, category, exitCode, ok := edgeclient.ProjectToolboxFailureDiagnostic(err)
+	if !ok {
+		return
+	}
+	if !controlEvidenceOperationID.MatchString(operationID) {
+		operationID = "unknown"
+	}
+	fmt.Fprintf(w, "mcp-edge: toolbox inspection failed operation=%s stage=%s error_class=%s exit_code=%d\n", operationID, stage, category, exitCode)
 }

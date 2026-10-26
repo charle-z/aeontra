@@ -6,6 +6,9 @@ identifiers continue to use `mcp-devbox` and `mcp-edge` where documented.
 
 ## Unreleased
 
+- Keep rootless container CLI scratch private and temporary so toolbox inspection
+  works before host Podman runtime directories have been initialized, including
+  under the packaged Edge service's read-only filesystem policy.
 - Infer only Go requirements for the registered isolated `go-test-all` command
   when fresh committed-source evidence identifies module/workspace minimum versions.
   Preserve exact Go pins, caller requirements and conservative older Edge behavior.

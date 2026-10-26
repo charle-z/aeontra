@@ -44,7 +44,11 @@ func validateOperationRequestWithProjectExec(kind OperationKind, request Operati
 	if isWorktree {
 		return normalizeProjectWorktreeRequest(kind, request)
 	}
-	if !emptyProjectWorktreeRequestFields(request) {
+	worktreeFields := request
+	if directWorkspaceOperation(kind) && (request.WorktreeID == "" || projectWorktreeIDPattern.MatchString(request.WorktreeID)) {
+		worktreeFields.WorktreeID = ""
+	}
+	if !emptyProjectWorktreeRequestFields(worktreeFields) {
 		return OperationRequest{}, errors.New("project worktree fields are invalid for this operation")
 	}
 	isBrowserHarness := kind == OperationProjectBrowserHarnessStart || kind == OperationProjectBrowserHarnessStatus || kind == OperationProjectBrowserHarnessList || kind == OperationProjectBrowserHarnessStop || kind == OperationProjectBrowserHarnessCleanup || kind == OperationProjectBrowserHarnessArtifactList || kind == OperationProjectBrowserHarnessArtifactRead
@@ -96,6 +100,13 @@ func validateOperationRequestWithProjectExec(kind OperationKind, request Operati
 		return OperationRequest{}, errors.New("project Git fields are invalid for this operation")
 	}
 	return validateOperationRequest(kind, request)
+}
+
+func directWorkspaceOperation(kind OperationKind) bool {
+	return kind == OperationProjectExec || kind == OperationProjectProcessStart || kind == OperationProjectProcessList || kind == OperationProjectProcessCleanup || kind == OperationProjectToolboxCreate || kind == OperationProjectToolboxStatus ||
+		kind == OperationProjectToolboxExec || kind == OperationProjectToolboxInstall || kind == OperationProjectToolboxRepair || kind == OperationProjectToolboxCleanup ||
+		kind == OperationProjectToolboxServiceStart || kind == OperationProjectToolboxServiceStatus || kind == OperationProjectToolboxServiceStop ||
+		kind == OperationProjectGitStatus || kind == OperationProjectGitFetch || kind == OperationProjectGitPublishPreview || kind == OperationProjectGitPublish
 }
 
 func normalizeProjectExecRequest(request OperationRequest) (OperationRequest, error) {

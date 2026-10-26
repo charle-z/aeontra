@@ -17,7 +17,7 @@ permissions:
 
 env:
   P12_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-  P12_POSTGRES_IMAGE: docker.io/library/postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+  P12_POSTGRES_IMAGE: public.ecr.aws/docker/library/postgres@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
 
 jobs:
   trusted-host:
@@ -296,6 +296,11 @@ jobs:
           for delay in 0 5 15; do
             if [ "$delay" -ne 0 ]; then
               sleep "$delay"
+            fi
+            if [ "$delay" -eq 15 ]; then
+              # The official mirror can exhaust its shared anonymous data quota.
+              # Preserve the immutable content identity at the upstream registry.
+              P12_POSTGRES_IMAGE="docker.io/library/postgres@${P12_POSTGRES_IMAGE##*@}"
             fi
             if docker pull "$P12_POSTGRES_IMAGE"; then
               postgres_image_id="$(docker image inspect --format '{{.Id}}' "$P12_POSTGRES_IMAGE")"

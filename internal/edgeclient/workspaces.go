@@ -22,7 +22,9 @@ type Workspace struct {
 	Path string `json:"path"`
 	// WindowsDevRoot is the registry-derived root retained for Windows
 	// foreground execution. It is intentionally not part of the public record.
-	WindowsDevRoot        string           `json:"-"`
+	WindowsDevRoot string `json:"-"`
+	// ManagedGitCommonDir is a private canonical binding for direct linked workspaces.
+	ManagedGitCommonDir   string           `json:"-"`
 	Profile               WorkspaceProfile `json:"profile"`
 	Mode                  WorkspaceMode    `json:"mode"`
 	MachineName           string           `json:"machine_name,omitempty"`

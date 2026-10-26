@@ -21,7 +21,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          go-version: "1.26.6"
+          go-version: "1.26.10"
           cache: true
 
       - name: Set up pinned pnpm
@@ -50,9 +50,6 @@ jobs:
         run: |
           files="$(gofmt -l .)"
           test -z "$files" || { echo "$files"; exit 1; }
-
-      - name: Verify MCP instance replacement continuity
-        run: go test ./internal/mcpserver -run '^TestRedeployE2E' -count=1
 
       - name: Test with atomic coverage
         run: go test ./... -coverprofile=coverage.out -covermode=atomic -count=1
@@ -128,7 +125,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          go-version: "1.26.6"
+          go-version: "1.26.10"
           cache: true
 
       - name: Set up pinned pnpm
@@ -164,7 +161,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          go-version: "1.26.6"
+          go-version: "1.26.10"
           cache: true
 
       - name: Run staticcheck
@@ -183,7 +180,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          go-version: "1.26.6"
+          go-version: "1.26.10"
           cache: true
 
       - name: Run govulncheck

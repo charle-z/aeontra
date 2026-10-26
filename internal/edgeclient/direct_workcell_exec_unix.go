@@ -88,6 +88,15 @@ type DirectWorkcellCommandRunner interface {
 type directWorkcellExecRunner struct{}
 
 func RunDirectWorkcellCommand(ctx context.Context, request DirectWorkcellCommandRequest, runner DirectWorkcellCommandRunner) (DirectWorkcellCommandResult, error) {
+	stateRoot := request.StateRoot
+	if strings.TrimSpace(stateRoot) == "" {
+		stateRoot = defaultProjectRuntimeStateRoot()
+	}
+	release, err := acquireProjectRuntimeGate(ctx, stateRoot, request.Workspace.ID, false)
+	if err != nil {
+		return DirectWorkcellCommandResult{}, ErrDirectWorkcellContract
+	}
+	defer release()
 	preflightStarted := time.Now()
 	stdout := newBoundedCapture(edge.MaxProjectExecStreamBytes)
 	stderr := newBoundedCapture(edge.MaxProjectExecStreamBytes)
@@ -266,6 +275,10 @@ func resolveDirectWorkcellBubblewrap() (string, error) {
 }
 
 func directWorkcellBubblewrapArgs(workspace, sandboxCWD string, request DirectWorkcellCommandRequest, runtimeRoots ProjectRuntimeRoots) ([]string, []string, error) {
+	gitMetadata, linkedWorktree, err := resolveCodexWorktreeGitMetadata(request.Workspace, request.WorkspaceRoots)
+	if err != nil {
+		return nil, nil, ErrDirectWorkcellContract
+	}
 	toolPath := openCodeDefaultToolPath
 	if err := validateOpenCodeToolPath(toolPath); err != nil {
 		return nil, nil, err
@@ -305,6 +318,11 @@ func directWorkcellBubblewrapArgs(workspace, sandboxCWD string, request DirectWo
 		"--bind", runtimeRoots.Cache, "/cache",
 		"--bind", runtimeRoots.Artifacts, "/artifacts",
 	)
+	if linkedWorktree {
+		// Keep Git's own discovery working, including nested repositories. Its
+		// existing .git pointer resolves through this metadata-only binding.
+		args = append(args, "--bind", gitMetadata.CommonDir, gitMetadata.CommonDir)
+	}
 	baseline := map[string]string{
 		"PATH": persistentPath, "HOME": "/runtime/home", "USER": "mcpedge",
 		"LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "TERM": "dumb", "SHELL": "/bin/sh",
@@ -316,6 +334,7 @@ func directWorkcellBubblewrapArgs(workspace, sandboxCWD string, request DirectWo
 		"GOPATH": "/runtime/go", "GOBIN": "/runtime/tools/bin", "GOMODCACHE": "/cache/go-mod", "GOCACHE": "/cache/go-build",
 		"MCP_DEVBOX_RUNTIME_ROOT": "/runtime", "MCP_DEVBOX_CACHE_ROOT": "/cache",
 		"MCP_DEVBOX_ARTIFACT_ROOT": "/artifacts",
+		"MCP_DEVBOX_SCRATCH_ROOT":  "/runtime/scratch",
 		"MCP_DEVBOX_PROFILE":       string(request.Workspace.Profile), "MCP_DEVBOX_MODE": string(request.Workspace.Mode),
 		"MCP_DEVBOX_NETWORK_POSTURE": LinuxWorkcellNetworkPosture,
 	}

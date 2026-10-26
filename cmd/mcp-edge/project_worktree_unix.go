@@ -34,6 +34,10 @@ func executeProjectWorktree(ctx context.Context, stateRoot string, operation edg
 	var snapshot edgeclient.ProjectWorktreeSnapshot
 	switch operation.Kind {
 	case edge.OperationProjectWorktreeCreate:
+		if operation.Request.WorktreeRole == "direct" {
+			snapshot, _, err = manager.PrepareDirectWorkspace(ctx, resolved, operation.Request.WorktreeBaseCommit, operation.Request.IdempotencyKey)
+			break
+		}
 		snapshot, _, err = manager.Create(ctx, edgeclient.ProjectWorktreeCreateRequest{
 			Alias: resolved.Project.Alias, TargetAlias: resolved.TargetAlias,
 			Repository:           resolved.Project.Owner + "/" + resolved.Project.Repository,
@@ -48,18 +52,32 @@ func executeProjectWorktree(ctx context.Context, stateRoot string, operation edg
 			LeaseID: operation.Request.WorkLeaseID, Fence: operation.Request.WorkFence,
 		})
 	case edge.OperationProjectWorktreeStatus:
+		if operation.Request.WorktreeRole == "direct" {
+			snapshot, err = manager.StatusDirectWorkspace(ctx, resolved, operation.Request.WorktreeID)
+			break
+		}
 		snapshot, err = manager.StatusWithAncestors(ctx, operation.Request.WorktreeID, operation.Request.WorktreeAncestorCommits)
 	case edge.OperationProjectWorktreeList:
 		var items []edgeclient.ProjectWorktreeSnapshot
-		items, err = manager.List(ctx, resolved.Project.Alias, resolved.TargetAlias, operation.Request.WorktreeLimit)
+		if operation.Request.WorktreeRole == "direct" {
+			items, err = manager.ListDirectWorkspaces(ctx, resolved.Project.Alias, resolved.TargetAlias, operation.Request.WorktreeLimit)
+		} else {
+			items, err = manager.List(ctx, resolved.Project.Alias, resolved.TargetAlias, operation.Request.WorktreeLimit)
+		}
 		if err == nil {
 			return projectWorktreeListResult(resolved, items), ""
 		}
 	case edge.OperationProjectWorktreeCleanup:
+		if operation.Request.WorktreeRole == "direct" {
+			if _, err = manager.StatusDirectWorkspace(ctx, resolved, operation.Request.WorktreeID); err != nil {
+				break
+			}
+		}
 		snapshot, _, err = manager.Cleanup(ctx, edgeclient.ProjectWorktreeCleanupRequest{
 			ID: operation.Request.WorktreeID, JobID: operation.Request.WorkJobID,
 			LeaseID: operation.Request.WorkLeaseID, Fence: operation.Request.WorkFence,
 			IdempotencyKey: operation.Request.IdempotencyKey,
+			Direct:         operation.Request.WorktreeRole == "direct", ExpectedHead: operation.Request.WorktreeBaseCommit,
 		})
 	default:
 		return edge.OperationResult{}, "operation_invalid"
@@ -71,6 +89,14 @@ func executeProjectWorktree(ctx context.Context, stateRoot string, operation edg
 		return edge.OperationResult{}, "project_worktree_conflict"
 	}
 	result := projectWorktreeResult(resolved, snapshot)
+	if operation.Kind == edge.OperationProjectWorktreeCleanup {
+		result.WorktreeEvidenceKnown, result.WorktreeHeadCommit, result.WorktreeClean = false, "", false
+		result.WorktreeCommitsAheadBase, result.WorktreeChangedPathCount = 0, 0
+	}
+	if operation.Kind == edge.OperationProjectWorktreeStatus && operation.Request.WorktreeRole == "direct" {
+		storage := edgeclient.DirectWorkspaceStorage(ctx, stateRoot, snapshot)
+		result.WorkspaceStorage = &storage
+	}
 	if len(operation.Request.WorktreeAncestorCommits) != 0 {
 		result.WorktreeAncestorCommits = append([]string(nil), operation.Request.WorktreeAncestorCommits...)
 		result.WorktreeAncestorsVerified = true
@@ -111,6 +137,8 @@ func projectWorktreeListResult(resolved edgeclient.ProjectResolution, items []ed
 
 func safeProjectWorktreeFailure(err error) string {
 	switch {
+	case errors.Is(err, edgeclient.ErrProjectWorktreeBusy):
+		return "project_worktree_resources_retained"
 	case errors.Is(err, edgeclient.ErrProjectWorktreeInvalid):
 		return "project_worktree_invalid"
 	case errors.Is(err, edgeclient.ErrProjectWorktreeNotFound):

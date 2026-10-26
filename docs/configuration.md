@@ -101,7 +101,7 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
 
 ### Global builder
 
-- **Components:** the VPS profile plus Go, Git, and Node 22 in the image and optional
+- **Components:** the VPS profile plus Go, Git, and Node 24 LTS in the image and optional
   GitHub/Coolify adapters.
 - **Package management:** the final public backend contains no npm/npx binaries or
   npm dependency tree. The console is assembled with pinned pnpm in a separate build
@@ -162,6 +162,11 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
 - **Volumes and paths:** server coordination is under `/state/edge` and
   `/state/model-turns`; the real Edge keeps private state under
   `~/.local/state/mcp-edge`, with workspaces under the configured local roots.
+- **Connectivity metadata:** `edge_connectivity_status` reads the last server-received
+  authenticated device request from the existing private Edge database. It uses a
+  fixed 90-second freshness window and has no poller or device-side operation.
+  Pairing alone has no contact evidence. Older databases migrate additively and
+  initially report `unknown`; the next authenticated request records contact.
 - **Background process state:** the Edge stores private process metadata at
   `~/.local/state/mcp-edge/project-processes.db` and separate redacted logs below
   `~/.local/state/mcp-edge/project-process-logs`. The directory is owner-only and log
@@ -182,6 +187,26 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
 - **Recovery metadata:** project claims, checkout attestations, toolbox generations and
   process bindings are durable. Schema migrations are additive and fail closed on a
   newer schema. Reconciliation is explicit and never resets or deletes a source tree.
+- **Direct writer workspaces:** `project_workspace_prepare` binds one caller key to an
+  exact committed base in the existing worktree registry, without starting a model.
+  Different keys isolate writers; the same key/base recovers the same space. Pass its
+  `worktree_id` to direct exec, process start/list/cleanup, toolbox or Git status/fetch/
+  publication. Omitting it retains the canonical checkout. Model worker worktrees
+  cannot be selected through this option. This capability is Linux-only.
+- **Scratch and accounting:** Linux write preparation creates private
+  `<project-runtime>/<workspace-id>/scratch`; `MCP_DEVBOX_SCRATCH_ROOT` identifies it
+  inside a workcell/toolbox. Reuse it for disposable command logs and temporary
+  subdirectories; put evidence to retain under `MCP_DEVBOX_ARTIFACT_ROOT`.
+  Direct workspace status counts logical file bytes over at most 10,000 entries and
+  100 ms, never follows symlinks, and reports incomplete accounting explicitly.
+  `MCP_DEVBOX_SCRATCH_BUDGET_BYTES`, set only in the Edge service environment, is an
+  optional positive integer advisory threshold. Status reports `unconfigured`,
+  `normal`, `over_budget`, `unknown` or `invalid`; it does not stop commands, delete
+  files, impose a filesystem quota or prevent status/stop during disk pressure.
+- **WSL lifetime:** optional `scripts/edge-wsl-availability.ps1` installs one limited
+  current-user logon task, using an operator-selected local directory. See the
+  [Linux installation guide](install-edge-linux.md). It does not install the native
+  Windows Edge or change the Linux daemon, WSL configuration or sleep policy.
 - **Toolbox lifecycle:** toolbox metadata schema v3 records `persistent|disposable`
   plus a durable generation. Missing/historical lifecycle is interpreted as
   `persistent`; read-only status does not rewrite the record, while an explicit
@@ -213,6 +238,20 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
   if delivery cannot be confirmed, the local failure remains visible for
   reconciliation instead of holding a poller indefinitely. `--once` still
   attempts only one lease.
+- **Toolbox inspection diagnostics:** the Edge service journal includes
+  `toolbox inspection failed` with the opaque operation ID, stage, closed error class
+  and exit code (`-1` when no normal process exit was observed). No extra configuration
+  is needed. Correlate that ID with `edge_operation_status`; engine output and private
+  paths are excluded, and an unknown category is not evidence of container corruption.
+- **Rootless engine client scratch:** engine CLI calls use a fresh owner-only temporary
+  `XDG_RUNTIME_DIR`, removed after the command exits, fails to start or is cancelled.
+  This lets remote Podman initialize its client state when the service sees the host
+  runtime as read-only. Socket discovery and validation still use `/run/user/<uid>`;
+  the absolute selected endpoint is unchanged. The scratch directory is never mounted
+  into a workspace or toolbox. No host runtime permissions need to be relaxed.
+  An existing Podman runtime auth file remains referenced at its original location;
+  explicit `REGISTRY_AUTH_FILE` and home-directory fallback behavior are preserved.
+  Credential bytes are never copied into the temporary directory.
 - **Security posture:** the ordinary Edge sandbox is networkless; the trusted Linux
   workcell intentionally shares the host network; authorized target-locked actions
   revalidate the private target and VPN route. These are distinct boundaries.
@@ -306,7 +345,7 @@ remain unavailable until a tool is called.
 | `MCP_DEVBOX_SANDBOX_RUNNER_WORKSPACE_SOURCE` | Compose workspace mapping | Runner deployment only; sensitive topology | absolute host mountpoint of the exact persistent storage mounted by the backend at its repository root; administrator-controlled and never accepted from an MCP request | `/var/lib/docker/volumes/<backend-repository-volume>/_data`; private service env | Missing, relative, broad or incorrect storage prevents the runner from seeing the backend repository set. The reference Compose binds this exact mountpoint because service orchestrators can namespace a named-volume declaration into different storage for each service. |
 | `MCP_DEVBOX_SANDBOX_RUNNER_WORKSPACE_ROOT` | private runner mapping | Runner only; sensitive container path | existing absolute directory, disjoint from state; either one direct repository or a multi-repository root whose direct child scopes are selected server-side | `/srv/aeontra-l3/workspace`; backed by the exact backend storage mountpoint; only the selected repository is mounted at `/workspace` | Missing, symlink-invalid, inaccessible or overlapping root fails startup/execution. Ambiguous or unsafe scope selection fails closed. |
 | `MCP_DEVBOX_SANDBOX_RUNNER_STATE_ROOT` | L3 receipts | Runner only; sensitive persistent path | existing/creatable absolute directory outside workspace | `/var/lib/aeontra-l3`; private volume | Missing, inaccessible or overlapping state fails startup. Completed receipts prevent effect replay. |
-| `MCP_DEVBOX_SANDBOX_RUNNER_PODMAN_SOCKET` | rootless engine authority | Runner only; sensitive socket path | direct Unix socket under `/run/user/<runner-uid>/`, owned by that UID; the runner uses the bounded Podman v5 HTTP API and packages no engine CLI | `/run/user/1000/podman/podman.sock`; exact mount | Missing, symlinked, foreign-owned or rootful endpoint fails startup. Never mount it into public MCP or workcells. |
+| `MCP_DEVBOX_SANDBOX_RUNNER_PODMAN_SOCKET` | rootless engine authority | Runner only; sensitive socket path | direct Unix socket under `/run/user/<runner-uid>/`, owned by that UID; the runner uses the bounded Podman v5 HTTP API and packages no engine CLI | `/run/user/1000/podman/podman.sock`; exact pre-existing bind with `create_host_path: false`; start the dedicated user's API first | Missing, symlinked, foreign-owned or rootful endpoint fails startup. Never mount it into public MCP or workcells. |
 | `MCP_DEVBOX_SANDBOX_MAX_TIMEOUT_MS` | L3 resource policy | Runner only; not secret | positive, max 30 minutes; `120000` default | `120000` | Invalid maximum fails startup. |
 | `MCP_DEVBOX_SANDBOX_MAX_CPU_MILLIS` | L3 resource policy | Runner only; not secret | positive; `1000` default | `1000` | Invalid maximum fails startup. |
 | `MCP_DEVBOX_SANDBOX_MAX_MEMORY_MIB` | L3 resource policy | Runner only; not secret | positive; `1024` default | `1024` | Invalid maximum fails startup. |
@@ -480,9 +519,9 @@ because they appear in source.
 | `/state/telemetry` | content-free aggregate SQLite metrics | persistent but reconstructability is limited | retain per operational policy; never treat it as request-content evidence |
 | `/state/model-turns` | durable model-turn coordination and optional controller generations | persistent; additive controller table, response columns and admission trigger | private control-plane state; preserve in a consistent pre-rollout backup and never expose to repository tools |
 | `/state/edge` | paired Edge/control operations | persistent; oldest terminal operations are reclaimed within the fixed page budget | private authority state; queued and leased operations are never reclaimed; back up and protect separately |
-| `<edge-state>/project-runtime/<workspace-id>` | per-workspace toolchain homes and mutable runtime state, including a pre-created `home` directory | persistent until an administrator-controlled exact workspace cleanup; owner-only | outside the source tree; `project_toolbox_cleanup` removes the toolbox record/container but does not remove these roots; never expose the path to an MCP client; validate ownership and symlink ancestry |
-| `<edge-state>/project-cache/<workspace-id>` | package-manager and compiler caches | disposable but persistent between runs when retained | outside the source tree; reclaim only through an administrator-controlled exact workspace cleanup; no general cache purge is implicit |
-| `<edge-state>/project-artifacts/<workspace-id>` | generated reports, captures and managed artifacts | persistent until an administrator-controlled exact artifact/workspace cleanup; owner-only | mount only the exact workspace artifact root; arbitrary files are not artifacts |
+| `<edge-state>/project-runtime/<workspace-id>` | per-workspace toolchain homes and mutable runtime state, including a pre-created `home` directory | persistent for ordinary projects; owner-only | explicit terminal task worktree cleanup reclaims the exact unreferenced root on Linux; retained toolboxes, browser sessions and active process/model journals preserve it. `project_toolbox_cleanup` alone does not remove it; paths remain private |
+| `<edge-state>/project-cache/<workspace-id>` | package-manager and compiler caches | disposable but persistent between runs when retained | explicit terminal task worktree cleanup reclaims the exact unreferenced root on Linux; ordinary project caches are unchanged. No global purge or shared writable cache is implicit |
+| `<edge-state>/project-artifacts/<workspace-id>` | generated reports, captures and managed artifacts | owner-only; populated roots persist | terminal task cleanup removes only an empty artifact root. Reports, captures and pinned evidence are preserved; arbitrary files are not automatically disposable |
 | `/state/console` | console sessions | persistent when login continuity matters | private; never agent-writable |
 | `/state/brain` | Brain console node identity | persistent | private runtime identity, distinct from Brain truth |
 | `/brain` | Brain Markdown truth, local Git, and disposable `.cache` | dedicated persistent volume; dirs `0700`, files `0600`, UID/GID `10001:10001` in image | outside the repository jail; back up `.git`, `.gitignore`, `curated`, `working`; `.cache` is disposable |
@@ -494,6 +533,11 @@ because they appear in source.
 | `~/.local/state/mcp-edge/project-worktrees.db` | Edge-private managed worktree identity, ownership and fence registry | private SQLite, `0600` | paths remain local and are never returned by public task tools |
 | `<edge-state>/worktree-test-profile.json` | one optional operator-owned managed-worktree test profile | private regular file, owner UID, exact `0600`, canonical JSON with version `1`, profile ID, fixed argv and timeout; absent by default | never writable through a public MCP tool; only its ID, digest and timeout are returned to a task start |
 | `/opt/mcp-devbox/current/codex/pin.json` | official tag, asset, archive SHA-256, binary SHA-256 and provider contract | immutable component hashed by the Edge manifest | server-owned input; a runtime request cannot replace the executable, pin or provider URL |
+
+If storage metadata is unreadable or removal is unsafe/unavailable, terminal
+worktree cleanup retains that storage and logs a bounded classified reason.
+It still records the completed source cleanup; reclamation does not invalidate
+the durable worktree receipt or authorize a broader deletion.
 
 No secret store, OAuth store, Edge identity, local Git credential, Docker socket, or
 host-private state path should be exposed as a repository alias or normal agent-writable
@@ -584,7 +628,9 @@ The general browser harness has no separate owner mode. It is available to every
 registered `dev` project that resolves to the existing `linux-workcell` toolbox. Browser
 engines, drivers, libraries and language packages are installed with
 `project_toolbox_install` or normal project package managers and persist in the toolbox
-rootfs until `project_toolbox_cleanup`.
+rootfs until `project_toolbox_cleanup` or explicit mount reconciliation recreates the
+container. Source and private runtime/cache mounts remain across reconciliation;
+rootfs-only installations and profiles must be restored separately.
 
 Harness runs need no server environment variables. The Edge supplies these fixed paths
 inside the toolbox:

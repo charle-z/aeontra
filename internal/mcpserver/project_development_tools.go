@@ -63,6 +63,12 @@ type projectDevelopmentIDParams struct {
 	RequestID string `json:"request_id"`
 }
 
+type projectDevelopmentListParams struct {
+	Alias  string `json:"alias"`
+	Target string `json:"target"`
+	Limit  int    `json:"limit,omitempty"`
+}
+
 // WithDevelopmentRunner registers a private administrator-configured broker.
 // Registration never moves source or changes the requested execution location.
 func (s *Server) WithDevelopmentRunner(runner *tools.DevelopmentRunner) *Server {
@@ -98,6 +104,10 @@ func (s *Server) addProjectDevelopmentTools(projectSchema map[string]any) {
 		"runner_profile":  stringSchema("explicit administrator-registered isolated runner profile", `^[a-z0-9][a-z0-9-]{0,63}$`, 64),
 	}, []string{"alias", "target", "idempotency_key", "argv", "timeout_seconds"})}, s.handleProjectDevelopmentStart)
 	s.addDirectTool(toolDef{Name: "project_development_status", Description: "Read durable command-development and objective metadata only. This never dispatches, polls the Edge, exposes private command bodies, or infers natural-language goal success.", Version: "1", Annotations: read, InputSchema: closedObject(map[string]any{"request_id": id}, []string{"request_id"})}, s.handleProjectDevelopmentStatus)
+	s.addDirectTool(toolDef{Name: "project_development_list", Description: "Recover lost durable command request IDs for one project and active Edge target. Return newest bounded metadata, including requests awaiting reasoning and retained terminal results, with list_complete. Never dispatch, poll the Edge, expose private command bodies, or retry commands.", Version: "1", Annotations: read, InputSchema: closedObject(map[string]any{
+		"alias": projectSchema["alias"], "target": projectSchema["target"],
+		"limit": map[string]any{"type": "integer", "minimum": 1, "maximum": workqueue.MaxListResults},
+	}, []string{"alias", "target"})}, s.handleProjectDevelopmentList)
 	s.addDirectTool(toolDef{Name: "project_development_cancel", Description: "Durably request cancellation of this exact development command. The coordinator reconciles lost acknowledgments and stops only its captured process identity. Cancellation is not accepted command evidence.", Version: "1", Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false}, InputSchema: closedObject(map[string]any{"request_id": id}, []string{"request_id"})}, s.handleProjectDevelopmentCancel)
 }
 
@@ -252,15 +262,62 @@ func (s *Server) projectDevelopmentRequest(arguments json.RawMessage) (workqueue
 	return request, nil
 }
 
+func (s *Server) handleProjectDevelopmentList(arguments json.RawMessage) (string, error) {
+	if s.workQueue == nil {
+		return "", errWorkQueueUnavailable
+	}
+	if s.edgeDevices == nil {
+		return "", errEdgeStoreUnavailable
+	}
+	var params projectDevelopmentListParams
+	if err := decodeClosed(arguments, &params); err != nil {
+		return "", err
+	}
+	if params.Limit == 0 {
+		params.Limit = 20
+	}
+	resolver, ok := s.edgeDevices.(edgeDeviceAliasRegistry)
+	if !ok {
+		return "", errors.New("edge target alias resolution is unavailable")
+	}
+	device, err := resolver.ResolveActiveDeviceName(params.Target)
+	if err != nil || !s.edgeDevices.DeviceActive(device.ID) {
+		return "", errors.New("active edge target not found")
+	}
+	requests, complete, err := s.workQueue.ProjectDevelopmentRequests(params.Alias, params.Target, device.ID, params.Limit)
+	if err != nil {
+		return "", err
+	}
+	views := make([]projectDevelopmentView, 0, len(requests))
+	for _, request := range requests {
+		view, err := s.developmentRequestView(request)
+		if err != nil {
+			return "", err
+		}
+		views = append(views, view)
+	}
+	return marshalToolValue(struct {
+		Alias        string                   `json:"alias"`
+		Target       string                   `json:"target"`
+		Requests     []projectDevelopmentView `json:"requests"`
+		ListComplete bool                     `json:"list_complete"`
+	}{params.Alias, params.Target, views, complete}, nil)
+}
+
 func (s *Server) projectDevelopmentResult(request workqueue.DevelopmentRequest) (string, error) {
+	view, err := s.developmentRequestView(request)
+	return marshalToolValue(view, err)
+}
+
+func (s *Server) developmentRequestView(request workqueue.DevelopmentRequest) (projectDevelopmentView, error) {
 	view := projectDevelopmentView{RequestID: request.ID, Alias: request.Alias, Target: request.Target, State: request.State, Reason: request.Reason, ObjectiveID: request.ObjectiveID, ProcessID: request.ProcessID, AcceptanceState: "not_ready"}
 	if request.ObjectiveID != "" {
 		objective, found, err := s.workQueue.DevelopmentObjective(request.ObjectiveID)
 		if err != nil {
-			return "", err
+			return view, err
 		}
 		if !found {
-			return "", errors.New("development objective unavailable")
+			return view, errors.New("development objective unavailable")
 		}
 		view.ObjectiveState = objective.State
 		if objective.State == development.ObjectiveAccepted {
@@ -272,7 +329,7 @@ func (s *Server) projectDevelopmentResult(request workqueue.DevelopmentRequest) 
 	if !projectDevelopmentTerminal(request.State) {
 		view.NextTool = "project_development_status"
 	}
-	return marshalToolValue(view, nil)
+	return view, nil
 }
 
 func projectDevelopmentTerminal(state workqueue.DevelopmentRequestState) bool {

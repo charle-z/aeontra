@@ -20,6 +20,12 @@ import (
 // runner command. Explicit caller requirements are unioned by the caller and
 // never changed. Absent legacy metadata keeps the original conservative set.
 func developmentCommandSourceRequirements(command projectDevelopmentBody, inspection *edge.ProjectDevelopmentInspection) ([]development.CapabilityID, error) {
+	// The exact location probe neither invokes project code nor uses a project
+	// compiler. Caller requirements are unioned separately and remain intact.
+	// Wrappers, local executables and environment overrides remain conservative.
+	if reflect.DeepEqual(command.Argv, []string{"pwd"}) && command.RunnerProfile == "" && command.Stdin == "" && len(command.Environment) == 0 {
+		return nil, nil
+	}
 	if inspection.GoCommandRequirements == nil || command.RunnerProfile != tools.DevelopmentRunnerProfile {
 		return inspection.Requirements, nil
 	}

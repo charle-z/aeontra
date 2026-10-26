@@ -133,6 +133,24 @@ Repeating the exact registration is idempotent. Reusing an alias for a different
 repository, reusing a repository under another alias, changing the target/workspace, or
 binding a disallowed profile fails with a stable code.
 
+## Git attribution in Codex workcells
+
+Managed Codex workers no longer inject a generic Git author or committer. Git
+uses only an explicitly configured repository-local identity; a missing identity
+must cause the commit to fail instead of attributing it to an invented bot.
+Configure this in the registered repository before starting a worker:
+
+```sh
+git config --local user.name "Your Name"
+git config --local user.email "your-verified-address@users.noreply.github.com"
+```
+
+Use an email verified or recognized by the contributor's GitHub account.
+For a separate meaningful collaborator, add a `Co-authored-by:` trailer
+deliberately; Aeontra assistance is not automatically counted as co-authorship.
+Do not rewrite a published PR's author metadata without revalidating its exact
+head, CI, and reviewer approvals.
+
 ## Checkout revalidation
 
 Registration and full checkout resolution revalidate the physical checkout. Registry-only

@@ -297,6 +297,35 @@ func TestProjectDevelopmentStartDurableBeforeEffectsAndReadOnlyStatus(t *testing
 	}
 }
 
+func TestProjectDevelopmentListRecoversIDWithoutDispatchOrPrivateBodies(t *testing.T) {
+	server, edges, _ := developmentServer(t)
+	view := developmentStart(t, server, "development-lost-id-001")
+	entry, found := server.table["project_development_list"]
+	if !found {
+		t.Fatal("no public recovery path for a lost development request ID")
+	}
+	args := json.RawMessage(`{"alias":"project","target":"parrot","limit":5}`)
+	output, err := entry.handler(args)
+	if err != nil || !strings.Contains(output, view.RequestID) || !strings.Contains(output, `"list_complete":true`) || len(edges.operations) != 0 {
+		t.Fatalf("list=%s err=%v operations=%d", output, err, len(edges.operations))
+	}
+	for _, forbidden := range []string{"argv", "go test", "body_ref", "body_digest", "device_id", "environment", "key_digest"} {
+		if strings.Contains(output, forbidden) {
+			t.Fatalf("list leaked %s: %s", forbidden, output)
+		}
+	}
+	for _, scope := range []string{`{"alias":"another","target":"parrot"}`, `{"alias":"project","target":"another"}`} {
+		output, err := entry.handler(json.RawMessage(scope))
+		if err != nil || !strings.Contains(output, `"requests":[]`) || strings.Contains(output, view.RequestID) {
+			t.Fatalf("cross-scope result=%s err=%v", output, err)
+		}
+	}
+	request, _, _ := server.workQueue.DevelopmentRequest(view.RequestID)
+	if request.Revision != 1 || len(edges.operations) != 0 {
+		t.Fatal("recovery listing changed state or dispatched work")
+	}
+}
+
 func TestProjectDevelopmentExactCommandAcceptanceSurvivesRestart(t *testing.T) {
 	server, edges, root := developmentServer(t)
 	view := developmentStart(t, server, "development-restart-001")

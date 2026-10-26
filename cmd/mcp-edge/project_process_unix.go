@@ -23,7 +23,7 @@ func executeProjectProcess(ctx context.Context, stateRoot string, processes *edg
 	var workspaceRoots edgeclient.WorkspaceRoots
 	var err error
 	if operation.Kind == edge.OperationProjectProcessStart {
-		_, workspaces, projects, roots, code := openProjectControlState(stateRoot)
+		credential, workspaces, projects, roots, code := openProjectControlState(stateRoot)
 		if code != "" {
 			return edge.OperationResult{}, code
 		}
@@ -31,6 +31,9 @@ func executeProjectProcess(ctx context.Context, stateRoot string, processes *edg
 		defer projects.Close()
 		workspaceRoots = roots
 		resolved, err = projects.Resolve(ctx, operation.Request.Alias, operation.Request.TargetAlias)
+		if err == nil {
+			resolved, err = resolveDirectProjectWorkspace(ctx, stateRoot, credential, workspaces, roots, resolved, operation.Request.WorktreeID)
+		}
 	} else {
 		// A durable process is already authorized. Do not consult project
 		// discovery or Git to observe/stop it: registry release/reassociation
@@ -48,13 +51,16 @@ func executeProjectProcess(ctx context.Context, stateRoot string, processes *edg
 			// from its former workspace. ResolveRegistered performs only the
 			// durable boundary/attestation check; a dirty source tree remains
 			// valid and does not block process observation or cleanup.
-			_, workspaces, projects, _, code := openProjectControlState(stateRoot)
+			credential, workspaces, projects, roots, code := openProjectControlState(stateRoot)
 			if code != "" {
 				return edge.OperationResult{}, code
 			}
 			defer workspaces.Close()
 			defer projects.Close()
 			resolved, err = projects.ResolveRegistered(operation.Request.Alias, operation.Request.TargetAlias)
+			if err == nil {
+				resolved, err = resolveDirectProjectWorkspace(ctx, stateRoot, credential, workspaces, roots, resolved, operation.Request.WorktreeID)
+			}
 		}
 	}
 	if err != nil {

@@ -97,6 +97,17 @@ control signature proves that the paired device was actually assigned the closed
 `update stable`, rollback or repair operation. Edge verifies both boundaries before
 the privileged fixed unit can run.
 
+The Linux Edge keeps a private operation receipt while a bundle transaction is
+running. Cancelling the calling `systemctl` client during an Edge restart does not
+prove that the root oneshot stopped. The receipt survives that interruption so a
+recovered lease waits for the existing unit rather than dispatching another update.
+Recovery waits through `activating`, `active`, `reloading`, and `deactivating`, then
+requires a loaded unit with `ActiveState=inactive` and `Result=success`. A missing,
+malformed, or unreadable unit state returns `updater_state_unavailable`; it is not
+treated as a completed update. The wait and each status query remain bounded.
+A normal start failure remains `updater_failed`; a later healthy installation does
+not rewrite the historical operation result.
+
 ## Codex-only transition
 
 The v4-to-v5 transition uses this order:

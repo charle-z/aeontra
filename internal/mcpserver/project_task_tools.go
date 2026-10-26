@@ -239,7 +239,7 @@ func (s *Server) addProjectTaskTools(projectSchema map[string]any) {
 	s.addDirectTool(toolDef{Name: "project_task_test_status", Description: "Read one worker's durable test process and revalidate its pinned worktree, lease, fence, profile, source digest and exit status. A zero exit can record a bounded test receipt, but semantic task acceptance remains pending. This tool never stops a process.", InputSchema: testWorkerSchema, Version: "1", Annotations: readHints}, s.handleProjectTaskTestStatus)
 	s.addDirectTool(toolDef{Name: "project_task_test_stop", Description: "Request a bounded stop of the test process owned by this exact task worker, including after the worker lease changes. Stopping never counts as a passed test.", InputSchema: testWorkerSchema, Version: "1", Annotations: cancelHints}, s.handleProjectTaskTestStop)
 	s.addDirectTool(toolDef{Name: "project_task_cancel", Description: "Request cancellation of every nonterminal worker in one durable task. Repeated cancellation is idempotent.", InputSchema: closedObject(map[string]any{"task_id": taskID}, []string{"task_id"}), Version: "1", Annotations: cancelHints}, s.handleProjectTaskCancel)
-	s.addDirectTool(toolDef{Name: "project_task_cleanup", Description: "Remove only terminal worker worktrees after exact lease and fence validation. Succeeded workers with opt-in evidence or declared objective contracts require durable, freshly revalidated receipts. Cleanup retains worker branches and evidence; it does not infer undeclared goal acceptance. Confirmed Edge cleanup can recover a lost journal marker without replaying the effect. The caller idempotency key correlates retries; Edge cleanup identity is server-derived.", InputSchema: closedObject(map[string]any{"task_id": taskID, "idempotency_key": stringSchema("caller retry-correlation key; Edge operation identity is server-derived per task and worker", `^[A-Za-z0-9][A-Za-z0-9._:-]{7,95}$`, 96)}, []string{"task_id", "idempotency_key"}), Version: "4", Annotations: cleanupHints}, s.handleProjectTaskCleanup)
+	s.addDirectTool(toolDef{Name: "project_task_cleanup", Description: "Remove only terminal worker worktrees after exact lease and fence validation. Succeeded workers with opt-in evidence or declared objective contracts require durable, freshly revalidated receipts. Linux cleanup also reclaims unreferenced private runtime/cache roots and empty artifact roots. Retained resource references and populated artifacts are preserved. Cleanup retains worker branches and evidence; it does not infer undeclared goal acceptance. Confirmed Edge cleanup can recover a lost journal marker without replaying the effect. The caller idempotency key correlates retries; Edge cleanup identity is server-derived.", InputSchema: closedObject(map[string]any{"task_id": taskID, "idempotency_key": stringSchema("caller retry-correlation key; Edge operation identity is server-derived per task and worker", `^[A-Za-z0-9][A-Za-z0-9._:-]{7,95}$`, 96)}, []string{"task_id", "idempotency_key"}), Version: "5", Annotations: cleanupHints}, s.handleProjectTaskCleanup)
 }
 
 func (s *Server) handleProjectTaskStart(arguments json.RawMessage) (string, error) {
@@ -320,10 +320,30 @@ func (s *Server) handleProjectTaskStart(arguments json.RawMessage) (string, erro
 		snapshot, err = s.edgeOperations.WaitOperation(context.Background(), snapshot.ID, 180*time.Second)
 	}
 	if err != nil || snapshot.State != edge.OperationSucceeded || snapshot.Result.SnapshotHead == "" || snapshot.Result.ProjectAlias != params.Alias || snapshot.Result.ProjectTarget != params.Target {
-		if err != nil {
-			return "", err
+		reason, next := "snapshot_unavailable", "project_status"
+		switch {
+		case snapshot.State == edge.OperationFailed && snapshot.SafeCode != "":
+			reason = snapshot.SafeCode
+		case snapshot.State == edge.OperationCancelled:
+			reason = "snapshot_cancelled"
+		case snapshot.State != edge.OperationSucceeded && snapshot.ID != "":
+			reason, next = "snapshot_pending", "edge_operation_status"
+		case snapshot.Result.ProjectAlias != params.Alias || snapshot.Result.ProjectTarget != params.Target:
+			reason = "snapshot_binding_mismatch"
+		case snapshot.Result.SnapshotUnborn:
+			reason, next = "initial_commit_required", "project_exec"
+		case snapshot.Result.SnapshotHead == "":
+			reason = "snapshot_head_unavailable"
 		}
-		return "", errors.New("project task base snapshot failed")
+		diagnostic, encodeErr := marshalToolValue(struct {
+			Alias          string              `json:"alias"`
+			Target         string              `json:"target"`
+			OperationID    string              `json:"operation_id,omitempty"`
+			OperationState edge.OperationState `json:"operation_state,omitempty"`
+			Reason         string              `json:"reason"`
+			NextTool       string              `json:"next_tool"`
+		}{params.Alias, params.Target, snapshot.ID, snapshot.State, reason, next}, nil)
+		return diagnostic, errors.Join(errors.New("project task base snapshot failed"), err, encodeErr)
 	}
 	if params.IntegrationContract != nil && snapshot.Result.SnapshotHead != params.IntegrationContract.ExpectedBaseCommit {
 		return "", errors.New("project task integration base changed")

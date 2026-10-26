@@ -240,6 +240,46 @@ func (s *Store) DevelopmentRequests(limit int) ([]DevelopmentRequest, error) {
 	return listDevelopmentRequests(s.db, limit, false)
 }
 
+// ProjectDevelopmentRequests is a read-only recovery inventory, separate from
+// dispatch scheduling. It includes awaiting-reasoning and retained terminal
+// records and filters the immutable project/device binding before limiting.
+func (s *Store) ProjectDevelopmentRequests(alias, target, deviceID string, limit int) ([]DevelopmentRequest, bool, error) {
+	if s == nil || s.db == nil || !taskProjectPattern.MatchString(alias) || !taskTargetPattern.MatchString(target) || !developmentRequestDevice.MatchString(deviceID) || limit < 1 || limit > MaxListResults {
+		return nil, false, errors.New("workqueue: project development list scope or limit is invalid")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rows, err := s.db.Query(`SELECT request_id,revision,state,key_digest,record_digest,record_json
+		FROM development_requests
+		WHERE json_extract(record_json,'$.alias')=? AND json_extract(record_json,'$.target')=?
+		AND json_extract(record_json,'$.device_id')=?
+		AND (state NOT IN (?,?,?) OR updated_at>?)
+		ORDER BY updated_at DESC,request_id DESC LIMIT ?`, alias, target, deviceID,
+		DevelopmentRequestCompleted, DevelopmentRequestFailed, DevelopmentRequestCancelled,
+		s.now().UTC().Add(-DevelopmentRequestIdempotencyTTL).UnixNano(), limit+1)
+	if err != nil {
+		return nil, false, errors.New("workqueue: project development list failed")
+	}
+	defer rows.Close()
+	requests := make([]DevelopmentRequest, 0, limit)
+	complete := true
+	for rows.Next() {
+		request, found, err := scanDevelopmentRequest(rows)
+		if err != nil || !found || request.Alias != alias || request.Target != target || request.DeviceID != deviceID {
+			return nil, false, errors.New("workqueue: project development list result is invalid")
+		}
+		if len(requests) == limit {
+			complete = false
+			break
+		}
+		requests = append(requests, request)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, errors.New("workqueue: project development list failed")
+	}
+	return requests, complete, nil
+}
+
 // TouchDevelopmentRequest advances one eligible request by CAS without changing
 // its binding. Its strictly increasing update time rotates it behind untouched
 // work even when the local clock has not advanced between polls.

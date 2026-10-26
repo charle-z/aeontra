@@ -22,6 +22,38 @@ type recordingEdgeControlStore struct {
 
 func (s *recordingEdgeControlStore) DeviceActive(string) bool { return s.active }
 
+func (s *recordingEdgeControlStore) ResolveActiveDeviceName(name string) (edge.Device, error) {
+	if !s.active || name != "parrot" {
+		return edge.Device{}, errors.New("active edge target not found")
+	}
+	return edge.Device{ID: testEdgeDeviceID, Name: name, State: edge.StateActive}, nil
+}
+
+func TestEdgeHealthAcceptsTargetAliasAndPreservesDeviceID(t *testing.T) {
+	for _, name := range []string{"edge_bundle_status", "edge_onboarding_status"} {
+		store := &recordingEdgeControlStore{active: true}
+		server := stampServer(t).WithEdgeStore(store)
+		for _, args := range []string{`{"target":"parrot"}`, `{"device_id":"` + testEdgeDeviceID + `"}`} {
+			if _, err := server.table[name].handler(json.RawMessage(args)); err != nil || store.pending.DeviceID != testEdgeDeviceID {
+				t.Fatalf("%s %s: err=%v operation=%+v", name, args, err, store.pending)
+			}
+		}
+		for _, args := range []string{`{}`, `{"target":"parrot","device_id":"` + testEdgeDeviceID + `"}`, `{"target":"unknown"}`} {
+			store.createdKind = ""
+			if _, err := server.table[name].handler(json.RawMessage(args)); err == nil || store.createdKind != "" {
+				t.Fatalf("%s accepted invalid health target: %s", name, args)
+			}
+		}
+	}
+	store := &recordingEdgeControlStore{active: true}
+	server := stampServer(t).WithEdgeStore(store)
+	for _, name := range []string{"edge_bundle_update", "edge_bundle_rollback", "edge_repair"} {
+		if _, err := server.table[name].handler(json.RawMessage(`{"target":"parrot"}`)); err == nil {
+			t.Fatalf("mutation %s unexpectedly accepts health alias schema", name)
+		}
+	}
+}
+
 func (s *recordingEdgeControlStore) ResolveWorkspace(workspaceID string) (edge.WorkspaceBinding, error) {
 	if s.binding.WorkspaceID != workspaceID {
 		return edge.WorkspaceBinding{}, errors.New("registered active workspace not found")

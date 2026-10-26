@@ -146,15 +146,14 @@ jobs:
             database: .descriptor.db, observed_at: (now | todateiso8601)}' \
             artifacts/sandbox-workcell-grype.json > artifacts/db-provenance.json
 
-      - name: Enforce all other High and Critical findings and the accepted-risk expiry
+      - name: Enforce all High and Critical findings
         env:
           VERIFIED_IMAGE_ID: ${{ steps.identity.outputs.image_id }}
         run: |
           set -euo pipefail
           test -n "$VERIFIED_IMAGE_ID"
           go run ./cmd/grype-gate --report artifacts/sandbox-workcell-grype.json --minimum high \
-            --accepted-risk security/accepted-risks/http-cache-semantics-20261003.json \
-            --image-id "$VERIFIED_IMAGE_ID" --annotation-file artifacts/monitored/Dockerfile.sandbox-workcell
+            --annotation-file artifacts/monitored/Dockerfile.sandbox-workcell
 
       - name: Retain bounded scan and identity evidence even on failure
         if: always()

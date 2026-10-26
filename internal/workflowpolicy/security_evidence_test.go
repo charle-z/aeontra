@@ -43,47 +43,50 @@ func TestSecurityEvidenceWorkflowContainsRequiredJobsAndActions(t *testing.T) {
 		"sh scripts/test-front-door-coordinator-volume.sh",
 		"output-file: front-door-sbom.spdx.json",
 		"image: mcp-front-door:ci",
-		"output-file: front-door-grype.json",
+		"--file front-door-grype.json",
 		"test -s front-door-sbom.spdx.json",
 		"test -s front-door-grype.json",
 		"go run ./cmd/grype-gate --report front-door-grype.json --minimum high --annotation-file Dockerfile.front-door",
 		"output-file: front-door-coordinator-sbom.spdx.json",
 		"image: mcp-front-door-coordinator:ci",
-		"output-file: front-door-coordinator-grype.json",
+		"--file front-door-coordinator-grype.json",
 		"test -s front-door-coordinator-sbom.spdx.json",
 		"test -s front-door-coordinator-grype.json",
 		"go run ./cmd/grype-gate --report front-door-coordinator-grype.json --minimum high --annotation-file Dockerfile.front-door-coordinator",
 		"output-file: validation-runner-sbom.spdx.json",
 		"image: mcp-validation-runner:ci",
-		"output-file: validation-runner-grype.json",
+		"--file validation-runner-grype.json",
 		"test -s validation-runner-sbom.spdx.json",
 		"test -s validation-runner-grype.json",
 		"go run ./cmd/grype-gate --report validation-runner-grype.json --minimum high --annotation-file Dockerfile.validation-runner",
 		"output-file: sandbox-runner-sbom.spdx.json",
 		"image: mcp-sandbox-runner:ci",
-		"output-file: sandbox-runner-grype.json",
+		"--file sandbox-runner-grype.json",
 		"go run ./cmd/grype-gate --report sandbox-runner-grype.json --minimum high --annotation-file Dockerfile.sandbox-runner",
 		"output-file: sandbox-workcell-sbom.spdx.json",
 		"image: mcp-sandbox-workcell:ci",
-		"output-file: sandbox-workcell-grype.json",
-		"vex: security/vex/sandbox-workcell-zlib.openvex.json",
+		"--file sandbox-workcell-grype.json",
+		"--vex security/vex/sandbox-workcell-zlib.openvex.json",
 		"go run ./cmd/grype-gate --report sandbox-workcell-grype.json --minimum high --annotation-file Dockerfile.sandbox-workcell",
 		"anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610",
 		"output-file: sbom.spdx.json",
 		"upload-artifact: false",
 		"upload-release-assets: false",
-		"anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2",
+		"anchore/scan-action/download-grype@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2",
 		"image: mcp-devbox:ci",
-		"fail-build: false",
-		"severity-cutoff: high",
-		"output-format: json",
-		"output-file: grype.json",
+		"grype-version: v0.110.0",
+		"GRYPE_DB_AUTO_UPDATE: \"false\"",
+		"GRYPE_DB_VALIDATE_AGE: \"true\"",
+		"GRYPE_DB_MAX_ALLOWED_BUILT_AGE: 24h",
+		"GRYPE_DB_VALIDATE_BY_HASH_ON_START: \"true\"",
+		"cache-db: true",
+		"--file grype.json",
 		"test -s sbom.spdx.json",
 		"test -s grype.json",
 		"go run ./cmd/grype-gate --report grype.json --minimum high --annotation-file Dockerfile",
 		"output-file: aeontra-site-sbom.spdx.json",
 		"image: aeontra-site:ci",
-		"output-file: aeontra-site-grype.json",
+		"--file aeontra-site-grype.json",
 		"test -s aeontra-site-sbom.spdx.json",
 		"test -s aeontra-site-grype.json",
 		"go run ./cmd/grype-gate --report aeontra-site-grype.json --minimum high --annotation-file Dockerfile.site",
@@ -146,17 +149,17 @@ func TestSandboxWorkcellPinsReviewedToolchains(t *testing.T) {
 	text := string(content)
 	for _, required := range []string{
 		"FROM cgr.dev/chainguard/wolfi-base@sha256:6a8dca4c2153cfc11d559cfa6172c187b896423d833f3d48a4c1c44ab55596d7",
-		"go-1.26=1.26.7-r0",
-		"glibc-2.44=2.44-r6",
-		"glibc-2.44-dev=2.44-r6",
-		"glibc-2.44-locale-posix=2.44-r6",
-		"ld-linux-2.44=2.44-r6",
-		"libcrypt1-2.44=2.44-r6",
-		"nodejs-24=24.19.0-r0",
+		"go-1.26=1.26.10-r0",
+		"glibc-2.44=2.44-r8",
+		"glibc-2.44-dev=2.44-r8",
+		"glibc-2.44-locale-posix=2.44-r8",
+		"ld-linux-2.44=2.44-r8",
+		"libcrypt1-2.44=2.44-r8",
+		"nodejs-24=24.22.1-r2",
 		"npm=12.0.2-r0",
 		"py3.14-pip=26.2.1-r2",
 		"py3.14-pip-base=26.2.1-r2",
-		"python-3.14=3.14.7_git20260925-r0",
+		"python-3.14=3.14.8_git20261008-r1",
 		"rust-1.96=1.96.1-r0",
 		"zlib=1.3.2-r7",
 		"4d03c63b8648ab83053a6f00d304a5d6f9aa1ed7",
@@ -168,11 +171,14 @@ func TestSandboxWorkcellPinsReviewedToolchains(t *testing.T) {
 		"ip-address-10.3.1.tgz",
 		"npm pack --ignore-scripts --pack-destination /tmp brace-expansion@5.0.11",
 		"67bb5a1b4d4a8ff497d845a0b891ffe6b7233aea2202641315cec88d0fff15eb",
-		"npm pack --ignore-scripts --pack-destination /tmp undici@6.28.1",
-		"e18191aac9c0ff43dac7fe9b10b7041a22d07addb7b66a6e8ac14a52a5b69b74",
+		"npm pack --ignore-scripts --pack-destination /tmp undici@6.29.1",
+		"29c4b8e0b2d86cb8795571c1959012ce057a14ecfd34858335f47c31e770a04f",
 		"/usr/lib/node_modules/npm/node_modules/undici/package.json",
 		`test "$(find /usr/lib/node_modules/npm -path '*/undici/package.json' -type f | wc -l)" -eq 1`,
 		"npm pack --ignore-scripts --pack-destination /tmp ip-address@10.3.1",
+		"npm pack --ignore-scripts --pack-destination /tmp http-cache-semantics@4.3.0",
+		"d75e1e6a11587954da5e2f0e2b5c4b397a16d28cc2f7bdf64e9027fc2fe593ee",
+		"/usr/lib/node_modules/npm/node_modules/http-cache-semantics/package.json",
 		"busybox sha256sum -c -",
 	} {
 		if !strings.Contains(text, required) {
@@ -193,6 +199,16 @@ func TestSandboxWorkcellPinsReviewedToolchains(t *testing.T) {
 	}
 }
 
+func TestNewWorkcellScanDoesNotReuseHistoricalRiskAcceptance(t *testing.T) {
+	content, err := os.ReadFile("../../.github/workflows/security.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(content), "--accepted-risk") {
+		t.Fatal("new workcell builds must pass the threshold without historical risk acceptance")
+	}
+}
+
 func TestSandboxWorkcellSmokeVerifiesPatchedZlib(t *testing.T) {
 	content, err := os.ReadFile("../../scripts/test-sandbox-workcell-toolchains.sh")
 	if err != nil {
@@ -203,7 +219,9 @@ func TestSandboxWorkcellSmokeVerifiesPatchedZlib(t *testing.T) {
 		"/usr/share/aeontra/security/zlib-gzwrite-fix",
 		"npm_runtime_modules=ready",
 		"brace-expansion/package.json').version, '5.0.11'",
-		"undici/package.json').version, '6.28.1'",
+		"undici/package.json').version, '6.29.1'",
+		"http-cache-semantics/package.json').version, '4.3.0'",
+		"policy.satisfiesWithoutRevalidation(request)",
 		"['Agent', 'EnvHttpProxyAgent', 'RetryAgent', 'fetch']",
 		"4d03c63b8648ab83053a6f00d304a5d6f9aa1ed7",
 		"zlibVersion()",
@@ -223,6 +241,7 @@ func TestSandboxWorkcellSmokeVerifiesRuntimeOpenSSLVersion(t *testing.T) {
 	text := string(content)
 	for _, required := range []string{
 		"ssl.OPENSSL_VERSION_NUMBER >= 0x30600050",
+		"sys.version_info[:3] >= (3, 14, 8)",
 		"ssl.create_default_context()",
 		"python_tls=ready",
 	} {

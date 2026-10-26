@@ -62,7 +62,7 @@ func TestRegisterPlatformCoreDefinesStableContractsAndRoutesHandlers(t *testing.
 	wantDescriptions := map[string]string{
 		"coolify_deploy":            "Execute one previously reviewed platform_deploy_preview plan after revalidating the application repository, branch and expected commit. The plan is expiring and single-use; requires approval in ask mode; token is never exposed.",
 		"coolify_list_apps":         "List applications on the configured Coolify instance. Disabled unless COOLIFY_URL + COOLIFY_API_TOKEN are set. Token is never exposed.",
-		"coolify_app_status":        "Read one Coolify application by uuid. Disabled unless COOLIFY_URL + COOLIFY_API_TOKEN are set; COOLIFY_ALLOWED_APPS is enforced when configured.",
+		"coolify_app_status":        "Read one compact Coolify application status by uuid without fetching logs. Use platform_app_logs for logs. Disabled unless COOLIFY_URL + COOLIFY_API_TOKEN are set; COOLIFY_ALLOWED_APPS is enforced when configured.",
 		"coolify_deployment_status": "Read one Coolify deployment by UUID and return a safe summary containing status, commit, timestamps, and application name. Token is never exposed.",
 		"coolify_app_logs":          "Read the latest bounded application logs from Coolify. Disabled unless COOLIFY_URL + COOLIFY_API_TOKEN are set; COOLIFY_ALLOWED_APPS is enforced and secrets are redacted.",
 		"coolify_create_app":        "Execute one previously reviewed platform_app_create_preview plan using the configured server/project/environment. Repository owner, domain, build, port and healthcheck were validated; plan is expiring and single-use; requires approval in ask mode.",

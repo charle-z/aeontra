@@ -255,10 +255,12 @@ func (l *OpenCodeLauncher) codexLinuxWorkcellProcessSpec(runtimeDir string, work
 		"GOMODCACHE": "/cache/go-mod", "GOCACHE": "/cache/go-build",
 		"DOCKER_CONFIG": "/toolchain/docker", "MCP_DEVBOX_RUNTIME_ROOT": "/toolchain",
 		"MCP_DEVBOX_CACHE_ROOT": "/cache", "MCP_DEVBOX_ARTIFACT_ROOT": "/artifacts", "MCP_DEVBOX_RUNTIME_ID": lease.RuntimeID,
-		"MCP_DEVBOX_PROFILE": string(workspace.Profile), "MCP_DEVBOX_MODE": string(workspace.Mode), "MCP_DEVBOX_NETWORK_POSTURE": LinuxWorkcellNetworkPosture,
+		"MCP_DEVBOX_SCRATCH_ROOT": "/toolchain/scratch",
+		"MCP_DEVBOX_PROFILE":      string(workspace.Profile), "MCP_DEVBOX_MODE": string(workspace.Mode), "MCP_DEVBOX_NETWORK_POSTURE": LinuxWorkcellNetworkPosture,
 		"COMPOSE_PROJECT_NAME": strings.ReplaceAll(lease.RuntimeID, "-", "_"),
-		"GIT_AUTHOR_NAME":      "MCP Devbox Codex", "GIT_AUTHOR_EMAIL": "codex@mcp-devbox.invalid",
-		"GIT_COMMITTER_NAME": "MCP Devbox Codex", "GIT_COMMITTER_EMAIL": "codex@mcp-devbox.invalid",
+		// Git must use an explicitly configured repository-local identity, not a bot default.
+		"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null",
+		"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "user.useConfigOnly", "GIT_CONFIG_VALUE_0": "true",
 	}
 	if linkedWorktree {
 		environment["GIT_DIR"] = gitMetadata.SandboxGitDir
@@ -472,9 +474,15 @@ func validateCodexLinuxWorkcellSandbox(spec openCodeSandboxSpec, roots Workspace
 	} else if _, mounted := mounts[rootlessContainerSocketTarget]; mounted {
 		return errors.New("codex workcell rootless container socket has no endpoint")
 	}
-	if spec.Environment["GIT_AUTHOR_NAME"] != "MCP Devbox Codex" || spec.Environment["GIT_AUTHOR_EMAIL"] != "codex@mcp-devbox.invalid" ||
-		spec.Environment["GIT_COMMITTER_NAME"] != "MCP Devbox Codex" || spec.Environment["GIT_COMMITTER_EMAIL"] != "codex@mcp-devbox.invalid" {
-		return errors.New("codex workcell Git identity is incomplete")
+	for _, key := range []string{"GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"} {
+		if _, set := spec.Environment[key]; set {
+			return errors.New("codex workcell forces a Git identity")
+		}
+	}
+	if spec.Environment["GIT_CONFIG_NOSYSTEM"] != "1" || spec.Environment["GIT_CONFIG_GLOBAL"] != "/dev/null" ||
+		spec.Environment["GIT_CONFIG_COUNT"] != "1" || spec.Environment["GIT_CONFIG_KEY_0"] != "user.useConfigOnly" ||
+		spec.Environment["GIT_CONFIG_VALUE_0"] != "true" {
+		return errors.New("codex workcell Git identity safeguards are incomplete")
 	}
 	return nil
 }

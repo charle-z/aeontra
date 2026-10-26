@@ -37,6 +37,7 @@ do not replace server-side enforcement.
 | `project_task_list` | 1/0/1/0 | List up to 20 recent task IDs and bounded lifecycle metadata for one project/Edge target, including retained terminal tasks. It reads the indexed local journal without polling the Edge or starting a worker. A new chat can find a lost task ID, then call `project_task_status` for current runtime and acceptance evidence. It does not return goals, prompts, leases, paths or credentials. |
 | `project_development_start` | 0/1/1/1 | Stage and pin one exact scoped argv command, relative cwd, non-secret environment, stdin, timeout and optional extra capability requirements before any Edge effect. Return a durable `dr_` request immediately. The existing coordinator inspects the registered workspace and measured capabilities, executes only a supported registered route, and binds command acceptance to the exact source, environment, private body and captured process. Registered Linux source fingerprinting is Git-selected and finitely bounded; leaf symlink text is included without following targets, while directories/gitlinks and special files fail inspection. An isolated runner requires an explicit administrator-registered profile; private or dirty source is not moved. Capability requirements never grant execution authority. |
 | `project_development_status` | 1/0/1/0 | Read only durable request and objective metadata. No Edge polling, dispatch, raw command body, environment, paths or output is returned. `command_verified` means the exact command had a known zero exit and its source/environment bindings were revalidated; it does not establish a natural-language goal. Code failure, source drift, a requirement explicitly unsupported by every available provisioner, or a requirement missing from the selected calibrated runner template reports `awaiting_reasoning`. Unavailable provisioning, unknown or pending runner calibration, and unverified receipts remain pending. |
+| `project_development_list` | 1/0/1/0 | Recover command request IDs by alias and active Edge target. Return up to 100 newest metadata records (default 20), including awaiting-reasoning and unexpired retained terminal requests. `list_complete=false` means more matching records exist. Filtering includes current device binding before limiting; it never polls the Edge, dispatches work, touches revisions or exposes private bodies. |
 | `project_development_cancel` | 0/1/1/0 | Persist cancellation for one exact request. The existing coordinator recovers lost start acknowledgments and stops only the process captured from its authenticated original operation. A failed stop enters durable, identity-bound read-only reconciliation; journal retention or a lost observation acknowledgment cannot replay the stop. The result may remain `cancelling` until terminal evidence is observed; cancellation cannot create passing command evidence. |
 | `project_task_test_start` | 0/0/1/1 | Start or reuse one pinned operator-owned test profile after the worker runtime succeeds. The Edge runs fixed argv asynchronously in that worker's exact managed worktree. The caller cannot supply argv, environment, stdin or cwd. |
 | `project_task_test_status` | 1/0/1/0 | Observe one durable test process and revalidate its identity, profile and selected source-content digest. A passing terminal result records an immutable receipt; status never stops the process. Nonzero, unknown, stopped, stale and unavailable results do not pass. |
@@ -46,6 +47,9 @@ do not replace server-side enforcement.
 | `workspace_runtime_continue` | 0/0/1/0 | Continue one registered dev or HTB workspace through the active ChatGPT session using its local trusted contract; accepts the opaque workspace id, timeout and a fresh caller-generated idempotency key, creates one runtime, and does not retry automatically. |
 | `workspace_lab_prepare` | 0/0/1/0 | Queue idempotent HTB Linux workspace preparation on a paired Edge using closed lab metadata; commands and credentials never enter the control plane. |
 | `project_prepare` | 0/0/1/1 | Create, recover, or associate one development project using only project alias, repository name and human Edge target alias; local Git authority, paths and opaque IDs remain inside the Edge. |
+| `project_workspace_prepare` | 0/0/1/0 | Create or recover a Linux exact-base isolated writer for direct MCP commands using alias, target, base commit and caller key. No model runtime starts. Different keys isolate writers; retries reuse the same workspace. |
+| `project_workspace_status` | 1/0/1/0 | List up to 20 recent direct workspaces when no id is supplied, or inspect one exact `worktree_id` with Git and bounded storage evidence. Model worker worktrees cannot be selected. Exact status is the cleanup preview. |
+| `project_workspace_cleanup` | 0/1/1/0 | Explicitly close one direct workspace by exact expected HEAD and durable key. Dirty/ignored source, detached HEAD and retained resources block removal. Unreferenced runtime/cache and an empty artifact root may be reclaimed; committed work on verified branches, populated artifacts and receipts remain. |
 | `project_status` | 1/0/1/0 | Resolve one Edge project by alias and human target, returning safe repository readiness plus bounded manifest detection and its L3, persistent-toolbox or pin-resolution route. |
 | `project_registry_list` | 1/0/1/0 | List bounded durable project claims for one target on a paired Edge without running Git status or discovery, or changing workspaces; it performs a bounded repository-identity check and returns repository identity, target, generation and lifecycle state without paths or internal workspace IDs. |
 | `project_reconcile` | 0/0/1/0 | Reconcile one registered project claim after a recoverable registry or workspace interruption. It revalidates the owner-bound workspace and never deletes source files or associates a new repository. |
@@ -92,6 +96,7 @@ do not replace server-side enforcement.
 | `project_toolbox_service_stop` | 0/1/1/1 | Stop one owned service after PID/start-tick revalidation using TERM, a bounded grace period and KILL only when necessary; repeated requests are idempotent. |
 | `project_toolbox_cleanup` | 0/1/1/1 | Explicitly remove only the project's toolbox rootfs and private toolbox metadata. With one rootless endpoint, a missing container permits record-only cleanup after the pinned endpoint, workspace identity, name and label have been checked. Cleanup is idempotent, never automatic, and does not delete the project workspace or other workspace storage. |
 | `edge_operation_list` | 1/0/1/0 | List bounded queued/running operation identity, kind, progress and cancellation state for one human Edge target without exposing device/workspace ids, paths, request bodies or raw output. |
+| `edge_connectivity_status` | 1/0/1/0 | Read one active paired Edge's authenticated contact metadata locally with `target` or legacy `device_id`, never both. Returns `recent_contact`, `no_recent_contact` or `unknown`, server observation/contact times and a 90-second freshness window. It never dispatches, waits for or wakes the Edge. Contact is transport evidence, not power, service readiness, compatibility or capacity; absence cannot distinguish shutdown from a network or daemon failure. |
 | `edge_operation_status` | 1/0/1/0 | Read one durable Edge operation's bounded lifecycle, progress and derived queue/pickup/work/completion/total durations by operation id; internal absolute phase timestamps remain private. |
 | `edge_operation_cancel` | 0/1/1/0 | Idempotently cancel one queued operation or one interruptible running operation; updater, rollback and repair effects become non-cancellable after pickup. |
 | `workspace_lab_retarget` | 0/0/1/0 | Queue a private-IP retarget; the Edge validates VPN routing and rotates local authorization while preserving the workspace ID and evidence. |
@@ -141,6 +146,11 @@ do not replace server-side enforcement.
 | `git_commit` | 0/0/0/0 | Stage and commit locally in the attested private L3 executor; allow mode only. It does not push. |
 
 ### Task evidence after cleanup
+
+On Linux, explicit cleanup also reclaims the temporary workspace's unreferenced
+private runtime/cache roots and removes an empty artifact root. Active process or
+model journals, retained toolbox/browser records and populated artifacts preserve
+their data. Ordinary project roots and caches are unchanged; no global GC runs.
 
 Git and test evidence contracts are opt-in. After a succeeded worker's worktree
 is cleaned, a task without either contract remains `acceptance_pending` for
@@ -246,6 +256,15 @@ materialization. See [configuration.md](configuration.md) for manifest bounds.
 
 ### Development-environment v2 semantics
 
+For a complete start/find/recover/publish sequence, use the
+[linear development runbook](runbooks/linear-development.md). Read-only health
+queries accept exactly one human `target` or legacy `device_id`; signed update,
+rollback and repair operations keep their existing `device_id` contract.
+Process listings always contain `processes`, including an empty array, without
+single-process stdout, stdin or exit fields. Task snapshot failures include the
+original operation ID, bounded reason and next observation tool before any worker
+is started.
+
 Project and process tools distinguish ordinary development state from a boundary
 failure. `project_status` may report `ready` or `dirty` when the registered workspace
 identity is valid. `unavailable`, `timeout`, `identity_mismatch`, `corrupt` and
@@ -271,6 +290,13 @@ owner-only permissions before the workcell starts. Existing legacy runtime direc
 implicitly.
 
 Toolbox records bind workspace, mount policy, rootless engine identity and generation.
+Inspection failures retain their original cause internally. Cancellation and expired
+execution contexts report `cancelled`; they do not trigger additional discovery probes,
+alternate-engine selection, or repair. The private Edge service journal records the
+opaque operation ID, inspection stage, a closed error category, and a process exit code
+when available. It never prints engine output, command arguments, or host paths. These
+diagnostics do not add automatic retries or relax ownership validation.
+
 `project_toolbox_repair` can restart only a stopped server-owned toolbox whose identity
 and mounts still validate; stale but safely reconcilable records use the controlled
 reconciliation path, while ownership or boundary drift fails closed. Cleanup is explicit
@@ -363,7 +389,7 @@ domain operations continue to use only the operator's configured Coolify boundar
 | `coolify_list_apps` | 1/0/1/1 | Compatibility name for `platform_apps_list`. |
 | `platform_apps_list` | 1/0/1/1 | Return safe application summaries. |
 | `coolify_app_status` | 1/0/1/1 | Compatibility name for `platform_app_status`. |
-| `platform_app_status` | 1/0/1/1 | Return one allowed application's safe status. |
+| `platform_app_status` | 1/0/1/1 | Return one allowed application's compact safe status with one external read; logs are fetched only through `platform_app_logs`. |
 | `coolify_app_logs` | 1/0/1/1 | Compatibility name for bounded, redacted `platform_app_logs`. |
 | `platform_app_logs` | 1/0/1/1 | Return bounded and redacted logs for one allowed application. |
 | `coolify_deployment_status` | 1/0/1/1 | Compatibility name for one deployment's safe status summary. |
@@ -378,7 +404,7 @@ domain operations continue to use only the operator's configured Coolify boundar
 | `platform_front_door_coordinator_create` | 0/1/0/1 | Create or reconcile the private coordinator with fixed application identities and one normal deployment. |
 | `platform_front_door_transition_preview` | 1/0/1/1 | Reconstruct the fixed topology and plan a cutover or rollback disposition as dispatch, observe, or noop. |
 | `platform_front_door_transition` | 0/1/0/1 | Dispatch one reviewed closed target to the independent coordinator without changing domains in the backend request. |
-| `platform_front_door_transition_status` | 1/0/1/1 | Read the coordinator contract, durable monotonic journal status, and current fixed topology. |
+| `platform_front_door_transition_status` | 1/0/1/1 | Read the coordinator contract, published monotonic status and current fixed topology. `transition_kind` identifies `topology`, `catalog` or `none`; state, phase, revision and timestamps describe the published operation. Catalog rollout status never silently becomes idle. Durable request IDs, environment values and credentials remain private. |
 | `coolify_create_app` | 0/0/0/1 | Compatibility name for planned `platform_app_create`. |
 | `platform_app_create` | 0/0/0/1 | Create one app from an unexpired single-use plan. |
 | `platform_validation_runner_create_preview` | 1/0/1/1 | Plan one private validation runner using administrator-owned destination and mounts. |
@@ -402,7 +428,7 @@ session. See `docs/runbooks/brain-operations.md`.
 
 | Tool | R/D/I/O | Effect |
 |---|---:|---|
-| `brain_search` | 1/0/1/0 | BM25 search over bounded quoted plain-text terms; at most 20 short redacted matches. |
+| `brain_search` | 1/0/1/0 | Find an exact note slug first, then BM25 matches over bounded quoted plain-text terms; at most 20 short redacted matches, without duplicates or FTS operator interpretation. |
 | `brain_read` | 1/0/1/0 | Read one strict slug with trust metadata and at most 128 backlinks. |
 | `brain_write` | 0/0/0/0 | Create/update only agent-owned `working/` Markdown with provenance and review date; curated/path/timestamps are not inputs. |
 | `brain_index` | 0/0/1/0 | Return index status or transactionally rebuild only the disposable cache from Markdown truth. |

@@ -22,6 +22,7 @@ type recordingToolboxRunner struct {
 	execExitCode   int
 	environments   [][]string
 	fail           string
+	failError      error
 	failPatterns   []string
 	workspace      string
 	socket         string
@@ -44,6 +45,9 @@ func (runner *recordingToolboxRunner) Run(_ context.Context, executable string, 
 	runner.environments = append(runner.environments, append([]string(nil), environment...))
 	joined := strings.Join(args, " ")
 	if runner.fail != "" && strings.Contains(joined, runner.fail) {
+		if runner.failError != nil {
+			return []byte("private diagnostic must not escape"), runner.failError
+		}
 		return nil, errors.New("runner failed")
 	}
 	for _, pattern := range runner.failPatterns {
@@ -270,7 +274,7 @@ func TestProjectToolboxPersistsRootlessContainerAndExecutesArbitraryArgv(t *test
 		t.Fatalf("executed=%+v err=%v", executed, err)
 	}
 	last := runner.calls[len(runner.calls)-1]
-	wantTail := []string{"exec", "--workdir", "/workspace/src", "--env", "CI=true", "mcp-toolbox-11111111111111111111111111111111", "sh", "-lc", "command -v ruby || true"}
+	wantTail := []string{"exec", "--workdir", "/workspace/src", "--env", "MCP_DEVBOX_SCRATCH_ROOT=/runtime/scratch", "--env", "CI=true", "mcp-toolbox-11111111111111111111111111111111", "sh", "-lc", "command -v ruby || true"}
 	if len(last) < len(wantTail) || !reflect.DeepEqual(last[len(last)-len(wantTail):], wantTail) {
 		t.Fatalf("exec call=%q", last)
 	}

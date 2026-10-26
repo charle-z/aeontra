@@ -331,6 +331,8 @@ Start with [`docs/documentation-map.md`](docs/documentation-map.md). Canonical r
 - [`CHANGELOG.md`](CHANGELOG.md): user-visible release changes;
 - [`docs/versioning.md`](docs/versioning.md): release identity, SemVer and retention;
 - [`docs/tools.md`](docs/tools.md): public tool catalog;
+- [`docs/runbooks/linear-development.md`](docs/runbooks/linear-development.md):
+  start, locate and recover development work;
 - `/version` and `system_runtime_info`: live build/catalog identity;
 - [`docs/baselines/`](docs/baselines/): dated historical evidence.
 

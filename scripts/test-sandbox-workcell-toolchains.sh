@@ -58,6 +58,7 @@ EOF
 cat >"$fixture/node/smoke.test.js" <<'EOF'
 const test = require('node:test');
 const assert = require('node:assert/strict');
+assert.equal(process.versions.undici, '7.30.1');
 
 test('runtime', () => assert.equal(2 + 2, 4));
 EOF
@@ -91,7 +92,17 @@ node - <<'JAVASCRIPT'
 const assert = require('node:assert/strict');
 const root = '/usr/lib/node_modules/npm/node_modules/';
 assert.equal(require(root + 'brace-expansion/package.json').version, '5.0.11');
-assert.equal(require(root + 'undici/package.json').version, '6.28.1');
+assert.equal(require(root + 'undici/package.json').version, '6.29.1');
+const { createRequire } = require('node:module');
+const nodeGypRequire = createRequire('/usr/lib/node_modules/node-gyp/package.json');
+assert.equal(nodeGypRequire('undici/package.json').version, '8.12.2');
+assert.equal(typeof nodeGypRequire('undici').fetch, 'function');
+assert.equal(require(root + 'http-cache-semantics/package.json').version, '4.3.0');
+const CachePolicy = require(root + 'http-cache-semantics');
+const request = { url: 'https://example.test/public', method: 'GET', headers: {} };
+const policy = new CachePolicy(request, { status: 200, headers: { 'cache-control': 'public, max-age=60' } }, { shared: false });
+assert.equal(policy.storable(), true);
+assert.equal(policy.satisfiesWithoutRevalidation(request), true);
 assert.deepEqual(require(root + 'brace-expansion').expand('{cat,dog}'), ['cat', 'dog']);
 const undici = require(root + 'undici');
 for (const name of ['Agent', 'EnvHttpProxyAgent', 'RetryAgent', 'fetch']) {
@@ -123,10 +134,12 @@ python3 -m pip --version
 python3 - <<'PYTHON'
 import zipfile
 import ssl
+import sys
 from pip._vendor import urllib3
 
 # OpenSSL 3 encodes its patch in the legacy tuple's fourth field.
 assert ssl.OPENSSL_VERSION_NUMBER >= 0x30600050, ssl.OPENSSL_VERSION
+assert sys.version_info[:3] >= (3, 14, 8), sys.version
 ssl.create_default_context()
 print('python_tls=ready')
 assert urllib3.__version__ == '2.8.0', urllib3.__version__

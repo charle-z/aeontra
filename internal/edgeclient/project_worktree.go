@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -59,6 +60,7 @@ var (
 	ErrProjectWorktreeDirty       = errors.New("project worktree contains local changes")
 	ErrProjectWorktreeUnsafe      = errors.New("project worktree state is unsafe")
 	ErrProjectWorktreeUnavailable = errors.New("project worktree manager is unavailable")
+	ErrProjectWorktreeBusy        = errors.New("project worktree has retained resources")
 )
 
 type ProjectWorktreeManagerConfig struct {
@@ -96,6 +98,8 @@ type ProjectWorktreeCleanupRequest struct {
 	LeaseID        string
 	Fence          uint64
 	IdempotencyKey string
+	Direct         bool
+	ExpectedHead   string
 }
 
 type ProjectWorktreeSnapshot struct {
@@ -473,6 +477,14 @@ func (m *ProjectWorktreeManager) collectEvidence(ctx context.Context, snapshot *
 }
 
 func (m *ProjectWorktreeManager) List(ctx context.Context, alias, target string, limit int) ([]ProjectWorktreeSnapshot, error) {
+	return m.list(ctx, alias, target, limit, false)
+}
+
+func (m *ProjectWorktreeManager) ListDirectWorkspaces(ctx context.Context, alias, target string, limit int) ([]ProjectWorktreeSnapshot, error) {
+	return m.list(ctx, alias, target, limit, true)
+}
+
+func (m *ProjectWorktreeManager) list(ctx context.Context, alias, target string, limit int, direct bool) ([]ProjectWorktreeSnapshot, error) {
 	alias = strings.ToLower(strings.TrimSpace(alias))
 	target = strings.ToLower(strings.TrimSpace(target))
 	if m == nil || m.db == nil || !projectAliasPattern.MatchString(alias) || !projectTargetPattern.MatchString(target) || limit < 1 || limit > MaxProjectWorktreeList {
@@ -480,7 +492,11 @@ func (m *ProjectWorktreeManager) List(ctx context.Context, alias, target string,
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	rows, err := m.db.Query(projectWorktreeSelect+` WHERE alias=? AND target_alias=? ORDER BY created_at,worktree_id LIMIT ?`, alias, target, limit)
+	query := projectWorktreeSelect + ` WHERE alias=? AND target_alias=? ORDER BY created_at,worktree_id LIMIT ?`
+	if direct {
+		query = projectWorktreeSelect + ` WHERE alias=? AND target_alias=? AND idempotency_key LIKE 'direct-workspace:%' ORDER BY created_at DESC,worktree_id LIMIT ?`
+	}
+	rows, err := m.db.Query(query, alias, target, limit)
 	if err != nil {
 		return nil, ErrProjectWorktreeUnavailable
 	}
@@ -521,22 +537,65 @@ func (m *ProjectWorktreeManager) Cleanup(ctx context.Context, request ProjectWor
 	if snapshot.JobID != request.JobID || snapshot.LeaseID != request.LeaseID || snapshot.Fence != request.Fence {
 		return ProjectWorktreeSnapshot{}, false, ErrProjectWorktreeStaleFence
 	}
+	if request.Direct && (!strings.HasPrefix(snapshot.idempotencyKey, directWorkspaceKeyPrefix) || !projectWorktreeCommitPattern.MatchString(request.ExpectedHead)) {
+		return ProjectWorktreeSnapshot{}, false, ErrProjectWorktreeInvalid
+	}
+	release, err := acquireProjectRuntimeGate(ctx, m.stateRoot, snapshot.WorkspaceID, true)
+	if err != nil {
+		return ProjectWorktreeSnapshot{}, false, err
+	}
+	defer release()
 	if snapshot.State == ProjectWorktreeRemoved {
 		if snapshot.cleanupKey != request.IdempotencyKey {
 			return ProjectWorktreeSnapshot{}, false, ErrProjectWorktreeConflict
 		}
+		m.reclaimRuntime(ctx, snapshot)
 		return snapshot, true, nil
 	}
 	if _, pathErr := os.Lstat(snapshot.path); errors.Is(pathErr, os.ErrNotExist) {
 		if removeErr := m.workspaces.Remove(snapshot.WorkspaceID); removeErr != nil && !strings.Contains(removeErr.Error(), "not found") {
 			return ProjectWorktreeSnapshot{}, false, ErrProjectWorktreeUnavailable
 		}
+		m.reclaimRuntime(ctx, snapshot)
 		return m.finishCleanup(snapshot, request.IdempotencyKey)
 	} else if pathErr != nil {
 		return ProjectWorktreeSnapshot{}, false, ErrProjectWorktreeUnavailable
 	}
 	if err := m.revalidate(ctx, snapshot); err != nil {
 		return ProjectWorktreeSnapshot{}, false, err
+	}
+	if request.Direct {
+		if err := m.collectEvidence(ctx, &snapshot); err != nil {
+			return ProjectWorktreeSnapshot{}, false, err
+		}
+		if snapshot.HeadCommit != request.ExpectedHead {
+			return ProjectWorktreeSnapshot{}, false, ErrProjectWorktreeBaseChanged
+		}
+		// Preserve committed work through an attached, verified shared Git ref.
+		// Cleanup never deletes that branch. Detached/unknown heads are retained.
+		branchText, err := m.runner.Run(ctx, snapshot.path, []string{"branch", "--show-current"}, m.credential)
+		branch := strings.TrimSpace(branchText)
+		if err != nil || !validDevGitBranch(branch) {
+			return ProjectWorktreeSnapshot{}, false, ErrProjectWorktreeDirty
+		}
+		refHead, err := m.runner.Run(ctx, snapshot.path, []string{"rev-parse", "--verify", "refs/heads/" + branch}, m.credential)
+		if err != nil || strings.TrimSpace(refHead) != snapshot.HeadCommit {
+			return ProjectWorktreeSnapshot{}, false, ErrProjectWorktreeUnsafe
+		}
+		ignored, err := m.runner.Run(ctx, snapshot.path, []string{"ls-files", "--others", "--ignored", "--exclude-standard", "-z"}, m.credential)
+		if err != nil {
+			return ProjectWorktreeSnapshot{}, false, ErrProjectWorktreeUnavailable
+		}
+		if ignored != "" {
+			return ProjectWorktreeSnapshot{}, false, ErrProjectWorktreeDirty
+		}
+		retained, err := projectWorktreeRuntimeRetained(ctx, m.stateRoot, snapshot.WorkspaceID)
+		if err != nil {
+			return ProjectWorktreeSnapshot{}, false, err
+		}
+		if retained {
+			return ProjectWorktreeSnapshot{}, false, ErrProjectWorktreeBusy
+		}
 	}
 	status, err := m.runner.Run(ctx, snapshot.path, ProjectCheckoutStatusArgs(), m.credential)
 	if err != nil {
@@ -555,7 +614,23 @@ func (m *ProjectWorktreeManager) Cleanup(ctx context.Context, request ProjectWor
 	if err := m.workspaces.Remove(snapshot.WorkspaceID); err != nil {
 		return ProjectWorktreeSnapshot{}, false, ErrProjectWorktreeUnavailable
 	}
+	m.reclaimRuntime(ctx, snapshot)
 	return m.finishCleanup(snapshot, request.IdempotencyKey)
+}
+
+func (m *ProjectWorktreeManager) reclaimRuntime(ctx context.Context, snapshot ProjectWorktreeSnapshot) {
+	if err := cleanupProjectWorktreeRuntime(ctx, m.stateRoot, snapshot); err != nil {
+		// Worktree removal is already complete. Optional storage reclamation must
+		// retain uncertain data without poisoning the durable cleanup receipt.
+		reason := "metadata_or_storage_unavailable"
+		if errors.Is(err, ErrProjectWorktreeUnsafe) {
+			reason = "unsafe_boundary"
+		}
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			reason = "cancelled"
+		}
+		log.Printf("mcp-edge: worktree storage cleanup deferred workspace=%s reason=%s", snapshot.WorkspaceID, reason)
+	}
 }
 
 func (m *ProjectWorktreeManager) finishCleanup(snapshot ProjectWorktreeSnapshot, cleanupKey string) (ProjectWorktreeSnapshot, bool, error) {
@@ -641,7 +716,7 @@ func (m *ProjectWorktreeManager) validatePhysical(ctx context.Context, target, c
 		return ErrProjectWorktreeBaseChanged
 	}
 	currentBranch, err := m.runner.Run(ctx, target, []string{"branch", "--show-current"}, m.credential)
-	if err != nil || strings.TrimSpace(currentBranch) != branch {
+	if err != nil || (branch != "" && strings.TrimSpace(currentBranch) != branch) {
 		return ErrProjectWorktreeUnsafe
 	}
 	top, err := m.runner.Run(ctx, target, []string{"rev-parse", "--show-toplevel"}, m.credential)
@@ -663,7 +738,11 @@ func (m *ProjectWorktreeManager) revalidate(ctx context.Context, snapshot Projec
 	if err != nil || workspace.Path != snapshot.path || workspace.Profile != WorkspaceProfileLinuxWorkcell || workspace.Mode != WorkspaceModeDev {
 		return ErrProjectWorktreeUnsafe
 	}
-	return m.validatePhysical(ctx, snapshot.path, canonical.Path, "", snapshot.Branch)
+	branch := snapshot.Branch
+	if strings.HasPrefix(snapshot.idempotencyKey, directWorkspaceKeyPrefix) {
+		branch = ""
+	}
+	return m.validatePhysical(ctx, snapshot.path, canonical.Path, "", branch)
 }
 
 func prepareProjectWorktreeRoot(path, parent string) error {
