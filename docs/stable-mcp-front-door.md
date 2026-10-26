@@ -123,6 +123,13 @@ Use `/front-door/healthz` for the front-door container healthcheck. Do not use b
 `/readyz` as the platform liveness check for the front door, because a backend rollout
 must not cause the platform to restart the stable facade.
 
+The runtime image provides `curl`, not `wget`. If Coolify overrides the image's
+Dockerfile healthcheck with a generated `wget` command, use an enabled CMD check:
+`curl -fsS --max-time 2 -o /dev/null http://127.0.0.1:8765/front-door/healthz`.
+Keep the endpoint, retries and timeout bounded; do not disable healthchecks to
+accept an unhealthy container. The private coordinator uses its own `/readyz`
+endpoint on port 8766.
+
 ## Managed Coolify workflow
 
 MCP Devbox exposes three narrow operations for the first independent deployment:
