@@ -101,7 +101,7 @@ MCP_DEVBOX_TOKEN=REPLACE_WITH_LONG_RANDOM_RECOVERY_VALUE \
 
 ### Global builder
 
-- **Components:** the VPS profile plus Go, Git, and Node 22 in the image and optional
+- **Components:** the VPS profile plus Go, Git, and Node 24 LTS in the image and optional
   GitHub/Coolify adapters.
 - **Package management:** the final public backend contains no npm/npx binaries or
   npm dependency tree. The console is assembled with pinned pnpm in a separate build
@@ -345,7 +345,7 @@ remain unavailable until a tool is called.
 | `MCP_DEVBOX_SANDBOX_RUNNER_WORKSPACE_SOURCE` | Compose workspace mapping | Runner deployment only; sensitive topology | absolute host mountpoint of the exact persistent storage mounted by the backend at its repository root; administrator-controlled and never accepted from an MCP request | `/var/lib/docker/volumes/<backend-repository-volume>/_data`; private service env | Missing, relative, broad or incorrect storage prevents the runner from seeing the backend repository set. The reference Compose binds this exact mountpoint because service orchestrators can namespace a named-volume declaration into different storage for each service. |
 | `MCP_DEVBOX_SANDBOX_RUNNER_WORKSPACE_ROOT` | private runner mapping | Runner only; sensitive container path | existing absolute directory, disjoint from state; either one direct repository or a multi-repository root whose direct child scopes are selected server-side | `/srv/aeontra-l3/workspace`; backed by the exact backend storage mountpoint; only the selected repository is mounted at `/workspace` | Missing, symlink-invalid, inaccessible or overlapping root fails startup/execution. Ambiguous or unsafe scope selection fails closed. |
 | `MCP_DEVBOX_SANDBOX_RUNNER_STATE_ROOT` | L3 receipts | Runner only; sensitive persistent path | existing/creatable absolute directory outside workspace | `/var/lib/aeontra-l3`; private volume | Missing, inaccessible or overlapping state fails startup. Completed receipts prevent effect replay. |
-| `MCP_DEVBOX_SANDBOX_RUNNER_PODMAN_SOCKET` | rootless engine authority | Runner only; sensitive socket path | direct Unix socket under `/run/user/<runner-uid>/`, owned by that UID; the runner uses the bounded Podman v5 HTTP API and packages no engine CLI | `/run/user/1000/podman/podman.sock`; exact mount | Missing, symlinked, foreign-owned or rootful endpoint fails startup. Never mount it into public MCP or workcells. |
+| `MCP_DEVBOX_SANDBOX_RUNNER_PODMAN_SOCKET` | rootless engine authority | Runner only; sensitive socket path | direct Unix socket under `/run/user/<runner-uid>/`, owned by that UID; the runner uses the bounded Podman v5 HTTP API and packages no engine CLI | `/run/user/1000/podman/podman.sock`; exact pre-existing bind with `create_host_path: false`; start the dedicated user's API first | Missing, symlinked, foreign-owned or rootful endpoint fails startup. Never mount it into public MCP or workcells. |
 | `MCP_DEVBOX_SANDBOX_MAX_TIMEOUT_MS` | L3 resource policy | Runner only; not secret | positive, max 30 minutes; `120000` default | `120000` | Invalid maximum fails startup. |
 | `MCP_DEVBOX_SANDBOX_MAX_CPU_MILLIS` | L3 resource policy | Runner only; not secret | positive; `1000` default | `1000` | Invalid maximum fails startup. |
 | `MCP_DEVBOX_SANDBOX_MAX_MEMORY_MIB` | L3 resource policy | Runner only; not secret | positive; `1024` default | `1024` | Invalid maximum fails startup. |

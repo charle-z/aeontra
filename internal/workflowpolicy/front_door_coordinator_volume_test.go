@@ -29,7 +29,7 @@ func TestFrontDoorCoordinatorVolumeBootstrapDropsPrivileges(t *testing.T) {
 
 	for _, required := range []string{
 		"apk upgrade --no-cache",
-		"apk add --no-cache ca-certificates curl su-exec",
+		"apk add --no-cache ca-certificates=20260909-r3 ca-certificates-bundle=20260909-r3 curl libbrotlicommon1=1.2.1-r1 libbrotlidec1=1.2.1-r1 libbrotlienc1=1.2.1-r1 libcurl-openssl4=8.23.0-r2 su-exec",
 		"USER 0:0",
 		`ENTRYPOINT ["/usr/local/bin/mcp-front-door-coordinator-entrypoint"]`,
 	} {

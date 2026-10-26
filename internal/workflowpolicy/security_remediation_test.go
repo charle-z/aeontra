@@ -6,6 +6,31 @@ import (
 	"testing"
 )
 
+func TestOctoberContainerSecurityFloors(t *testing.T) {
+	for _, name := range []string{"Dockerfile", "Dockerfile.site", "Dockerfile.front-door", "Dockerfile.front-door-coordinator", "Dockerfile.validation-runner", "Dockerfile.sandbox-workcell"} {
+		t.Run(name, func(t *testing.T) {
+			body, err := os.ReadFile("../../" + name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, required := range []string{"ca-certificates=20260909-r3", "ca-certificates-bundle=20260909-r3", "libbrotlicommon1=1.2.1-r1", "libbrotlidec1=1.2.1-r1", "libbrotlienc1=1.2.1-r1", "libcurl-openssl4=8.23.0-r2"} {
+				if !strings.Contains(string(body), required) {
+					t.Errorf("runtime must contain corrected package %q", required)
+				}
+			}
+		})
+	}
+	body, err := os.ReadFile("../../Dockerfile.sandbox-workcell")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{"go-1.26=1.26.10-r0", "nodejs-24=24.22.1-r2", "undici@6.29.1", "undici@8.12.2", "/usr/lib/node_modules/node-gyp/node_modules/undici/package.json", "find /usr/lib/node_modules -path '*/undici/package.json' -type f"} {
+		if !strings.Contains(string(body), required) {
+			t.Errorf("workcell must cover corrected toolchain and both Undici consumers: %q", required)
+		}
+	}
+}
+
 func TestBackendBuildContextExcludesNestedNodeModules(t *testing.T) {
 	content, err := os.ReadFile("../../.dockerignore")
 	if err != nil {
@@ -35,8 +60,9 @@ func TestBackendRuntimeKeepsNodeWithoutNPM(t *testing.T) {
 	}
 	runtime := dockerfile[runtimeStart:]
 	for _, required := range []string{
-		"apk add --no-cache ca-certificates curl git libstdc++ nodejs-22",
-		`test "$(node --version)" = v22.23.2`,
+		"apk add --no-cache ca-certificates=20260909-r3 ca-certificates-bundle=20260909-r3 curl libbrotlicommon1=1.2.1-r1 libbrotlidec1=1.2.1-r1 libbrotlienc1=1.2.1-r1 libcurl-openssl4=8.23.0-r2 git libstdc++ nodejs-24=24.22.1-r2",
+		`test "$(node --version)" = v24.22.1`,
+		`test "$(node -p process.versions.undici)" = 7.30.1`,
 		"test ! -e /usr/local/lib/node_modules/npm",
 		"test ! -e /usr/lib/node_modules/npm",
 		"! command -v npm",
@@ -130,16 +156,16 @@ func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 		contents[name] = string(content)
 	}
 
-	if !strings.Contains(contents["go.mod"], "go 1.26.9") {
-		t.Error("go.mod must require the Go 1.26.9 security release")
+	if !strings.Contains(contents["go.mod"], "go 1.26.10") {
+		t.Error("go.mod must require the Go 1.26.10 security release")
 	}
 	for _, workflow := range []string{"ci.yml", "security.yml", "fuzz.yml"} {
-		if !strings.Contains(contents[workflow], `go-version: "1.26.9"`) {
-			t.Errorf("%s must use Go 1.26.9", workflow)
+		if !strings.Contains(contents[workflow], `go-version: "1.26.10"`) {
+			t.Errorf("%s must use Go 1.26.10", workflow)
 		}
 	}
 	for _, dockerfile := range []string{"Dockerfile", "Dockerfile.site", "Dockerfile.validation-runner", "Dockerfile.front-door", "Dockerfile.front-door-coordinator", "Dockerfile.sandbox-runner", "test/opencode-e2e/Dockerfile"} {
-		if !strings.Contains(contents[dockerfile], "golang:1.26.9-") {
+		if !strings.Contains(contents[dockerfile], "golang:1.26.10-") {
 			t.Errorf("%s must use the fixed versioned Go base", dockerfile)
 		}
 	}
@@ -166,7 +192,7 @@ func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 		"Dockerfile.front-door-coordinator": "http://127.0.0.1:8766/readyz",
 		"Dockerfile.validation-runner":      "http://127.0.0.1:8787/healthz",
 	} {
-		if !strings.Contains(contents[dockerfile], "apk add --no-cache ca-certificates curl") {
+		if !strings.Contains(contents[dockerfile], "apk add --no-cache ca-certificates=20260909-r3 ca-certificates-bundle=20260909-r3 curl libbrotlicommon1=1.2.1-r1 libbrotlidec1=1.2.1-r1 libbrotlienc1=1.2.1-r1 libcurl-openssl4=8.23.0-r2") {
 			t.Errorf("%s must install curl for its healthcheck", dockerfile)
 		}
 		if !strings.Contains(contents[dockerfile], "curl -fsS --max-time 2 "+healthURL) {
@@ -216,8 +242,8 @@ func TestP6ToolchainAndContainerRemediationStayPinned(t *testing.T) {
 		"test ! -e /usr/lib/node_modules/npm",
 		"curl -fsS --max-time 2 http://127.0.0.1:8765/readyz",
 		"COPY --from=build /usr/local/go /usr/local/go",
-		`test "$(node --version)" = v22.23.2`,
-		"apk add --no-cache ca-certificates curl git libstdc++ nodejs-22",
+		`test "$(node --version)" = v24.22.1`,
+		"apk add --no-cache ca-certificates=20260909-r3 ca-certificates-bundle=20260909-r3 curl libbrotlicommon1=1.2.1-r1 libbrotlidec1=1.2.1-r1 libbrotlienc1=1.2.1-r1 libcurl-openssl4=8.23.0-r2 git libstdc++ nodejs-24=24.22.1-r2",
 		"&& (find / -xdev -perm /6000 -type f -exec chmod a-s {} + 2>/dev/null || true)",
 	} {
 		if !strings.Contains(dockerfile, required) {

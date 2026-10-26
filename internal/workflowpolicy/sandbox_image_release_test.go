@@ -74,7 +74,9 @@ func TestSandboxRunnerComposeKeepsEngineAuthorityPrivate(t *testing.T) {
 		"no-new-privileges:true",
 		"cap_drop:",
 		"- ALL",
-		"/run/user/10001/podman/podman.sock:/run/user/10001/podman/podman.sock",
+		"source: /run/user/10001/podman/podman.sock",
+		"target: /run/user/10001/podman/podman.sock",
+		"create_host_path: false",
 		"type: bind",
 		"source: ${MCP_DEVBOX_SANDBOX_RUNNER_WORKSPACE_SOURCE:?set the backend repository storage mountpoint}",
 		"target: /srv/aeontra-l3/workspace",
@@ -102,4 +104,32 @@ func TestSandboxRunnerComposeKeepsEngineAuthorityPrivate(t *testing.T) {
 			t.Errorf("sandbox runner compose contains %q", forbidden)
 		}
 	}
+}
+
+func TestSandboxRunnerSocketMountCannotCreateHostDirectory(t *testing.T) {
+	body, err := os.ReadFile("../../deploy/sandbox-runner-compose.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var compose struct {
+		Services map[string]struct {
+			Volumes []any `yaml:"volumes"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(body, &compose); err != nil {
+		t.Fatal(err)
+	}
+	const socket = "/run/user/10001/podman/podman.sock"
+	for _, volume := range compose.Services["mcp-sandbox-runner"].Volumes {
+		mount, ok := volume.(map[string]any)
+		if !ok || mount["target"] != socket {
+			continue
+		}
+		bind, ok := mount["bind"].(map[string]any)
+		if !ok || mount["type"] != "bind" || mount["source"] != socket || bind["create_host_path"] != false {
+			t.Fatal("socket must be an exact pre-existing bind, without directory autocreation")
+		}
+		return
+	}
+	t.Fatal("missing long-syntax socket bind; short syntax creates a directory when the socket is absent")
 }
