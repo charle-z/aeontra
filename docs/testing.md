@@ -419,6 +419,17 @@ gate no longer uses the historical 4.2.0 risk approval. Offline runtime checks
 verify Python's patch version, npm library loading and normal cache behavior.
 Historical monitored-image identities and their expiring approval remain unchanged.
 
+The 2026-11-03 workcell refresh pins Python `3.14.10_git20261028-r0` and
+pip `26.2.2-r2`, including the separately packaged pip wheel. The Python
+[security release](https://www.python.org/downloads/release/python-31410/)
+rejects the compromised intermediate CA keys covered by CVE-2026-115557.
+The pip packages include the corrected vendored MessagePack dependency for
+[CVE-2026-114613](https://github.com/advisories/GHSA-j586-36cw-2gc2).
+The offline toolchain smoke checks Python, pip and MessagePack versions, TLS
+context creation and ordinary local-wheel installation. The existing vulnerability
+threshold and zlib-only VEX remain unchanged; deployment and monitored-image
+identity still require separate verification.
+
 ## Structured observability — P7
 
 P7 adds `internal/observability` with a closed JSONL schema and a 70% package

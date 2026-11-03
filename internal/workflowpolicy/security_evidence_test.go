@@ -157,9 +157,10 @@ func TestSandboxWorkcellPinsReviewedToolchains(t *testing.T) {
 		"libcrypt1-2.44=2.44-r8",
 		"nodejs-24=24.22.1-r2",
 		"npm=12.0.2-r0",
-		"py3.14-pip=26.2.1-r2",
-		"py3.14-pip-base=26.2.1-r2",
-		"python-3.14=3.14.8_git20261008-r1",
+		"py3.14-pip=26.2.2-r2",
+		"py3.14-pip-base=26.2.2-r2",
+		"py3-pip-wheel=26.2.2-r2",
+		"python-3.14=3.14.10_git20261028-r0",
 		"rust-1.96=1.96.1-r0",
 		"zlib=1.3.2-r7",
 		"4d03c63b8648ab83053a6f00d304a5d6f9aa1ed7",
@@ -241,7 +242,7 @@ func TestSandboxWorkcellSmokeVerifiesRuntimeOpenSSLVersion(t *testing.T) {
 	text := string(content)
 	for _, required := range []string{
 		"ssl.OPENSSL_VERSION_NUMBER >= 0x30600050",
-		"sys.version_info[:3] >= (3, 14, 8)",
+		"sys.version_info[:3] >= (3, 14, 10)",
 		"ssl.create_default_context()",
 		"python_tls=ready",
 	} {
@@ -261,7 +262,10 @@ func TestSandboxWorkcellSmokeVerifiesPipForItsPython(t *testing.T) {
 	}
 	for _, required := range []string{
 		"python3 -m pip --version",
-		"from pip._vendor import urllib3",
+		"import pip",
+		"from pip._vendor import msgpack, urllib3",
+		"pip.__version__.split('.'))) >= (26, 2, 2)",
+		"msgpack.__version__.split('.'))) >= (1, 2, 3)",
 		"urllib3.__version__ == '2.8.0'",
 		"--no-index --no-deps --no-compile",
 		"--target /tmp/pip-smoke-target",

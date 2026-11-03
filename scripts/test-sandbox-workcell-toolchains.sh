@@ -135,13 +135,16 @@ python3 - <<'PYTHON'
 import zipfile
 import ssl
 import sys
-from pip._vendor import urllib3
+import pip
+from pip._vendor import msgpack, urllib3
 
 # OpenSSL 3 encodes its patch in the legacy tuple's fourth field.
 assert ssl.OPENSSL_VERSION_NUMBER >= 0x30600050, ssl.OPENSSL_VERSION
-assert sys.version_info[:3] >= (3, 14, 8), sys.version
+assert sys.version_info[:3] >= (3, 14, 10), sys.version
 ssl.create_default_context()
 print('python_tls=ready')
+assert tuple(map(int, pip.__version__.split('.'))) >= (26, 2, 2), pip.__version__
+assert tuple(map(int, msgpack.__version__.split('.'))) >= (1, 2, 3), msgpack.__version__
 assert urllib3.__version__ == '2.8.0', urllib3.__version__
 files = {
     'aeontra_pip_smoke.py': 'VALUE = 42\n',
