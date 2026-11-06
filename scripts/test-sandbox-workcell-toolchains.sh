@@ -133,6 +133,7 @@ pip --version
 python3 -m pip --version
 python3 - <<'PYTHON'
 import zipfile
+import pyexpat
 import ssl
 import sys
 import pip
@@ -143,6 +144,13 @@ assert ssl.OPENSSL_VERSION_NUMBER >= 0x30600050, ssl.OPENSSL_VERSION
 assert sys.version_info[:3] >= (3, 14, 10), sys.version
 ssl.create_default_context()
 print('python_tls=ready')
+assert pyexpat.version_info >= (2, 10, 0), pyexpat.EXPAT_VERSION
+elements = []
+parser = pyexpat.ParserCreate()
+parser.StartElementHandler = lambda name, attrs: elements.append((name, attrs))
+parser.Parse(b'<smoke ready="yes"/>', True)
+assert elements == [('smoke', {'ready': 'yes'})], elements
+print('python_xml=ready')
 assert tuple(map(int, pip.__version__.split('.'))) >= (26, 2, 2), pip.__version__
 assert tuple(map(int, msgpack.__version__.split('.'))) >= (1, 2, 3), msgpack.__version__
 assert urllib3.__version__ == '2.8.0', urllib3.__version__

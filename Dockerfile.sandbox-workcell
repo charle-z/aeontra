@@ -17,6 +17,7 @@ RUN apk add --no-cache \
       libbrotlienc1=1.2.1-r1 \
       libcrypto3=3.6.5-r1 \
       libcurl-openssl4=8.23.0-r2 \
+      libexpat1=2.10.0-r1 \
       libssl3=3.6.5-r1 \
       nodejs-24=24.22.1-r2 \
       npm=12.0.2-r0 \

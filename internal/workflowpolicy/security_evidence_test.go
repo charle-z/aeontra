@@ -155,6 +155,7 @@ func TestSandboxWorkcellPinsReviewedToolchains(t *testing.T) {
 		"glibc-2.44-locale-posix=2.44-r8",
 		"ld-linux-2.44=2.44-r8",
 		"libcrypt1-2.44=2.44-r8",
+		"libexpat1=2.10.0-r1",
 		"nodejs-24=24.22.1-r2",
 		"npm=12.0.2-r0",
 		"py3.14-pip=26.2.2-r2",
@@ -234,7 +235,7 @@ func TestSandboxWorkcellSmokeVerifiesPatchedZlib(t *testing.T) {
 	}
 }
 
-func TestSandboxWorkcellSmokeVerifiesRuntimeOpenSSLVersion(t *testing.T) {
+func TestSandboxWorkcellSmokeVerifiesNativePythonLibraries(t *testing.T) {
 	content, err := os.ReadFile("../../scripts/test-sandbox-workcell-toolchains.sh")
 	if err != nil {
 		t.Fatal(err)
@@ -245,9 +246,11 @@ func TestSandboxWorkcellSmokeVerifiesRuntimeOpenSSLVersion(t *testing.T) {
 		"sys.version_info[:3] >= (3, 14, 10)",
 		"ssl.create_default_context()",
 		"python_tls=ready",
+		"pyexpat.version_info >= (2, 10, 0)",
+		"python_xml=ready",
 	} {
 		if !strings.Contains(text, required) {
-			t.Errorf("runtime TLS smoke must contain %q", required)
+			t.Errorf("native Python runtime smoke must contain %q", required)
 		}
 	}
 	if strings.Contains(text, "ssl.OPENSSL_VERSION_INFO[:3]") {

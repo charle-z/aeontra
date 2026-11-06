@@ -121,6 +121,9 @@ func Evaluate(reader io.Reader, minimum Severity) ([]Finding, error) {
 	if err := decoder.Decode(&payload); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidReport, err)
 	}
+	if payload.Matches == nil {
+		return nil, fmt.Errorf("%w: matches must be an array", ErrInvalidReport)
+	}
 	var trailing any
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		return nil, fmt.Errorf("%w: trailing JSON data", ErrInvalidReport)
