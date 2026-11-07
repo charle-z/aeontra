@@ -13,7 +13,7 @@ no image execution, no deployment credentials, and no resident monitoring agent.
 `security/monitored-images.json` identifies one verified `deployed-workcell` with
 the corrected Go, Python, glibc and bundled npm dependency recipe. The protected publication, independent
 registry hash checks and private runner rollout are recorded in
-[the dated rollout evidence](../baselines/2026-10-09-workcell-rollout.md).
+[the dated rollout evidence](../baselines/2026-10-26-workcell-rollout.md).
 Earlier rollouts remain in their dated evidence; the inventory tracks this deployed image.
 A passing run means only that the inventoried immutable image was scanned; it
 makes no all-production or seven-image coverage claim. The monitor does not
@@ -63,8 +63,9 @@ before analysis and on every terminal path; the workcell is never launched and r
 no token. A private package must grant the repository read access. A login succeeding
 does not prove that the exact private digest can be read.
 
-The deployed recipe updates Go to 1.26.9, glibc to 2.44-r8, Python to
-3.14.8_git20261008-r1 and bundled http-cache-semantics to 4.3.0. Its inventory
+The deployed recipe updates Go to 1.26.10, Brotli to 1.2.1-r1, libcurl to
+8.23.0-r2, Node to 24.22.1-r2, and the two bundled Undici copies to 6.29.1 and
+8.12.2. Its inventory
 was updated only after protected publication, independent immutable identity
 verification and healthy runner activation. Older images remain documented in
 their historical evidence and do not receive approval for this recipe.

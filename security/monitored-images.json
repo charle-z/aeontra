@@ -3,11 +3,11 @@
   "coverage": "deployed-workcell",
   "workcell": {
     "repository": "ghcr.io/charle-z/aeontra-sandbox-workcell",
-    "index_digest": "sha256:a57995ced48e5d50c48b49934e078a4c865dba356e32a2f59ec26b7b27c15223",
-    "manifest_digest": "sha256:e5368a7ff87330b4b3b42088a0927f9c5036d8e473c68b2ccc51ddf1d008186e",
-    "image_id": "sha256:1106476e2a9fce831f1f5abd6aafd9cf9770b0771ba065934de4aa03a2444c3d",
-    "revision": "e73ccea716e518531737db013b4caea3a4a9d298",
-    "recipe_sha256": "11ebaa13b523eac95e2471341e4289025571e903b5059446e3d61452b422111f",
+    "index_digest": "sha256:d94a47e1f26098e34d9051d4f2b7cf6c118296f6d040c3722f6f738ec18faa8a",
+    "manifest_digest": "sha256:a24285f7478ef4bc981a742edbc9fac3fa3453c3e7fb93ba88913054086d89e7",
+    "image_id": "sha256:d6ef8463bdb194429c7fd02fbb34fb43477f12b28967d700d416d55597068c7c",
+    "revision": "295622828b2a3001464e0e06147ceeacbedd4b20",
+    "recipe_sha256": "1291d68a46f1714a0343baa2c6e96499f947c173030a8b28bd39e445fb3977b0",
     "deployment_verified": true
   }
 }

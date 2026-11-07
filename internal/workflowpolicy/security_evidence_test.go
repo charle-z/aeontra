@@ -141,6 +141,42 @@ func TestSandboxRunnerDockerfileCopiesBuildDependencies(t *testing.T) {
 	}
 }
 
+func TestContainerEvidenceCollectsAllReportsBeforeBlocking(t *testing.T) {
+	content, err := os.ReadFile("../../.github/workflows/security.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflow := string(content)
+	lastReport := strings.Index(workflow, "run: test -s sandbox-workcell-grype.json")
+	firstGate := strings.Index(workflow, "go run ./cmd/grype-gate")
+	if lastReport < 0 || firstGate <= lastReport {
+		t.Fatal("container findings must not stop collection of the other image reports")
+	}
+	retain := strings.Index(workflow, "- name: Retain SBOM and vulnerability evidence")
+	if retain <= firstGate {
+		t.Fatal("report retention must follow the blocking gate")
+	}
+	gate := workflow[firstGate:retain]
+	if strings.Count(gate, "--minimum high") != 7 || strings.Count(gate, "|| failed=1") != 7 || !strings.Contains(gate, `exit "$failed"`) {
+		t.Fatal("every report must be checked at High, with any gate failure failing the job")
+	}
+	for _, suffix := range []string{"", "site", "front-door", "front-door-coordinator", "validation-runner", "sandbox-runner", "sandbox-workcell"} {
+		report, recipe := "grype.json", "Dockerfile"
+		if suffix != "" {
+			report, recipe = suffix+"-grype.json", recipe+"."+suffix
+		}
+		if suffix == "site" {
+			report = "aeontra-site-grype.json"
+		}
+		if strings.Count(gate, "--report "+report+" --minimum high --annotation-file "+recipe+" ") != 1 {
+			t.Errorf("missing or duplicated gate for %s and %s", report, recipe)
+		}
+	}
+	if !strings.Contains(workflow[retain:], "if: always()") {
+		t.Fatal("report retention must run even when the threshold fails")
+	}
+}
+
 func TestSandboxWorkcellPinsReviewedToolchains(t *testing.T) {
 	content, err := os.ReadFile("../../Dockerfile.sandbox-workcell")
 	if err != nil {
@@ -155,11 +191,13 @@ func TestSandboxWorkcellPinsReviewedToolchains(t *testing.T) {
 		"glibc-2.44-locale-posix=2.44-r8",
 		"ld-linux-2.44=2.44-r8",
 		"libcrypt1-2.44=2.44-r8",
+		"libexpat1=2.10.0-r1",
 		"nodejs-24=24.22.1-r2",
 		"npm=12.0.2-r0",
-		"py3.14-pip=26.2.1-r2",
-		"py3.14-pip-base=26.2.1-r2",
-		"python-3.14=3.14.8_git20261008-r1",
+		"py3.14-pip=26.2.2-r2",
+		"py3.14-pip-base=26.2.2-r2",
+		"py3-pip-wheel=26.2.2-r2",
+		"python-3.14=3.14.10_git20261028-r0",
 		"rust-1.96=1.96.1-r0",
 		"zlib=1.3.2-r7",
 		"4d03c63b8648ab83053a6f00d304a5d6f9aa1ed7",
@@ -233,7 +271,7 @@ func TestSandboxWorkcellSmokeVerifiesPatchedZlib(t *testing.T) {
 	}
 }
 
-func TestSandboxWorkcellSmokeVerifiesRuntimeOpenSSLVersion(t *testing.T) {
+func TestSandboxWorkcellSmokeVerifiesNativePythonLibraries(t *testing.T) {
 	content, err := os.ReadFile("../../scripts/test-sandbox-workcell-toolchains.sh")
 	if err != nil {
 		t.Fatal(err)
@@ -241,12 +279,14 @@ func TestSandboxWorkcellSmokeVerifiesRuntimeOpenSSLVersion(t *testing.T) {
 	text := string(content)
 	for _, required := range []string{
 		"ssl.OPENSSL_VERSION_NUMBER >= 0x30600050",
-		"sys.version_info[:3] >= (3, 14, 8)",
+		"sys.version_info[:3] >= (3, 14, 10)",
 		"ssl.create_default_context()",
 		"python_tls=ready",
+		"pyexpat.version_info >= (2, 10, 0)",
+		"python_xml=ready",
 	} {
 		if !strings.Contains(text, required) {
-			t.Errorf("runtime TLS smoke must contain %q", required)
+			t.Errorf("native Python runtime smoke must contain %q", required)
 		}
 	}
 	if strings.Contains(text, "ssl.OPENSSL_VERSION_INFO[:3]") {
@@ -261,7 +301,10 @@ func TestSandboxWorkcellSmokeVerifiesPipForItsPython(t *testing.T) {
 	}
 	for _, required := range []string{
 		"python3 -m pip --version",
-		"from pip._vendor import urllib3",
+		"import pip",
+		"from pip._vendor import msgpack, urllib3",
+		"pip.__version__.split('.'))) >= (26, 2, 2)",
+		"msgpack.__version__.split('.'))) >= (1, 2, 3)",
 		"urllib3.__version__ == '2.8.0'",
 		"--no-index --no-deps --no-compile",
 		"--target /tmp/pip-smoke-target",

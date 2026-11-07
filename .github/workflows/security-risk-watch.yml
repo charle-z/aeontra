@@ -152,8 +152,14 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$VERIFIED_IMAGE_ID"
+          proof=()
+          proof_file="$(jq -r '.workcell.runtime_proof // empty' security/monitored-images.json)"
+          if [[ -n "$proof_file" ]]; then
+            [[ "$proof_file" =~ ^security/runtime-proofs/[0-9a-f]{64}\.json$ ]]
+            proof=(--runtime-policy security/runtime-remediation.json --runtime-proof "$proof_file" --image-id "$VERIFIED_IMAGE_ID")
+          fi
           go run ./cmd/grype-gate --report artifacts/sandbox-workcell-grype.json --minimum high \
-            --annotation-file artifacts/monitored/Dockerfile.sandbox-workcell
+            --annotation-file artifacts/monitored/Dockerfile.sandbox-workcell "${proof[@]}"
 
       - name: Retain bounded scan and identity evidence even on failure
         if: always()

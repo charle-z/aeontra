@@ -326,6 +326,17 @@ conclusions are observed after branch publication. The separate
 [daily image watch](runbooks/security-risk-watch.md) uses read-only registry access
 and scans only its explicitly inventoried immutable image, without rebuilding it.
 
+The source workflow collects all seven image reports before evaluating their thresholds.
+It fails if any report fails the gate and retains all available reports. Its SQLite
+package and executable probe records evidence for triage; it does not change the gate.
+
+The protected sandbox image release checks the exact published Linux/amd64 runner
+and workcell manifests with a fresh Grype database. Candidate registry tags do not
+authorize deployment. The release emits `sandbox-images.json` only after the
+verified images pass the High/Critical gate and the exact workcell passes its
+toolchain smoke, including Python loading the corrected Expat library and parsing XML.
+Image identities and raw scan reports are retained on threshold failure.
+
 ## Scheduled fuzzing — P6 Step 89
 
 `.github/workflows/fuzz.yml` runs weekly at `17 3 * * 1` and supports manual dispatch.
@@ -418,6 +429,17 @@ lists both corrections. The bundled npm cache library uses the official
 gate no longer uses the historical 4.2.0 risk approval. Offline runtime checks
 verify Python's patch version, npm library loading and normal cache behavior.
 Historical monitored-image identities and their expiring approval remain unchanged.
+
+The 2026-11-03 workcell refresh pins Python `3.14.10_git20261028-r0` and
+pip `26.2.2-r2`, including the separately packaged pip wheel. The Python
+[security release](https://www.python.org/downloads/release/python-31410/)
+rejects the compromised intermediate CA keys covered by CVE-2026-115557.
+The pip packages include the corrected vendored MessagePack dependency for
+[CVE-2026-114613](https://github.com/advisories/GHSA-j586-36cw-2gc2).
+The offline toolchain smoke checks Python, pip and MessagePack versions, TLS
+context creation and ordinary local-wheel installation. The existing vulnerability
+threshold and zlib-only VEX remain unchanged; deployment and monitored-image
+identity still require separate verification.
 
 ## Structured observability — P7
 

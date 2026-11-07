@@ -20,6 +20,25 @@ func writeReport(t *testing.T, content string) string {
 	return path
 }
 
+func TestRunRuntimeProofRequiresPairedInputsAndRejectsRiskMixing(t *testing.T) {
+	report := writeReport(t, `{"matches":[]}`)
+	for _, extra := range [][]string{
+		{"--runtime-policy", "missing"},
+		{"--runtime-proof", "missing"},
+		{"--runtime-policy", "missing", "--runtime-proof", "missing", "--accepted-risk", "missing"},
+		{"--runtime-policy", "missing", "--runtime-proof", "missing", "--minimum", "critical"},
+	} {
+		var stdout, stderr bytes.Buffer
+		if code := run(append([]string{"--report", report}, extra...), &stdout, &stderr); code != 2 {
+			t.Fatalf("args=%v code=%d stderr=%s", extra, code, stderr.String())
+		}
+	}
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--report", report, "--runtime-policy", "missing", "--runtime-proof", "missing"}, &stdout, &stderr); code != 1 {
+		t.Fatalf("unavailable proof code=%d", code)
+	}
+}
+
 func TestRunAcceptsOnlyApprovedWorkcellRiskAndKeepsItVisible(t *testing.T) {
 	dir := t.TempDir()
 	definition := filepath.Join(dir, "Dockerfile.sandbox-workcell")
