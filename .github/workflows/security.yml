@@ -241,9 +241,6 @@ jobs:
       - name: Verify vulnerability report
         run: test -s grype.json
 
-      - name: Enforce vulnerability threshold
-        run: go run ./cmd/grype-gate --report grype.json --minimum high --annotation-file Dockerfile
-
       - name: Scan isolated public site image
         env:
           GRYPE: ${{ steps.grype.outputs.cmd }}
@@ -252,9 +249,6 @@ jobs:
 
       - name: Verify isolated public site vulnerability report
         run: test -s aeontra-site-grype.json
-
-      - name: Enforce isolated public site vulnerability threshold
-        run: go run ./cmd/grype-gate --report aeontra-site-grype.json --minimum high --annotation-file Dockerfile.site
 
       - name: Scan stable front door image
         env:
@@ -265,9 +259,6 @@ jobs:
       - name: Verify stable front door vulnerability report
         run: test -s front-door-grype.json
 
-      - name: Enforce stable front door vulnerability threshold
-        run: go run ./cmd/grype-gate --report front-door-grype.json --minimum high --annotation-file Dockerfile.front-door
-
       - name: Scan private front door coordinator image
         env:
           GRYPE: ${{ steps.grype.outputs.cmd }}
@@ -276,9 +267,6 @@ jobs:
 
       - name: Verify private front door coordinator vulnerability report
         run: test -s front-door-coordinator-grype.json
-
-      - name: Enforce private front door coordinator vulnerability threshold
-        run: go run ./cmd/grype-gate --report front-door-coordinator-grype.json --minimum high --annotation-file Dockerfile.front-door-coordinator
 
       - name: Scan private validation runner image
         env:
@@ -289,9 +277,6 @@ jobs:
       - name: Verify private validation runner vulnerability report
         run: test -s validation-runner-grype.json
 
-      - name: Enforce private validation runner vulnerability threshold
-        run: go run ./cmd/grype-gate --report validation-runner-grype.json --minimum high --annotation-file Dockerfile.validation-runner
-
       - name: Scan private sandbox runner image
         env:
           GRYPE: ${{ steps.grype.outputs.cmd }}
@@ -301,9 +286,6 @@ jobs:
       - name: Verify private sandbox runner vulnerability report
         run: test -s sandbox-runner-grype.json
 
-      - name: Enforce private sandbox runner vulnerability threshold
-        run: go run ./cmd/grype-gate --report sandbox-runner-grype.json --minimum high --annotation-file Dockerfile.sandbox-runner
-
       - name: Scan sandbox workcell image
         env:
           GRYPE: ${{ steps.grype.outputs.cmd }}
@@ -311,10 +293,40 @@ jobs:
         run: '"$GRYPE" docker:mcp-sandbox-workcell:ci -o json --file sandbox-workcell-grype.json --vex security/vex/sandbox-workcell-zlib.openvex.json'
 
       - name: Verify sandbox workcell vulnerability report
+        id: workcell-report
         run: test -s sandbox-workcell-grype.json
 
-      - name: Enforce sandbox workcell vulnerability threshold
-        run: go run ./cmd/grype-gate --report sandbox-workcell-grype.json --minimum high --annotation-file Dockerfile.sandbox-workcell
+      - name: Enforce High and Critical findings in every image
+        shell: bash
+        run: |
+          failed=0
+          go run ./cmd/grype-gate --report grype.json --minimum high --annotation-file Dockerfile || failed=1
+          go run ./cmd/grype-gate --report aeontra-site-grype.json --minimum high --annotation-file Dockerfile.site || failed=1
+          go run ./cmd/grype-gate --report front-door-grype.json --minimum high --annotation-file Dockerfile.front-door || failed=1
+          go run ./cmd/grype-gate --report front-door-coordinator-grype.json --minimum high --annotation-file Dockerfile.front-door-coordinator || failed=1
+          go run ./cmd/grype-gate --report validation-runner-grype.json --minimum high --annotation-file Dockerfile.validation-runner || failed=1
+          go run ./cmd/grype-gate --report sandbox-runner-grype.json --minimum high --annotation-file Dockerfile.sandbox-runner || failed=1
+          go run ./cmd/grype-gate --report sandbox-workcell-grype.json --minimum high --annotation-file Dockerfile.sandbox-workcell || failed=1
+          exit "$failed"
+
+      - name: Record SQLite package and standard CLI presence in APK images
+        if: ${{ !cancelled() && steps.workcell-report.outcome == 'success' }}
+        shell: bash
+        run: |
+          for image in mcp-devbox aeontra-site mcp-front-door mcp-front-door-coordinator mcp-validation-runner mcp-sandbox-workcell; do
+            image_id="$(docker image inspect --format '{{.Id}}' "$image:ci")"
+            printf 'image=%s image_id=%s\n' "$image:ci" "$image_id"
+            docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+              --user 10001:10001 --entrypoint /bin/sh "$image:ci" -ec '
+                packages=$(apk info -v)
+                printf "%s\n" "$packages" | awk "/^sqlite(-libs)?-[0-9]/ { print \"sqlite_package=\" \$0 }"
+                if command -v sqlite3 >/dev/null || test -e /usr/bin/sqlite3; then
+                  echo sqlite_cli=present
+                else
+                  echo sqlite_cli=absent
+                fi
+              '
+          done
 
       - name: Retain SBOM and vulnerability evidence
         if: always()

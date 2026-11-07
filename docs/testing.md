@@ -326,6 +326,10 @@ conclusions are observed after branch publication. The separate
 [daily image watch](runbooks/security-risk-watch.md) uses read-only registry access
 and scans only its explicitly inventoried immutable image, without rebuilding it.
 
+The source workflow collects all seven image reports before evaluating their thresholds.
+It fails if any report fails the gate and retains all available reports. Its SQLite
+package and executable probe records evidence for triage; it does not change the gate.
+
 The protected sandbox image release checks the exact published Linux/amd64 runner
 and workcell manifests with a fresh Grype database. Candidate registry tags do not
 authorize deployment. The release emits `sandbox-images.json` only after the

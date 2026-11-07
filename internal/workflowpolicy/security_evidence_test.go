@@ -141,6 +141,42 @@ func TestSandboxRunnerDockerfileCopiesBuildDependencies(t *testing.T) {
 	}
 }
 
+func TestContainerEvidenceCollectsAllReportsBeforeBlocking(t *testing.T) {
+	content, err := os.ReadFile("../../.github/workflows/security.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflow := string(content)
+	lastReport := strings.Index(workflow, "run: test -s sandbox-workcell-grype.json")
+	firstGate := strings.Index(workflow, "go run ./cmd/grype-gate")
+	if lastReport < 0 || firstGate <= lastReport {
+		t.Fatal("container findings must not stop collection of the other image reports")
+	}
+	retain := strings.Index(workflow, "- name: Retain SBOM and vulnerability evidence")
+	if retain <= firstGate {
+		t.Fatal("report retention must follow the blocking gate")
+	}
+	gate := workflow[firstGate:retain]
+	if strings.Count(gate, "--minimum high") != 7 || strings.Count(gate, "|| failed=1") != 7 || !strings.Contains(gate, `exit "$failed"`) {
+		t.Fatal("every report must be checked at High, with any gate failure failing the job")
+	}
+	for _, suffix := range []string{"", "site", "front-door", "front-door-coordinator", "validation-runner", "sandbox-runner", "sandbox-workcell"} {
+		report, recipe := "grype.json", "Dockerfile"
+		if suffix != "" {
+			report, recipe = suffix+"-grype.json", recipe+"."+suffix
+		}
+		if suffix == "site" {
+			report = "aeontra-site-grype.json"
+		}
+		if strings.Count(gate, "--report "+report+" --minimum high --annotation-file "+recipe+" || failed=1") != 1 {
+			t.Errorf("missing or duplicated gate for %s and %s", report, recipe)
+		}
+	}
+	if !strings.Contains(workflow[retain:], "if: always()") {
+		t.Fatal("report retention must run even when the threshold fails")
+	}
+}
+
 func TestSandboxWorkcellPinsReviewedToolchains(t *testing.T) {
 	content, err := os.ReadFile("../../Dockerfile.sandbox-workcell")
 	if err != nil {
