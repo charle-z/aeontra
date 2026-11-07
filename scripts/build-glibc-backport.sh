@@ -85,14 +85,22 @@ cp /usr/bin/sqlite3 "$control/sqlite3-control"
 cp "$policy" "$control/runtime-remediation.json"
 # Final proof validates every installed file against this build's byte manifest.
 python3 - "$root" "$policy" <<'PY'
-import hashlib, json, os, pathlib, sys
+import hashlib, json, os, pathlib, shutil, sys
 root = pathlib.Path(sys.argv[1])
 policy = json.load(open(sys.argv[2]))
-# Keep coherent development and runtime files, not build programs or unrelated services.
-for name in ('sbin', 'var', 'etc', 'usr/bin', 'usr/share'):
-    import shutil
-    if (root/name).exists():
-        shutil.rmtree(root/name)
+# Publish only the coherent library/header trees. In particular, do not overlay
+# installer-created empty sbin/bin directories on Wolfi's merged-layout symlinks.
+def remove(path):
+    if path.is_symlink() or not path.is_dir():
+        path.unlink()
+    else:
+        shutil.rmtree(path)
+for path in root.iterdir():
+    if path.name != 'usr':
+        remove(path)
+for path in (root/'usr').iterdir():
+    if path.name not in ('lib', 'include'):
+        remove(path)
 manifest = {}
 for p in sorted(root.rglob('*')):
     if p.is_file() and not p.is_symlink():
