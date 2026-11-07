@@ -13,8 +13,9 @@ no image execution, no deployment credentials, and no resident monitoring agent.
 `security/monitored-images.json` identifies one verified `deployed-workcell` with
 the corrected Go, Python, glibc and bundled npm dependency recipe. The protected publication, independent
 registry hash checks and private runner rollout are recorded in
-[the dated rollout evidence](../baselines/2026-10-26-workcell-rollout.md).
-Earlier rollouts remain in their dated evidence; the inventory tracks this deployed image.
+[the dated rollout evidence](../baselines/2026-11-07-workcell-rollout.md).
+The previous [2026-10-26 rollout](../baselines/2026-10-26-workcell-rollout.md)
+remains historical evidence; the inventory tracks the newly verified deployed image.
 A passing run means only that the inventoried immutable image was scanned; it
 makes no all-production or seven-image coverage claim. The monitor does not
 discover production state or automatically update this inventory.
@@ -53,6 +54,10 @@ identity and registry manifests for 7 days, including on threshold failure.
 `cmd/grype-gate` enforces High/Critical findings without an accepted-risk input.
 The historical bundled-npm approval remains in its dated policy and evidence; the
 updated image does not inherit it. The corrected-zlib VEX remains unchanged.
+The current inventory also archives the protected release's exact-image runtime proof.
+Its glibc correction and absent SQLite CLI component remain subject to the separate
+runtime policy, which expires on 2026-11-21. The daily retirement workflow checks
+official replacement availability without changing or renewing that policy.
 `fail-build: false` permits the scanner to retain its JSON before the tested gate runs;
 it does not bypass the gate. Scanner errors, missing input/report/DB provenance and
 identity mismatches fail the job. There is no `continue-on-error`.

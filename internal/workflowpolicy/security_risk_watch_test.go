@@ -1,10 +1,14 @@
 package workflowpolicy
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/charle-z/mcp-devbox/internal/grypegate"
 )
 
 func TestSecurityRiskWatchIsDailyBoundedAndIdentityVerified(t *testing.T) {
@@ -86,11 +90,11 @@ func TestSecurityRiskWatchInventoryMatchesVerifiedWorkcell(t *testing.T) {
 	}
 	w := inventory.Workcell
 	if w.Repository != "ghcr.io/charle-z/aeontra-sandbox-workcell" ||
-		w.IndexDigest != "sha256:d94a47e1f26098e34d9051d4f2b7cf6c118296f6d040c3722f6f738ec18faa8a" ||
-		w.ManifestDigest != "sha256:a24285f7478ef4bc981a742edbc9fac3fa3453c3e7fb93ba88913054086d89e7" ||
-		w.ImageID != "sha256:d6ef8463bdb194429c7fd02fbb34fb43477f12b28967d700d416d55597068c7c" ||
-		w.Revision != "295622828b2a3001464e0e06147ceeacbedd4b20" ||
-		w.RecipeSHA256 != "1291d68a46f1714a0343baa2c6e96499f947c173030a8b28bd39e445fb3977b0" {
+		w.IndexDigest != "sha256:efa34e7c57550126e6e448dceb7a427a724aaf1ee038a39aaaac47fca2049d70" ||
+		w.ManifestDigest != "sha256:3bc51e01b280e0191b4c20dbd5d28077771ddb7fc95a5a513c5dce2b945cb3f3" ||
+		w.ImageID != "sha256:f873e7ce76604e02eb42615ebf013184f1e309306672621362bf6f93765c9764" ||
+		w.Revision != "4ef3d3360ffd0d6334e7fec7c5426f469d43398a" ||
+		w.RecipeSHA256 != "8e7beba632c9c6fbaaa8e697300fa4c6167ac759bf7e6a3559f19bd48de365db" {
 		t.Fatal("workcell identities differ from the verified protected image release")
 	}
 	// The watch checks the recipe in this exact revision with a full checkout.
@@ -123,5 +127,42 @@ func TestSecurityRiskWatchUsesStrictGateForUpdatedWorkcell(t *testing.T) {
 		if !strings.Contains(string(content), required) {
 			t.Errorf("runtime proof lost identity binding %q", required)
 		}
+	}
+}
+
+func TestSecurityRiskWatchArchivedProofMatchesInventory(t *testing.T) {
+	content, err := os.ReadFile("../../security/monitored-images.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var inventory struct {
+		Workcell struct {
+			ImageID      string `json:"image_id"`
+			RecipeSHA    string `json:"recipe_sha256"`
+			RuntimeProof string `json:"runtime_proof"`
+		} `json:"workcell"`
+	}
+	if err := json.Unmarshal(content, &inventory); err != nil {
+		t.Fatal(err)
+	}
+	w := inventory.Workcell
+	if w.RuntimeProof != "security/runtime-proofs/"+strings.TrimPrefix(w.ImageID, "sha256:")+".json" {
+		t.Fatal("runtime proof must be archived under the verified image configuration ID")
+	}
+	body, err := os.ReadFile("../../" + w.RuntimeProof)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var proof grypegate.RuntimeProof
+	if err := json.Unmarshal(body, &proof); err != nil {
+		t.Fatal(err)
+	}
+	policy, err := os.ReadFile("../../security/runtime-remediation.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := sha256.Sum256(policy)
+	if proof.ImageID != w.ImageID || proof.DefinitionSHA != w.RecipeSHA || proof.PolicySHA != hex.EncodeToString(hash[:]) {
+		t.Fatal("archived proof must bind the verified image, source recipe and unchanged runtime policy")
 	}
 }
