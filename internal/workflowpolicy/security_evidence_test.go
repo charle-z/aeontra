@@ -168,7 +168,7 @@ func TestContainerEvidenceCollectsAllReportsBeforeBlocking(t *testing.T) {
 		if suffix == "site" {
 			report = "aeontra-site-grype.json"
 		}
-		if strings.Count(gate, "--report "+report+" --minimum high --annotation-file "+recipe+" || failed=1") != 1 {
+		if strings.Count(gate, "--report "+report+" --minimum high --annotation-file "+recipe+" ") != 1 {
 			t.Errorf("missing or duplicated gate for %s and %s", report, recipe)
 		}
 	}

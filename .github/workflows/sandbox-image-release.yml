@@ -14,7 +14,7 @@ jobs:
   publish:
     name: Build and publish immutable L3 images
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     environment: sandbox-image-release
     permissions:
       contents: read
@@ -132,6 +132,13 @@ jobs:
       - name: Remove registry credentials before analysis
         run: docker logout ghcr.io
 
+      - name: Prove remediation on the immutable workcell
+        shell: bash
+        run: |
+          sh scripts/prepare-runtime-controls.sh "$RUNNER_TEMP/runtime-controls"
+          manifest="$(jq -er '.manifest' "$RUNNER_TEMP/sandbox-release-evidence/workcell-identity.json")"
+          sh scripts/prove-runtime-remediation.sh "$manifest" Dockerfile.sandbox-workcell "$RUNNER_TEMP/runtime-controls" "$RUNNER_TEMP/sandbox-release-evidence/workcell-runtime-proof.json"
+
       - name: Prepare pinned Grype
         id: grype
         uses: anchore/scan-action/download-grype@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
@@ -174,7 +181,12 @@ jobs:
           for kind in runner workcell; do
             report="$evidence/$kind-grype.json"
             recipe="Dockerfile.sandbox-$kind"
-            go run ./cmd/grype-gate --report "$report" --minimum high --annotation-file "$recipe"
+            proof=()
+            if [[ "$kind" == workcell ]]; then
+              image_id="$(jq -er '.image_id' "$evidence/workcell-identity.json")"
+              proof=(--runtime-policy security/runtime-remediation.json --runtime-proof "$evidence/workcell-runtime-proof.json" --image-id "$image_id")
+            fi
+            go run ./cmd/grype-gate --report "$report" --minimum high --annotation-file "$recipe" "${proof[@]}"
           done
 
       - name: Smoke test the scanned workcell

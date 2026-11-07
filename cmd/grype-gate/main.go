@@ -24,7 +24,9 @@ func runAt(args []string, stdout, stderr io.Writer, now time.Time) int {
 	minimumText := flags.String("minimum", "high", "minimum severity: negligible, low, medium, high, or critical")
 	annotationFile := flags.String("annotation-file", "Dockerfile", "repository file attached to GitHub annotations")
 	acceptedRiskPath := flags.String("accepted-risk", "", "reviewed, expiring workcell risk policy; reports remain unchanged")
-	imageID := flags.String("image-id", "", "verified OCI config digest for the scanned image; required for accepted risk")
+	imageID := flags.String("image-id", "", "verified OCI config digest for risk acceptance or runtime evidence")
+	runtimePolicy := flags.String("runtime-policy", "", "reviewed temporary runtime remediation policy")
+	runtimeProof := flags.String("runtime-proof", "", "fresh exact-image runtime proof")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
@@ -47,7 +49,30 @@ func runAt(args []string, stdout, stderr io.Writer, now time.Time) int {
 	var findings, accepted []grypegate.Finding
 	var evaluationErr error
 	var risk grypegate.AcceptedRisk
-	if *acceptedRiskPath != "" {
+	if *runtimePolicy != "" || *runtimeProof != "" {
+		if *runtimePolicy == "" || *runtimeProof == "" || *acceptedRiskPath != "" || minimum != grypegate.SeverityHigh {
+			fmt.Fprintln(stderr, "grype-gate: runtime policy and proof must be paired, at High, without risk acceptance")
+			return 2
+		}
+		policy, policyErr := os.ReadFile(*runtimePolicy)
+		proof, proofErr := os.ReadFile(*runtimeProof)
+		definition, definitionErr := os.ReadFile(*annotationFile)
+		report, reportErr := io.ReadAll(io.LimitReader(file, 32<<20+1))
+		if policyErr != nil || proofErr != nil || definitionErr != nil || reportErr != nil || len(report) > 32<<20 {
+			fmt.Fprintln(stderr, "grype-gate: runtime proof input is unavailable or oversized")
+			return 1
+		}
+		var qualified []grypegate.Finding
+		findings, qualified, evaluationErr = grypegate.EvaluateRuntimeProof(report, policy, proof, definition, *annotationFile, *imageID, now)
+		for _, finding := range qualified {
+			status := "fixed"
+			if finding.Package == "sqlite-libs" {
+				status = "not_affected (CLI component absent)"
+			}
+			annotation := strings.Replace(finding.GitHubAnnotation(*annotationFile), "::error ", "::warning ", 1)
+			fmt.Fprintf(stdout, "%s runtime disposition=%s; exact-image proof verified; raw report retained\n", annotation, status)
+		}
+	} else if *acceptedRiskPath != "" {
 		policy, openErr := os.Open(*acceptedRiskPath)
 		if openErr != nil {
 			fmt.Fprintf(stderr, "grype-gate: open risk policy: %v\n", openErr)
@@ -62,7 +87,7 @@ func runAt(args []string, stdout, stderr io.Writer, now time.Time) int {
 		findings, accepted, risk, evaluationErr = grypegate.EvaluateAcceptedRisk(file, minimum, policy, *annotationFile, definition, *imageID, now)
 	} else {
 		if *imageID != "" {
-			fmt.Fprintln(stderr, "grype-gate: --image-id requires --accepted-risk")
+			fmt.Fprintln(stderr, "grype-gate: --image-id requires --accepted-risk or paired runtime evidence")
 			return 2
 		}
 		findings, evaluationErr = grypegate.Evaluate(file, minimum)
@@ -81,7 +106,7 @@ func runAt(args []string, stdout, stderr io.Writer, now time.Time) int {
 	if len(accepted) > 0 {
 		fmt.Fprintf(stdout, "PASS no unaccepted vulnerabilities at or above %s; accepted_risks=%d\n", minimum, len(accepted))
 	} else {
-		fmt.Fprintf(stdout, "PASS no vulnerabilities at or above %s\n", minimum)
+		fmt.Fprintf(stdout, "PASS no unqualified vulnerabilities at or above %s\n", minimum)
 	}
 	return 0
 }

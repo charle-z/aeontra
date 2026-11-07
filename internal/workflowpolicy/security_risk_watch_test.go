@@ -111,10 +111,17 @@ func TestSecurityRiskWatchUsesStrictGateForUpdatedWorkcell(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(content), "--accepted-risk") || strings.Contains(string(content), "--image-id") {
+	if strings.Contains(string(content), "--accepted-risk") {
 		t.Fatal("updated workcell watch must not inherit the historical image exception")
 	}
 	if !strings.Contains(string(content), "--minimum high") {
 		t.Fatal("updated image lost High/Critical threshold")
+	}
+	// Corrected-runtime evidence is separate from historical risk acceptance and
+	// remains bound to the same immutable config that was pulled and scanned.
+	for _, required := range []string{".workcell.runtime_proof // empty", "--runtime-policy security/runtime-remediation.json", "--runtime-proof \"$proof_file\"", "--image-id \"$VERIFIED_IMAGE_ID\"", "security/runtime-proofs/[0-9a-f]{64}"} {
+		if !strings.Contains(string(content), required) {
+			t.Errorf("runtime proof lost identity binding %q", required)
+		}
 	}
 }

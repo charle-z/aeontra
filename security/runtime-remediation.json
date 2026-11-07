@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "owner": "charle-z",
+  "created_at": "2026-11-07T00:00:00Z",
+  "expires_at": "2026-11-21T00:00:00Z",
+  "glibc_source": "34106fee698c83eb0af71d4d0381e66b399be746",
+  "glibc_source_sha256": "7ed4d984e60a8d40cbe4c74b16f9bfba4564f07839f5081dda422252f65b30c0",
+  "glibc_patch": "03067f3c5e39aec5ec250a44bc1b395a1afd45e8",
+  "glibc_patch_sha256": "a9d503207f2cabfe2e0b336728202824d466170759950bcc51a8cba152e28e92",
+  "wolfi_recipe": "cfb14fd2e4477955df1a321b0be932be289f190c",
+  "wolfi_patch_recipe": "2b7c39f721e3e6d26b9da7eb5d8cd3032baefbef",
+  "upstream_glibc_pr": "https://github.com/wolfi-dev/os/pull/78784",
+  "upstream_sqlite_issue": "https://github.com/anchore/grype/issues/3884"
+}

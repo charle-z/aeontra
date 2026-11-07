@@ -1,5 +1,10 @@
 # syntax=docker/dockerfile:1.7
 
+FROM cgr.dev/chainguard/wolfi-base@sha256:6a8dca4c2153cfc11d559cfa6172c187b896423d833f3d48a4c1c44ab55596d7 AS glibc-backport
+RUN apk add --no-cache build-base=1-r9 glibc-2.44=2.44-r8 glibc-2.44-dev=2.44-r8 glibc-2.44-locale-posix=2.44-r8 ld-linux-2.44=2.44-r8 bison gawk texinfo gettext flex linux-headers curl python-3.14=3.14.10_git20261028-r0 sqlite=3.54.1-r0 bash coreutils grep diffutils
+COPY scripts/build-glibc-backport.sh security/runtime-remediation.json security/glibc-witness.c /build-input/
+RUN sh /build-input/build-glibc-backport.sh
+
 FROM docker.io/library/golang:1.26.10-alpine3.24@sha256:27f2d3b83cfc5803c8078f8e730af0f7c431bf067afaec8f60a36fb763187cba AS build
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -21,6 +26,7 @@ RUN apk upgrade --no-cache \
     && chown mcpcoord:mcpcoord /coordinator-state \
     && chmod 0700 /coordinator-state
 COPY --from=build /out/mcp-front-door-coordinator /usr/local/bin/mcp-front-door-coordinator
+COPY --from=glibc-backport /out/root/ /
 COPY scripts/front-door-coordinator-entrypoint.sh /usr/local/bin/mcp-front-door-coordinator-entrypoint
 RUN chmod 0755 /usr/local/bin/mcp-front-door-coordinator-entrypoint
 VOLUME ["/coordinator-state"]

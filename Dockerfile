@@ -1,5 +1,10 @@
 # syntax=docker/dockerfile:1.7
 
+FROM cgr.dev/chainguard/wolfi-base@sha256:6a8dca4c2153cfc11d559cfa6172c187b896423d833f3d48a4c1c44ab55596d7 AS glibc-backport
+RUN apk add --no-cache build-base=1-r9 glibc-2.44=2.44-r8 glibc-2.44-dev=2.44-r8 glibc-2.44-locale-posix=2.44-r8 ld-linux-2.44=2.44-r8 bison gawk texinfo gettext flex linux-headers curl python-3.14=3.14.10_git20261028-r0 sqlite=3.54.1-r0 bash coreutils grep diffutils
+COPY scripts/build-glibc-backport.sh security/runtime-remediation.json security/glibc-witness.c /build-input/
+RUN sh /build-input/build-glibc-backport.sh
+
 FROM docker.io/library/node:22-alpine3.22@sha256:cd7807368cf24826297cbad5dca1a44972ccfd770647db52a8c7589eb4599ac8 AS console-build
 
 # The production VPS has two vCPUs. Keep image assembly to one logical CPU by
@@ -75,6 +80,8 @@ RUN apk upgrade --no-cache \
 	# Defense in depth: strip setuid/setgid bits so no binary can be used to
 	# escalate privileges (the app runs non-root and needs no setuid tools).
 	&& (find / -xdev -perm /6000 -type f -exec chmod a-s {} + 2>/dev/null || true)
+
+COPY --from=glibc-backport /out/root/ /
 
 # Writable Go caches for the non-root user (go test/build need these), plus a
 # default git identity so git_commit works without a home dir (override in Coolify).
