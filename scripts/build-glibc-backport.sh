@@ -31,11 +31,23 @@ CPPFLAGS= CFLAGS='-O2' "$src/configure" --prefix=/usr --libdir=/usr/lib --sbindi
   --enable-bind-now --enable-fortify-source --enable-stackguard-randomization \
   --enable-stack-protector=strong --enable-cet --with-pkgversion=aeontra-glibc-2.44-r8-CVE-2026-84243 \
   --disable-werror --disable-crypt --enable-kernel=4.9
-make -j2
-make -j2 check-abi
-make -j2 subdirs=intl check
+run_make() {
+    phase=$1
+    shift
+    printf 'glibc_phase=%s\n' "$phase"
+    if make -j2 "$@" > "/tmp/glibc-$phase.log" 2>&1; then
+        tail -n 3 "/tmp/glibc-$phase.log"
+    else
+        result=$?
+        tail -n 80 "/tmp/glibc-$phase.log"
+        exit "$result"
+    fi
+}
+run_make build
+run_make abi check-abi
+run_make intl subdirs=intl check
 grep -q '^PASS: intl/tst-gettext-path-traversal$' intl/tst-gettext-path-traversal.test-result
-make install DESTDIR="$root"
+run_make install install DESTDIR="$root"
 # Wolfi's dev package contains real pinned copies as well as the linker scripts.
 cp "$root/usr/lib/libc.so.6" "$root/usr/lib/libc.so-2.44"
 cp "$root/usr/lib/libm.so.6" "$root/usr/lib/libm.so-2.44"

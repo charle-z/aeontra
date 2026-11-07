@@ -40,7 +40,7 @@ def check(policy, now, get=fetch):
     if not found:
         raise ValueError('official glibc package disappeared from the index; review replacement')
     if pr.get('merged') and available:
-        raise ValueError('Official glibc backport is published: retire the custom build and pin/verify the official APK family.')
+        raise ValueError('Official glibc backport merged and newer APKs exist: verify their source and regression before replacing the custom build.')
     if issue.get('state') == 'closed':
         raise ValueError('SQLite applicability issue changed: review the corrected feed and retire the temporary classification.')
     return 'runtime_remediation_upstream=pending expires='+policy['expires_at']
