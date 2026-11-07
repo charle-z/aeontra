@@ -38,14 +38,14 @@ class ImageProofTests(unittest.TestCase):
         self.assertEqual(hashes, {'usr/lib/data': hashlib.sha256(b'benign').hexdigest()})
 
     def test_cli_detected_with_changed_name_mode_and_hash(self):
-        body = b'prefix SQLite version %s payload sqlite> suffix'
+        body = b'prefix SQLite version %s payload .recover suffix'
         for name in ('usr/bin/sqlite3', 'usr/lib/renamed.bin'):
             with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'shell component found'):
                 proof.inspect_archive(archive([(name, body)]), 'different-control-hash')
         proof.verify_renamed_control(body)
 
     def test_signature_across_stream_boundary(self):
-        body = b'x'*(1024*1024-4)+b'SQLite version %s'+b'y'*100+b'sqlite> '
+        body = b'x'*(1024*1024-4)+b'SQLite version %s'+b'y'*100+b'.recover '
         with self.assertRaisesRegex(ValueError, 'shell component found'):
             proof.inspect_archive(archive([('renamed', body)]), 'different')
 

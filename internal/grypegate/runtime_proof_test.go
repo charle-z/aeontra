@@ -25,7 +25,7 @@ func TestRuntimeProofIsBoundedToCorrectedImage(t *testing.T) {
 	proof.SQLite.FilesScanned = 9
 	proof.SQLite.CLIAbsent = true
 	proof.SQLite.RenamedControl = true
-	proof.SQLite.CanarySHA = strings.Repeat("d", 64)
+	proof.SQLite.CanarySHA = "c42cdc1da4e6c59fbb90c3281c2a10a51a6fb4ce12105a7db6e0a5e68da1b2a9"
 	report := []byte(`{"source":{"type":"image","target":{"imageID":"` + proof.ImageID + `"}},"matches":[{"vulnerability":{"id":"CVE-2026-84243","severity":"High","fix":{"versions":[]}},"artifact":{"name":"glibc-2.44","version":"2.44-r8","type":"apk","locations":[{"path":"/usr/lib/apk/db/installed"}]}},{"vulnerability":{"id":"CVE-2026-119586","severity":"High","fix":{"versions":[]}},"artifact":{"name":"sqlite-libs","version":"3.54.1-r0","type":"apk","locations":[{"path":"/usr/lib/apk/db/installed"}]}}]}`)
 	check := func(t *testing.T, report []byte, p RuntimeProof, pol []byte, recipe []byte, at time.Time, want bool) {
 		t.Helper()
@@ -46,6 +46,7 @@ func TestRuntimeProofIsBoundedToCorrectedImage(t *testing.T) {
 		"cli present":              func(p *RuntimeProof) { p.SQLite.CLIAbsent = false },
 		"renamed cli not rejected": func(p *RuntimeProof) { p.SQLite.RenamedControl = false },
 		"missing inventory":        func(p *RuntimeProof) { p.SQLite.InventorySHA = "" },
+		"substituted control":      func(p *RuntimeProof) { p.SQLite.CanarySHA = strings.Repeat("a", 64) },
 	} {
 		t.Run(name, func(t *testing.T) { p := proof; mutate(&p); check(t, report, p, pb, definition, now, false) })
 	}

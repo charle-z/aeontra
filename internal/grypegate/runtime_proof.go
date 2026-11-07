@@ -106,7 +106,7 @@ func EvaluateRuntimeProof(reportBody, policyBody, proofBody, definition []byte, 
 	if len(imageID) != 71 || imageID[:7] != "sha256:" || !validSHA(imageID[7:]) || payload.Source.Type != "image" || payload.Source.Target.ImageID != imageID || proof.SchemaVersion != 1 || proof.ImageID != imageID || proof.DefinitionSHA != digestBytes(definition) || proof.PolicySHA != digestBytes(policyBody) || proof.ObservedAt.Before(policy.CreatedAt) || proof.ObservedAt.After(now.Add(5*time.Minute)) || proof.ObservedAt.IsZero() {
 		return nil, nil, fmt.Errorf("runtime proof is stale or does not describe the scanned image and recipe")
 	}
-	if proof.Glibc.Source != policy.GlibcSource || proof.Glibc.PatchSHA != policy.PatchSHA || !validSHA(proof.Glibc.ManifestSHA) || proof.Glibc.FilesVerified < 8 || !proof.Glibc.ABI || !proof.Glibc.Regression || !proof.Glibc.Normal || proof.SQLite.Version != "3.54.1-r0" || !validSHA(proof.SQLite.InventorySHA) || !validSHA(proof.SQLite.CanarySHA) || proof.SQLite.FilesScanned < 8 || !proof.SQLite.CLIAbsent || !proof.SQLite.RenamedControl {
+	if proof.Glibc.Source != policy.GlibcSource || proof.Glibc.PatchSHA != policy.PatchSHA || !validSHA(proof.Glibc.ManifestSHA) || proof.Glibc.FilesVerified < 8 || !proof.Glibc.ABI || !proof.Glibc.Regression || !proof.Glibc.Normal || proof.SQLite.Version != "3.54.1-r0" || !validSHA(proof.SQLite.InventorySHA) || proof.SQLite.CanarySHA != "c42cdc1da4e6c59fbb90c3281c2a10a51a6fb4ce12105a7db6e0a5e68da1b2a9" || proof.SQLite.FilesScanned < 8 || !proof.SQLite.CLIAbsent || !proof.SQLite.RenamedControl {
 		return nil, nil, fmt.Errorf("runtime proof is incomplete")
 	}
 	for _, finding := range all {

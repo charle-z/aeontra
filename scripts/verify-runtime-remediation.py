@@ -9,13 +9,14 @@ import pathlib
 import posixpath
 import tarfile
 
+SQLITE_CLI_SHA256 = 'c42cdc1da4e6c59fbb90c3281c2a10a51a6fb4ce12105a7db6e0a5e68da1b2a9'
 
 def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
 def cli_signature(data):
-    return b"SQLite version %s" in data and b"sqlite> " in data
+    return b"SQLite version %s" in data and b".recover " in data
 
 
 def inspect_archive(archive, canary):
@@ -38,7 +39,7 @@ def inspect_archive(archive, canary):
                     h.update(chunk)
                     view = previous + chunk
                     first |= b"SQLite version %s" in view
-                    second |= b"sqlite> " in view
+                    second |= b".recover " in view
                     previous = view[-64:]
                     if name in wanted:
                         body.extend(chunk)
@@ -98,7 +99,7 @@ def verify(args):
     if now >= datetime.datetime.fromisoformat(policy["expires_at"].replace("Z", "+00:00")):
         raise ValueError("temporary runtime remediation expired")
     canary_bytes = (pathlib.Path(args.control)/"sqlite3-control").read_bytes()
-    if not cli_signature(canary_bytes):
+    if digest(canary_bytes) != SQLITE_CLI_SHA256 or not cli_signature(canary_bytes):
         raise ValueError("official SQLite shell positive control not recognized")
     # A copied or renamed CLI has identical content and must remain detectable.
     verify_renamed_control(canary_bytes)
