@@ -578,6 +578,10 @@ local Git transport authority.
 - Store them in the Coolify secret manager or an equivalent administrator-controlled
   mechanism.
 - Never put them in Git, prompts, repository files, logs, URLs, or command arguments.
+- Keep MCP Devbox integration and authentication credentials enabled for Runtime only
+  in Coolify. Image assembly does not need the running server's credentials; do not
+  pass them as build arguments. Use BuildKit secrets for a separately justified
+  build-time credential, never for credentials needed only after startup.
 - Use unmistakable placeholders in examples.
 - Tool responses and audit records must never return tokens or environment values.
 - Query-string credentials are rejected; use OAuth or an `Authorization` header.
