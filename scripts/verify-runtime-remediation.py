@@ -107,12 +107,14 @@ def verify(args):
     marker = json.loads(marker_bytes)
     if marker["source"] != policy["glibc_source"] or marker["patch_sha256"] != policy["glibc_patch_sha256"] or not marker["abi_checked"] or not marker["intl_checked"]:
         raise ValueError("unreviewed libc build")
-    required = {"/usr/lib/libc.so.6", "/usr/lib/libc.so-2.44", "/usr/lib/libc.a", "/usr/lib/libm.so-2.44", "/usr/include/features.h"}
-    if not required <= marker["files"].keys() or not any("ld-linux-x86-64.so.2" in p for p in marker["files"]):
+    required = {"/usr/lib/libc.so.6", "/usr/lib/libc.so-2.44", "/usr/lib/libc.a", "/usr/lib/libm.so-2.44", "/usr/include/features.h", "/usr/lib/ld-linux-x86-64.so.2"}
+    if not required <= marker["files"].keys():
         raise ValueError("incomplete libc/loader/development manifest")
     for path, expected in marker["files"].items():
         if resolved_hash(path, entries, hashes) != expected:
             raise ValueError("installed libc file differs from the tested build: " + path)
+    if resolved_hash('/lib64/ld-linux-x86-64.so.2', entries, hashes) != marker['files']['/usr/lib/ld-linux-x86-64.so.2']:
+        raise ValueError('runtime loader path does not resolve to the tested loader')
     packages = captured["usr/lib/apk/db/installed"].decode().split("\n\n")
     versions = []
     for block in packages:

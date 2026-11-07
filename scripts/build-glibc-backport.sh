@@ -76,6 +76,10 @@ with open(sys.argv[1], 'wb') as f:
 PY
 "$control/glibc-witness" "$control" baseline
 "$root/lib64/ld-linux-x86-64.so.2" --library-path "$root/usr/lib" "$control/glibc-witness" "$control" patched
+# Wolfi's merged-lib layout owns /lib64 as a symlink into /usr/lib. Keep
+# that layout and replace the authoritative loader file, not the symlink.
+mv -f "$root/lib64/ld-linux-x86-64.so.2" "$root/usr/lib/ld-linux-x86-64.so.2"
+rmdir "$root/lib64"
 # Official signed APK used only as a positive/renamed CLI detection control.
 cp /usr/bin/sqlite3 "$control/sqlite3-control"
 cp "$policy" "$control/runtime-remediation.json"
