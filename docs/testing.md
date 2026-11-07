@@ -326,6 +326,17 @@ conclusions are observed after branch publication. The separate
 [daily image watch](runbooks/security-risk-watch.md) uses read-only registry access
 and scans only its explicitly inventoried immutable image, without rebuilding it.
 
+The source workflow collects all seven image reports before evaluating their thresholds.
+It fails if any report fails the gate and retains all available reports. Its SQLite
+package and executable probe records evidence for triage; it does not change the gate.
+
+The protected sandbox image release checks the exact published Linux/amd64 runner
+and workcell manifests with a fresh Grype database. Candidate registry tags do not
+authorize deployment. The release emits `sandbox-images.json` only after the
+verified images pass the High/Critical gate and the exact workcell passes its
+toolchain smoke, including Python loading the corrected Expat library and parsing XML.
+Image identities and raw scan reports are retained on threshold failure.
+
 ## Scheduled fuzzing — P6 Step 89
 
 `.github/workflows/fuzz.yml` runs weekly at `17 3 * * 1` and supports manual dispatch.

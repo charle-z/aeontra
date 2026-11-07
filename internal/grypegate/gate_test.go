@@ -99,12 +99,21 @@ func TestEvaluateRejectsMalformedOrUnknownSeverity(t *testing.T) {
 		"unknown severity": `{"matches":[{"vulnerability":{"id":"CVE-X","severity":"Extreme"},"artifact":{"name":"pkg","version":"1"}}]}`,
 		"missing id":       `{"matches":[{"vulnerability":{"severity":"High"},"artifact":{"name":"pkg","version":"1"}}]}`,
 		"missing package":  `{"matches":[{"vulnerability":{"id":"CVE-X","severity":"High"},"artifact":{"version":"1"}}]}`,
+		"missing matches":  `{"source":{"type":"image"},"descriptor":{"db":{"built":"2026-11-06"}}}`,
+		"null matches":     `{"matches":null}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := Evaluate(strings.NewReader(report), SeverityHigh); !errors.Is(err, ErrInvalidReport) {
 				t.Fatalf("error = %v, want ErrInvalidReport", err)
 			}
 		})
+	}
+}
+
+func TestEvaluateAcceptsExplicitEmptyMatches(t *testing.T) {
+	findings, err := Evaluate(strings.NewReader(`{"matches":[]}`), SeverityHigh)
+	if err != nil || len(findings) != 0 {
+		t.Fatalf("clean scan: findings=%v err=%v", findings, err)
 	}
 }
 

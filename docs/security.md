@@ -815,6 +815,33 @@ Redaction is not a substitute for keeping secrets out of inputs and storage.
 
 ## Security tests and evidence
 
+### Temporary corrected runtime evidence
+
+The owner-approved glibc backport in `security/runtime-remediation.json` expires on
+2026-11-21. It preserves the Wolfi r8 source and vendor patches, applies upstream
+03067f3, and builds a coherent libc, loader, static libraries and headers. Source,
+patches, build instructions and LGPL notices accompany the runtime. The APK database
+continues to identify the original vendor packages; it is not relabelled as an
+official fixed APK.
+
+The High gate may classify CVE-2026-84243 as corrected only after the final image's
+installed-file manifest, upstream ABI/intl checks, four traversal cases and two
+ordinary translation controls pass. CVE-2026-119586 may be classified as not applicable
+only for `sqlite-libs` 3.54.1-r0 after complete rootfs inventory, CLI-package absence,
+CLI fingerprint/signature checks, and a renamed official CLI positive control. This
+does not apply to the SQLite shell or any other library CVE.
+
+The proof is bound to the OCI configuration ID, exact recipe and policy hashes.
+Immutable-image proofs can be reused until policy expiry; another image or recipe
+requires a new proof. Missing evidence, a changed package/version/location, Unknown or
+Critical severity, and any available vendor fix remain blocking. Raw Grype reports
+and dispositions remain available. This is corrected/unaffected evidence, not risk
+acceptance. The daily `runtime-remediation-watch.yml` checks the official Wolfi package
+and upstream scanner issue. It alerts by failing when replacement is available or
+applicability changes, never renews the policy, and never deploys. Retirement replaces
+the whole libc package family, removes the backport/proof paths, and reruns the full
+checks and deployment acceptance.
+
 ### Temporary container risk acceptance
 
 Container scans retain their original reports. A reviewed risk acceptance is a

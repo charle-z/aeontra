@@ -11,12 +11,15 @@ workcell receives that socket.
 
 After an exact-main pull request is green and merged, dispatch
 `.github/workflows/sandbox-image-release.yml` from `main`. Its protected
-`sandbox-image-release` environment publishes `ghcr.io/charle-z/aeontra-sandbox-runner`
-and `ghcr.io/charle-z/aeontra-sandbox-workcell`, both tagged only with the exact source
-commit and retained as immutable `name@sha256:<digest>` identities. The workflow links
-the packages to the source repository, emits registry provenance and SBOM attestations,
-and retains a bounded JSON identity artifact. A tag without a digest is rejected by the
-runner configuration.
+`sandbox-image-release` environment stages `ghcr.io/charle-z/aeontra-sandbox-runner`
+and `ghcr.io/charle-z/aeontra-sandbox-workcell` under run-specific candidate tags with
+registry provenance and SBOM attestations. It verifies and scans both published
+Linux/amd64 manifests, runs the workcell smoke, and promotes the same indexes without
+rebuilding. Before adding a digest to the host policy or configuring the runner, require
+a successful protected run for the exact source commit and its `sandbox-images-<commit>`
+artifact from that run attempt. Use only its immutable `name@sha256:<digest>` identities.
+Candidate tags, partial evidence from a failed attempt, and commit tags alone do not
+authorize rollout. A tag without a digest is rejected by the runner configuration.
 
 New GitHub Container Registry packages are private until an administrator changes their
 visibility. Before a credential-free production pull, make both packages public in the
@@ -28,8 +31,9 @@ The reference workcell uses a digest-pinned Wolfi base and exact package version
 Go, Rust, Node/npm, Python, the C/C++ compiler baseline and common command-line
 utilities. Its four replaced npm transitive packages (`brace-expansion`, `undici`,
 `ip-address`, and `http-cache-semantics`) are fetched over HTTPS and verified
-by SHA-256. The security workflow builds this exact image, emits an SPDX SBOM and
-rejects unaccepted High or Critical Grype findings. The historical expiring approval
+by SHA-256. The security workflow builds the same recipe for PR checks, emits an SPDX
+SBOM and rejects unaccepted High or Critical Grype findings. The release separately
+checks the registry artifacts that operators will deploy. The historical expiring approval
 in [the security model](../security.md#temporary-container-risk-acceptance) applies
 only to its exact older image and finding; the updated image must pass its own gate.
 Treat any package-version change

@@ -14,25 +14,23 @@ jobs:
   publish:
     name: Build and publish immutable L3 images
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     environment: sandbox-image-release
     permissions:
       contents: read
       packages: write
-    env:
-      GHCR_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout exact main commit
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Validate protected release identity
         run: |
           test "$GITHUB_REPOSITORY" = "charle-z/aeontra"
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-          test -n "$GHCR_TOKEN"
 
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
@@ -52,12 +50,16 @@ jobs:
           git diff --check
 
       - name: Authenticate the protected publisher
+        env:
+          GHCR_TOKEN: ${{ github.token }}
         run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
 
-      - name: Build and publish exact images
+      - name: Build and publish candidate images
+        shell: bash
         run: |
           owner="${GITHUB_REPOSITORY_OWNER,,}"
           revision="$(git rev-parse HEAD)"
+          candidate_tag="candidate-$revision-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           source="https://github.com/$GITHUB_REPOSITORY"
           runner_image="ghcr.io/$owner/aeontra-sandbox-runner"
           workcell_image="ghcr.io/$owner/aeontra-sandbox-workcell"
@@ -70,7 +72,7 @@ jobs:
             --label "org.opencontainers.image.source=$source" \
             --label "org.opencontainers.image.revision=$revision" \
             --label "org.opencontainers.image.licenses=Apache-2.0" \
-            --tag "$runner_image:sha-$revision" \
+            --tag "$runner_image:$candidate_tag" \
             --provenance=mode=max \
             --sbom=true \
             --push \
@@ -83,31 +85,163 @@ jobs:
             --label "org.opencontainers.image.source=$source" \
             --label "org.opencontainers.image.revision=$revision" \
             --label "org.opencontainers.image.licenses=Apache-2.0" \
-            --tag "$workcell_image:sha-$revision" \
+            --tag "$workcell_image:$candidate_tag" \
             --provenance=mode=max \
             --sbom=true \
             --push \
             --metadata-file "$workcell_metadata" \
             .
 
-          runner_digest="$(jq -er '."containerimage.digest" | select(test("^sha256:[0-9a-f]{64}$"))' "$runner_metadata")"
-          workcell_digest="$(jq -er '."containerimage.digest" | select(test("^sha256:[0-9a-f]{64}$"))' "$workcell_metadata")"
-          docker buildx imagetools inspect "$runner_image@$runner_digest" >/dev/null
-          docker buildx imagetools inspect "$workcell_image@$workcell_digest" >/dev/null
+      - name: Verify candidate image identities
+        shell: bash
+        run: |
+          evidence="$RUNNER_TEMP/sandbox-release-evidence"
+          mkdir -p "$evidence"
+          revision="$(git rev-parse HEAD)"
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+
+          verify_image() {
+            local kind="$1" recipe="$2"
+            local repository="ghcr.io/$owner/aeontra-sandbox-$kind"
+            local digest ref manifest_digest manifest_ref config_digest actual_id actual_revision actual_platform recipe_sha
+            digest="$(jq -er '."containerimage.digest" | select(test("^sha256:[0-9a-f]{64}$"))' "$RUNNER_TEMP/sandbox-$kind-metadata.json")"
+            ref="$repository@$digest"
+            docker buildx imagetools inspect "$ref" --raw > "$evidence/$kind-index.json"
+            manifest_digest="$(jq -er '[.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64")] | select(length == 1) | .[0].digest | select(test("^sha256:[0-9a-f]{64}$"))' "$evidence/$kind-index.json")"
+            manifest_ref="$repository@$manifest_digest"
+            docker buildx imagetools inspect "$manifest_ref" --raw > "$evidence/$kind-manifest.json"
+            config_digest="$(jq -er '.config.digest | select(test("^sha256:[0-9a-f]{64}$"))' "$evidence/$kind-manifest.json")"
+            docker pull --platform linux/amd64 "$manifest_ref"
+            actual_id="$(docker image inspect --format '{{.Id}}' "$manifest_ref")"
+            actual_revision="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$manifest_ref")"
+            actual_platform="$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$manifest_ref")"
+            test "$actual_id" = "$config_digest"
+            test "$actual_revision" = "$revision"
+            test "$actual_platform" = "linux/amd64"
+            recipe_sha="$(git show "$revision:$recipe" | sha256sum | cut -d ' ' -f 1)"
+            test "$(sha256sum "$recipe" | cut -d ' ' -f 1)" = "$recipe_sha"
+            jq -n --arg index "$ref" --arg manifest "$manifest_ref" --arg image_id "$actual_id" \
+              --arg revision "$revision" --arg platform "$actual_platform" --arg recipe_sha256 "$recipe_sha" \
+              '{index: $index, manifest: $manifest, image_id: $image_id, revision: $revision, platform: $platform, recipe_sha256: $recipe_sha256}' \
+              > "$evidence/$kind-identity.json"
+          }
+
+          verify_image runner Dockerfile.sandbox-runner
+          verify_image workcell Dockerfile.sandbox-workcell
+
+      - name: Remove registry credentials before analysis
+        run: docker logout ghcr.io
+
+      - name: Prove remediation on the immutable workcell
+        shell: bash
+        run: |
+          sh scripts/prepare-runtime-controls.sh "$RUNNER_TEMP/runtime-controls"
+          manifest="$(jq -er '.manifest' "$RUNNER_TEMP/sandbox-release-evidence/workcell-identity.json")"
+          sh scripts/prove-runtime-remediation.sh "$manifest" Dockerfile.sandbox-workcell "$RUNNER_TEMP/runtime-controls" "$RUNNER_TEMP/sandbox-release-evidence/workcell-runtime-proof.json"
+
+      - name: Prepare pinned Grype
+        id: grype
+        uses: anchore/scan-action/download-grype@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          grype-version: v0.110.0
+          cache-db: true
+
+      - name: Scan exact candidate images
+        shell: bash
+        env:
+          GRYPE: ${{ steps.grype.outputs.cmd }}
+          GRYPE_DB_REQUIRE_UPDATE_CHECK: "true"
+          GRYPE_DB_MAX_ALLOWED_BUILT_AGE: 24h
+          GRYPE_DB_VALIDATE_AGE: "true"
+          GRYPE_DB_VALIDATE_BY_HASH_ON_START: "true"
+          GRYPE_DB_MAX_UPDATE_CHECK_FREQUENCY: 0s
+        run: |
+          evidence="$RUNNER_TEMP/sandbox-release-evidence"
+          scan_image() {
+            local kind="$1" image_id scan_ref report
+            local -a vex=()
+            image_id="$(jq -er '.image_id' "$evidence/$kind-identity.json")"
+            scan_ref="$(jq -er '.manifest' "$evidence/$kind-identity.json")"
+            if [[ "$kind" == workcell ]]; then
+              # Existing corrected-zlib VEX applies only after immutable identity and recipe verification.
+              docker tag "$image_id" mcp-sandbox-workcell:ci
+              scan_ref=mcp-sandbox-workcell:ci
+              vex=(--vex security/vex/sandbox-workcell-zlib.openvex.json)
+            fi
+            report="$evidence/$kind-grype.json"
+            "$GRYPE" "docker:$scan_ref" -o json --file "$report" "${vex[@]}"
+            jq -e --arg id "$image_id" '
+              .source.type == "image" and .source.target.imageID == $id and
+              (.descriptor.db | type == "object" and length > 0)
+            ' "$report" >/dev/null
+          }
+
+          scan_image runner
+          scan_image workcell
+          for kind in runner workcell; do
+            report="$evidence/$kind-grype.json"
+            recipe="Dockerfile.sandbox-$kind"
+            proof=()
+            if [[ "$kind" == workcell ]]; then
+              image_id="$(jq -er '.image_id' "$evidence/workcell-identity.json")"
+              proof=(--runtime-policy security/runtime-remediation.json --runtime-proof "$evidence/workcell-runtime-proof.json" --image-id "$image_id")
+            fi
+            go run ./cmd/grype-gate --report "$report" --minimum high --annotation-file "$recipe" "${proof[@]}"
+          done
+
+      - name: Smoke test the scanned workcell
+        shell: bash
+        run: |
+          manifest="$(jq -er '.manifest' "$RUNNER_TEMP/sandbox-release-evidence/workcell-identity.json")"
+          sh scripts/test-sandbox-workcell-toolchains.sh "$manifest"
+
+      - name: Authenticate the protected promoter
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Promote only the scanned digests
+        shell: bash
+        run: |
+          revision="$(git rev-parse HEAD)"
+          for kind in runner workcell; do
+            ref="$(jq -er '.index' "$RUNNER_TEMP/sandbox-release-evidence/$kind-identity.json")"
+            tag="${ref%@*}:sha-$revision"
+            # A single index source is copied without rebuilding or changing attestations.
+            docker buildx imagetools create --tag "$tag" "$ref"
+            test "$(docker buildx imagetools inspect "$tag" --format '{{.Manifest.Digest}}')" = "${ref##*@}"
+          done
+
+      - name: Record scanned images for promotion
+        shell: bash
+        run: |
+          evidence="$RUNNER_TEMP/sandbox-release-evidence"
+          revision="$(git rev-parse HEAD)"
+          runner_ref="$(jq -er '.index' "$evidence/runner-identity.json")"
+          workcell_ref="$(jq -er '.index' "$evidence/workcell-identity.json")"
 
           jq -n \
             --arg commit "$revision" \
-            --arg runner "$runner_image@$runner_digest" \
-            --arg workcell "$workcell_image@$workcell_digest" \
+            --arg runner "$runner_ref" \
+            --arg workcell "$workcell_ref" \
             '{schema_version: 1, commit: $commit, runner: $runner, workcell: $workcell}' \
             > "$RUNNER_TEMP/sandbox-images.json"
           {
-            echo '### Immutable Aeontra sandbox images'
+            echo '### Immutable Aeontra sandbox images verified for promotion'
             echo
             echo "- Commit: \`$revision\`"
-            echo "- Runner: \`$runner_image@$runner_digest\`"
-            echo "- Workcell: \`$workcell_image@$workcell_digest\`"
+            echo "- Runner: \`$runner_ref\`"
+            echo "- Workcell: \`$workcell_ref\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Retain candidate scan and identity evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: sandbox-release-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sandbox-release-evidence/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Retain immutable image identities
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
